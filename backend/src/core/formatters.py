@@ -7,12 +7,21 @@ from typing import Optional, List, Any
 from datetime import datetime, timezone
 
 
-def format_iso_utc(dt: Optional[datetime]) -> Optional[str]:
+def format_iso_utc(dt: Any) -> Optional[str]:
     """
-    Format a datetime object into a strict ISO-8601 UTC string (YYYY-MM-DDTHH:mm:ss.sssZ).
+    Format a datetime object, timestamp or ISO string into a strict ISO-8601 UTC string (YYYY-MM-DDTHH:mm:ss.sssZ).
     """
     if dt is None:
         return None
+    if isinstance(dt, str):
+        return dt
+    if isinstance(dt, (int, float)):
+        dt = datetime.fromtimestamp(dt, tz=timezone.utc)
+    elif not isinstance(dt, datetime):
+        try:
+            return str(dt)
+        except Exception:
+            return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     else:

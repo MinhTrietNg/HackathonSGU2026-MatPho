@@ -262,6 +262,48 @@ class GroupRepository(BaseFirestoreRepository):
     # 2. MEMBERS & 4-ROLE RBAC
     # ==========================================================================
 
+    def add_member_direct(
+        self,
+        group_id: str,
+        user_id: str,
+        role: UserRole = UserRole.MEMBER,
+        nickname: Optional[str] = None,
+        camera_ids: Optional[List[str]] = None,
+    ) -> MemberModel:
+        """Directly add user as a group member (bypassing invitation for tests/admin)."""
+        user_repo = get_user_repo()
+        user = user_repo.get_user_by_id(user_id)
+        if not user:
+            raise ValueError("USER_NOT_FOUND")
+
+        now_dt = datetime.now(timezone.utc)
+        member_data = {
+            "user_id": user_id,
+            "role": role.value if hasattr(role, "value") else str(role),
+            "full_name": user.full_name,
+            "phone_number": user.phone_number,
+            "nickname": nickname or user.full_name,
+            "note": None,
+            "camera_ids": camera_ids,
+            "joined_at": now_dt,
+        }
+        self.db.collection("groups").document(group_id).collection("members").document(user_id).set(member_data)
+        self.db.collection("users").document(user_id).collection("group_memberships").document(group_id).set({
+            "group_id": group_id,
+            "role": role.value if hasattr(role, "value") else str(role),
+            "joined_at": now_dt,
+        })
+        try:
+            self.db.collection("groups").document(group_id).update({
+                "member_count": firestore.Increment(1),
+            })
+        except Exception:
+            pass
+
+        return MemberModel(**member_data)
+
+    add_member = add_member_direct
+
     def get_member(self, group_id: str, user_id: str) -> Optional[MemberModel]:
         """Fetch member in group."""
         doc = self.get_document(f"groups/{group_id}/members", user_id)
@@ -803,3 +845,7 @@ def get_group_repo() -> GroupRepository:
     if _group_repo_instance is None:
         _group_repo_instance = GroupRepository()
     return _group_repo_instance
+
+
+get_group_repository = get_group_repo
+

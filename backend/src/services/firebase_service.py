@@ -16,7 +16,28 @@ _storage_bucket = None
 def init_firebase() -> firebase_admin.App:
     global _firebase_app, _firestore_client, _storage_bucket
     if _firebase_app is not None:
+        if _firestore_client is None:
+            try:
+                _firestore_client = firestore.client(_firebase_app)
+            except Exception:
+                pass
         return _firebase_app
+
+    try:
+        _firebase_app = firebase_admin.get_app()
+        if _firestore_client is None:
+            try:
+                _firestore_client = firestore.client(_firebase_app)
+            except Exception:
+                pass
+        if _storage_bucket is None:
+            try:
+                _storage_bucket = storage.bucket(app=_firebase_app)
+            except Exception:
+                _storage_bucket = None
+        return _firebase_app
+    except ValueError:
+        pass
 
     # Resolve credentials path
     cred_path = None
@@ -66,6 +87,11 @@ def get_firestore_client():
     global _firestore_client
     if _firestore_client is None:
         init_firebase()
+    if _firestore_client is None:
+        try:
+            _firestore_client = firestore.client()
+        except Exception:
+            pass
     return _firestore_client
 
 

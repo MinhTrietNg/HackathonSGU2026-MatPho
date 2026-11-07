@@ -6,6 +6,9 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+set "CLI_MODE=0"
+if not "%1"=="" set "CLI_MODE=1"
+
 if "%1"=="" goto menu
 if /i "%1"=="up" goto up
 if /i "%1"=="start" goto up
@@ -62,7 +65,7 @@ echo [2/3] Dang khoi chay Docker Containers...
 docker compose up -d --build
 if errorlevel 1 (
     echo [LOI] Khong the khoi chay Docker. Vui long kiem tra Docker Desktop!
-    pause
+    if "%CLI_MODE%"=="0" pause
     goto exit
 )
 echo [3/3] Thanh cong!
@@ -76,7 +79,7 @@ echo [2/3] Dang khoi chay Docker Containers kem Mock Camera...
 docker compose --profile mock up -d --build
 if errorlevel 1 (
     echo [LOI] Khong the khoi chay Docker. Vui long kiem tra Docker Desktop!
-    pause
+    if "%CLI_MODE%"=="0" pause
     goto exit
 )
 echo [3/3] Thanh cong!
@@ -85,7 +88,7 @@ goto endpoints_mock
 :endpoints
 echo.
 echo ======================================================================
-echo   THONG TIN CONG DICH VU KHỐI EDGE (EdgeAI-MatPho)
+echo   THONG TIN CONG DICH VU KHOI EDGE (EdgeAI-MatPho)
 echo ======================================================================
 echo   * RTSP Media Server  : rtsp://localhost:8554/live/cam_01
 echo   * HLS Mobile Stream  : http://localhost:8888/live/cam_01/index.m3u8
@@ -94,13 +97,13 @@ echo   * Edge Controller API: http://localhost:8090/docs
 echo   * Health Check API   : http://localhost:8090/api/v1/edge/health
 echo   * MediaMTX Control   : http://localhost:9997/v3/config/paths/list
 echo ======================================================================
-pause
+if "%CLI_MODE%"=="0" pause
 goto exit
 
 :endpoints_mock
 echo.
 echo ======================================================================
-echo   THONG TIN CONG DICH VU KHỐI EDGE (EdgeAI-MatPho)
+echo   THONG TIN CONG DICH VU KHOI EDGE (EdgeAI-MatPho)
 echo ======================================================================
 echo   * RTSP Media Server  : rtsp://localhost:8554/live/cam_01
 echo   * HLS Mobile Stream  : http://localhost:8888/live/cam_01/index.m3u8
@@ -109,7 +112,7 @@ echo   * Edge Controller API: http://localhost:8090/docs
 echo   * Health Check API   : http://localhost:8090/api/v1/edge/health
 echo   * Camera Gia Lap OSD : rtsp://localhost:8554/mock/cam_test (DANG PHAT)
 echo ======================================================================
-pause
+if "%CLI_MODE%"=="0" pause
 goto exit
 
 :down
@@ -117,7 +120,7 @@ echo.
 echo Dang dung toan bo cum Edge...
 docker compose --profile mock down
 echo [OK] Da dung containers.
-pause
+if "%CLI_MODE%"=="0" pause
 goto exit
 
 :restart
@@ -144,7 +147,7 @@ echo.
 echo Kiem tra Healthcheck Edge Backend (:8090)...
 curl -s http://localhost:8090/api/v1/edge/health 2>nul
 echo.
-pause
+if "%CLI_MODE%"=="0" pause
 goto exit
 
 :clean
@@ -156,7 +159,7 @@ if /i "%confirm%"=="y" (
 ) else (
     echo Da huy thao tac.
 )
-pause
+if "%CLI_MODE%"=="0" pause
 goto exit
 
 :exit

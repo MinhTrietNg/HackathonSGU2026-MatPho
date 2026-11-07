@@ -9,22 +9,22 @@ from google.cloud import firestore
 from .base_repo import BaseRepository
 from .camera_repo import get_camera_repository
 from .user_repo import get_user_repository
-from ..models.fire_alert import (
+from ...models.fire_alert import (
     FireAlertModel,
     StepTimelineModel,
     TimelineSnapshotModel,
 )
-from ..models.audit_log import AuditLogModel
-from ..models.common import (
+from ...models.audit_log import AuditLogModel
+from ...models.common import (
     AlertStatus,
     AlertVerification,
     SignType,
     AuditAction,
     generate_semantic_id,
 )
-from ..core.exceptions import NotFoundException
-from ..core.formatters import current_utc_iso, format_iso_utc
-from ..services.storage_service import get_storage_service
+from ...core.exceptions import NotFoundException
+from ...core.formatters import current_utc_iso, format_iso_utc
+from ..storage_service import get_storage_service
 
 
 class AlertRepository(BaseRepository):

@@ -299,20 +299,52 @@ File DB nằm tại `EdgeAI-MatPho/edge_backend/data/edge_local.db` (hoặc `/ap
 | **`mediamtx`** | `9997` | HTTP REST | MediaMTX Control API nội bộ |
 | **`edge-backend`** | `8090` | HTTP REST | Cổng điều khiển Edge Backend, LAN Probe, Quản lý Camera & Healthcheck |
 
-### 🚀 Lệnh Khởi Chạy & Kiểm Thử Nhanh
+### 🚀 Lệnh Khởi Chạy Nhanh Bằng Script Tự Động (Automation Scripts)
 
-1. **Chạy bằng Docker Compose**:
+Khối Edge đã được trang bị sẵn 3 script điều khiển tự động (tự động tạo `.env` từ `.env.example`, kiểm tra Docker daemon, phát hiện xung đột port và cung cấp Menu tương tác):
+
+1. **Trên Windows (PowerShell)**:
+   ```powershell
+   cd EdgeAI-MatPho
+   .\run_edge.ps1            # Mở Menu tương tác điều khiển [0-7]
+   .\run_edge.ps1 up         # Khởi chạy cụm Edge tiêu chuẩn (3 containers)
+   .\run_edge.ps1 up-mock    # Khởi chạy KÈM Camera Giả Lập Mock Counter OSD
+   .\run_edge.ps1 logs       # Xem logs thời gian thực
+   .\run_edge.ps1 status     # Kiểm tra trạng thái containers & healthcheck
+   .\run_edge.ps1 down       # Dừng toàn bộ cụm Edge
+   .\run_edge.ps1 clean      # Dọn dẹp sạch containers & volumes SQLite
+   ```
+2. **Trên Windows (Batch / Click đúp File Explorer)**:
+   - Click đúp trực tiếp vào file [`run_edge.bat`](./run_edge.bat) trong File Explorer hoặc chạy:
+   ```cmd
+   cd EdgeAI-MatPho
+   run_edge.bat              # Menu tương tác
+   run_edge.bat up           # Khởi chạy
+   run_edge.bat up-mock      # Khởi chạy kèm camera giả lập
+   run_edge.bat down         # Dừng cụm
+   ```
+3. **Trên Linux / macOS / WSL (POSIX Shell)**:
+   ```bash
+   cd EdgeAI-MatPho
+   chmod +x run_edge.sh
+   ./run_edge.sh             # Mở Menu tương tác
+   ./run_edge.sh up          # Khởi chạy
+   ./run_edge.sh up-mock     # Khởi chạy kèm camera giả lập
+   ./run_edge.sh logs        # Xem logs
+   ./run_edge.sh down        # Dừng cụm
+   ```
+
+4. **Chạy thủ công bằng Docker Compose cơ bản**:
    ```bash
    cd EdgeAI-MatPho
    cp .env.example .env
+   # Khởi chạy 3 container tiêu chuẩn
    docker compose up -d --build
+   # HOẶC khởi chạy kèm container giả lập camera:
+   docker compose --profile mock up -d --build
    ```
-2. **Bơm luồng Camera Giả lập (khi không có Camera IP thật)**:
-   ```bash
-   python EdgeAI-MatPho/scripts/mock_camera.py --url rtsp://localhost:8554/mock/cam_test
-   ```
-   $\rightarrow$ Xem ngay luồng HLS trên trình duyệt hoặc App tại: `http://localhost:8888/live/cam_01/index.m3u8`
-3. **Chạy Bộ Kiểm Thử Tự Động (163 Unit & Media Tests)**:
+
+5. **Chạy Bộ Kiểm Thử Tự Động (163 Unit & Media Tests)**:
    ```powershell
    # Test Edge Backend & PyAV Stream Worker (156 tests)
    Push-Location EdgeAI-MatPho/edge_backend; pytest -q; Pop-Location

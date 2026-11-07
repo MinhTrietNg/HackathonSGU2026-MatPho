@@ -423,3 +423,7 @@ def get_camera_repo() -> CameraRepository:
     if _camera_repo_instance is None:
         _camera_repo_instance = CameraRepository()
     return _camera_repo_instance
+
+
+get_camera_repository = get_camera_repo
+

@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Script điều khiển Docker cho khối EdgeAI-MatPho (MediaMTX + Edge Backend + FireWatch AI + Mock Cam).
+    Script dieu khien Docker cho khoi EdgeAI-MatPho (MediaMTX + Edge Backend + FireWatch AI + Mock Cam).
 .DESCRIPTION
-    Hỗ trợ khởi chạy nhanh, theo dõi logs, kiểm tra sức khỏe và chạy luồng camera giả lập.
+    Ho tro khoi chay nhanh, theo doi logs, kiem tra suc khoe va chay luong camera gia lap.
 .EXAMPLE
-    .\run_edge.ps1 up          # Khởi chạy cụm Edge tiêu chuẩn (3 containers)
-    .\run_edge.ps1 up-mock     # Khởi chạy kèm camera giả lập (--profile mock)
-    .\run_edge.ps1 down        # Dừng toàn bộ cụm Edge
-    .\run_edge.ps1 restart     # Khởi động lại
-    .\run_edge.ps1 logs        # Xem logs trực tiếp
-    .\run_edge.ps1 status      # Kiểm tra trạng thái và healthcheck
-    .\run_edge.ps1 clean       # Dọn dẹp sạch containers & volumes
-    .\run_edge.ps1             # Mở menu tương tác
+    .\run_edge.ps1 up          # Khoi chay cum Edge tieu chuan (3 containers)
+    .\run_edge.ps1 up-mock     # Khoi chay kem camera gia lap (--profile mock)
+    .\run_edge.ps1 down        # Dung toan bo cum Edge
+    .\run_edge.ps1 restart     # Khoi dong lai
+    .\run_edge.ps1 logs        # Xem logs truc tiep
+    .\run_edge.ps1 status      # Kiem tra trang thai va healthcheck
+    .\run_edge.ps1 clean       # Don dep sach containers va volumes
+    .\run_edge.ps1             # Mo menu tuong tac
 #>
 
 [CmdletBinding()]
@@ -25,12 +25,12 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $ScriptDir
 
-# --- Color helper functions ---
+# --- Helper functions ---
 function Write-Header {
     param ([string]$Text)
     Write-Host ""
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "  $Text" -ForegroundColor Yellow -BackgroundColor Black
+    Write-Host "  $Text" -ForegroundColor Yellow
     Write-Host "======================================================================" -ForegroundColor Cyan
 }
 
@@ -41,28 +41,28 @@ function Write-Success {
 
 function Write-Warn {
     param ([string]$Text)
-    Write-Host "[CẢNH BÁO] $Text" -ForegroundColor Yellow
+    Write-Host "[CANH BAO] $Text" -ForegroundColor Yellow
 }
 
 function Write-Info {
     param ([string]$Text)
-    Write-Host "[THÔNG TIN] $Text" -ForegroundColor Cyan
+    Write-Host "[THONG TIN] $Text" -ForegroundColor Cyan
 }
 
 function Write-Fail {
     param ([string]$Text)
-    Write-Host "[LỖI] $Text" -ForegroundColor Red
+    Write-Host "[LOI] $Text" -ForegroundColor Red
 }
 
 # --- Check Docker Prerequisites ---
 function Assert-DockerRunning {
-    Write-Info "Đang kiểm tra Docker daemon..."
+    Write-Info "Dang kiem tra Docker daemon..."
     try {
         $null = docker info 2>&1
-        Write-Success "Docker engine đang hoạt động."
+        Write-Success "Docker engine dang hoat dong."
     } catch {
-        Write-Fail "Không thể kết nối đến Docker daemon!"
-        Write-Host "  -> Vui lòng bật Docker Desktop trên máy tính rồi thử lại." -ForegroundColor Yellow
+        Write-Fail "Khong the ket noi den Docker daemon!"
+        Write-Host "  -> Vui long bat Docker Desktop tren may tinh roi thu lai." -ForegroundColor Yellow
         exit 1
     }
 }
@@ -75,35 +75,35 @@ function Ensure-EnvFile {
     if (-not (Test-Path $envPath)) {
         if (Test-Path $examplePath) {
             Copy-Item -Path $examplePath -Destination $envPath
-            Write-Success "Đã tự động khởi tạo file .env từ .env.example."
+            Write-Success "Da tu dong khoi tao file .env tu .env.example."
         } else {
-            Write-Warn "Không tìm thấy file .env.example để khởi tạo .env!"
+            Write-Warn "Khong tim thay file .env.example de khoi tao .env!"
         }
     } else {
-        Write-Success "Đã nạp cấu hình từ .env."
+        Write-Success "Da nap cau hinh tu file .env."
     }
 }
 
 # --- Check Port Conflicts (e.g. backend mediamtx container) ---
 function Check-PortConflicts {
     try {
-        $runningContainers = docker ps --format "{{.Names}} {{.Ports}}" 2>$null
-        if ($runningContainers -match "matpho_mediamtx" -or $runningContainers -match "8554->8554") {
-            Write-Warn "Phát hiện port 8554/8888 đang được dùng bởi container khác (ví dụ: matpho_mediamtx của Backend)."
-            Write-Host "  * Nếu muốn Edge dùng port mặc định, hãy tạm dừng container đó:" -ForegroundColor Gray
+        $running = docker ps --format "{{.Names}} {{.Ports}}" 2>$null
+        if ($running -match "matpho_mediamtx" -or $running -match "8554->8554") {
+            Write-Warn "Phat hien port 8554/8888 dang duoc dung boi container khac (vi du: matpho_mediamtx cua Backend)."
+            Write-Host "  * Neu muon Edge dung port mac dinh, hay tam dung container do:" -ForegroundColor Gray
             Write-Host "    docker stop matpho_mediamtx" -ForegroundColor DarkYellow
-            Write-Host "  * Hoặc đổi MEDIAMTX_RTSP_PORT/MEDIAMTX_HLS_PORT trong file .env của EdgeAI-MatPho." -ForegroundColor Gray
+            Write-Host "  * Hoac doi MEDIAMTX_RTSP_PORT/MEDIAMTX_HLS_PORT trong file .env cua EdgeAI-MatPho." -ForegroundColor Gray
             Write-Host ""
         }
     } catch {
-        # ignore check failure
+        # ignore
     }
 }
 
 # --- Display Service Endpoints ---
 function Show-Endpoints {
     param([bool]$WithMock = $false)
-    Write-Header "THÔNG TIN CỔNG DỊCH VỤ KHỐI EDGE (EdgeAI-MatPho)"
+    Write-Header "THONG TIN CONG DICH VU KHOI EDGE (EdgeAI-MatPho)"
     Write-Host "  * RTSP Media Server  : " -NoNewline; Write-Host "rtsp://localhost:8554/live/cam_01" -ForegroundColor Green
     Write-Host "  * HLS Mobile Stream  : " -NoNewline; Write-Host "http://localhost:8888/live/cam_01/index.m3u8" -ForegroundColor Green
     Write-Host "  * WebRTC WHEP Stream : " -NoNewline; Write-Host "http://localhost:8889/live/cam_01" -ForegroundColor Green
@@ -111,7 +111,7 @@ function Show-Endpoints {
     Write-Host "  * Health Check API   : " -NoNewline; Write-Host "http://localhost:8090/api/v1/edge/health" -ForegroundColor Cyan
     Write-Host "  * MediaMTX Control   : " -NoNewline; Write-Host "http://localhost:9997/v3/config/paths/list" -ForegroundColor Gray
     if ($WithMock) {
-        Write-Host "  * Camera Giả Lập     : " -NoNewline; Write-Host "rtsp://localhost:8554/mock/cam_test (ĐANG BƠM LUỒNG SỐ BẬT OSD)" -ForegroundColor Magenta
+        Write-Host "  * Camera Gia Lap OSD : " -NoNewline; Write-Host "rtsp://localhost:8554/mock/cam_test (DANG PHAT)" -ForegroundColor Magenta
     }
     Write-Host "----------------------------------------------------------------------" -ForegroundColor Cyan
 }
@@ -124,96 +124,96 @@ function Start-Edge {
     Check-PortConflicts
 
     if ($IncludeMock) {
-        Write-Header "KHỞI CHẠY KHỐI EDGE KÈM CAMERA GIẢ LẬP (--profile mock)"
+        Write-Header "KHOI CHAY KHOI EDGE KEM CAMERA GIA LAP (--profile mock)"
         docker compose --profile mock up -d --build
     } else {
-        Write-Header "KHỞI CHẠY KHỐI EDGE TIÊU CHUẨN (3 CONTAINERS)"
+        Write-Header "KHOI CHAY KHOI EDGE TIEU CHUAN (3 CONTAINERS)"
         docker compose up -d --build
     }
 
     if ($LASTEXITCODE -eq 0) {
-        Write-Success "Toàn bộ containers khối Edge đã được khởi chạy thành công!"
+        Write-Success "Toan bo containers khoi Edge da duoc khoi chay thanh cong!"
         Start-Sleep -Seconds 2
         Show-Endpoints -WithMock $IncludeMock
     } else {
-        Write-Fail "Khởi chạy thất bại! Vui lòng kiểm tra lỗi bên trên."
+        Write-Fail "Khoi chay that bai! Vui long kiem tra loi ben tren."
     }
 }
 
 function Stop-Edge {
     Assert-DockerRunning
-    Write-Header "DỪNG TOÀN BỘ CỤM EDGE (EdgeAI-MatPho)"
+    Write-Header "DUNG TOAN BO CUM EDGE (EdgeAI-MatPho)"
     docker compose --profile mock down
-    Write-Success "Đã dừng và giải phóng toàn bộ containers khối Edge."
+    Write-Success "Da dung toan bo containers khoi Edge."
 }
 
 function Restart-Edge {
     Assert-DockerRunning
-    Write-Header "KHỞI ĐỘNG LẠI KHỐI EDGE"
+    Write-Header "KHOI DONG LAI KHOI EDGE"
     docker compose --profile mock down
     Ensure-EnvFile
     docker compose up -d --build
-    Write-Success "Đã khởi động lại cụm Edge."
+    Write-Success "Da khoi dong lai cum Edge."
     Show-Endpoints
 }
 
 function Show-Logs {
     Assert-DockerRunning
-    Write-Header "XEM LOGS TRỰC TIẾP KHỐI EDGE (Ctrl+C để thoát)"
+    Write-Header "XEM LOGS TRUC TIEP (Ctrl+C de thoat)"
     docker compose --profile mock logs -f --tail 100
 }
 
 function Show-Status {
     Assert-DockerRunning
-    Write-Header "TRẠNG THÁI CONTAINERS KHỐI EDGE"
+    Write-Header "TRANG THAI CONTAINERS KHOI EDGE"
     docker compose --profile mock ps
 
     Write-Host ""
-    Write-Info "Kiểm tra phản hồi Healthcheck từ Edge Backend (:8090)..."
+    Write-Info "Kiem tra phan hoi Healthcheck tu Edge Backend (:8090)..."
     try {
         $res = Invoke-RestMethod -Uri "http://localhost:8090/api/v1/edge/health" -Method Get -TimeoutSec 3 -ErrorAction SilentlyContinue
         Write-Success "Edge Backend Health: $($res | ConvertTo-Json -Compress)"
     } catch {
-        Write-Warn "Chưa kết nối được http://localhost:8090/api/v1/edge/health (Container có thể đang khởi động)."
+        Write-Warn "Chua ket noi duoc http://localhost:8090/api/v1/edge/health (Container co the dang khoi dong)."
     }
 
-    Write-Info "Kiểm tra phản hồi MediaMTX API (:9997)..."
+    Write-Info "Kiem tra phan hoi MediaMTX API (:9997)..."
     try {
         $res2 = Invoke-RestMethod -Uri "http://localhost:9997/v3/config/paths/list" -Method Get -TimeoutSec 3 -ErrorAction SilentlyContinue
         $pathCount = $res2.itemCount
         Write-Success "MediaMTX Paths Active: $pathCount path(s)."
     } catch {
-        Write-Warn "Chưa kết nối được http://localhost:9997 (MediaMTX có thể chưa sẵn sàng)."
+        Write-Warn "Chua ket noi duoc http://localhost:9997 (MediaMTX co the chua san sang)."
     }
 }
 
 function Clean-Edge {
     Assert-DockerRunning
-    Write-Header "DỌN DẸP SẠCH CỤM EDGE (XÓA VOLUMES DỮ LIỆU SQLITE)"
-    $confirm = Read-Host "Bạn có chắc chắn muốn xóa toàn bộ containers và volumes dữ liệu SQLite không? (y/N)"
+    Write-Header "DON DEP SACH CUM EDGE (XOA VOLUMES DU LIEU SQLITE)"
+    $confirm = Read-Host "Ban co chac muon xoa toan bo containers va volumes SQLite? (y/N)"
     if ($confirm -eq "y" -or $confirm -eq "Y") {
         docker compose --profile mock down -v --remove-orphans
-        Write-Success "Đã xóa toàn bộ containers, mạng và volume matpho_edge_local_data."
+        Write-Success "Da xoa toan bo containers, network va volumes matpho_edge_local_data."
     } else {
-        Write-Info "Đã hủy thao tác dọn dẹp."
+        Write-Info "Da huy thao tac don dep."
     }
 }
 
 # --- Interactive Menu ---
 function Show-Menu {
     while ($true) {
-        Write-Header "MENU QUẢN LÝ DOCKER KHỐI EDGEAI-MATPHO"
-        Write-Host "  1. Khởi chạy cụm Edge tiêu chuẩn       (docker compose up -d --build)" -ForegroundColor Green
-        Write-Host "  2. Khởi chạy KÈM Camera Giả Lập        (docker compose --profile mock up -d)" -ForegroundColor Magenta
-        Write-Host "  3. Xem Logs thời gian thực             (docker compose logs -f)" -ForegroundColor Cyan
-        Write-Host "  4. Kiểm tra trạng thái & Sức khỏe      (docker compose ps & healthcheck)" -ForegroundColor Yellow
-        Write-Host "  5. Khởi động lại cụm Edge              (docker compose restart)" -ForegroundColor White
-        Write-Host "  6. Dừng cụm Edge                       (docker compose down)" -ForegroundColor DarkYellow
-        Write-Host "  7. Dọn dẹp sạch (Xóa Containers & Vol) (docker compose down -v)" -ForegroundColor Red
-        Write-Host "  0. Thoát" -ForegroundColor Gray
+        Write-Header "MENU QUAN LY DOCKER KHOI EDGEAI-MATPHO"
+        Write-Host "  1. Khoi chay cum Edge tieu chuan       (docker compose up -d --build)" -ForegroundColor Green
+        Write-Host "  2. Khoi chay KEM Camera Gia Lap        (docker compose --profile mock up -d)" -ForegroundColor Magenta
+        Write-Host "  3. Xem Logs thoi gian thuc             (docker compose logs -f)" -ForegroundColor Cyan
+        Write-Host "  4. Kiem tra trang thai va Suc khoe     (docker compose ps va healthcheck)" -ForegroundColor Yellow
+        Write-Host "  5. Khoi dong lai cum Edge              (docker compose restart)" -ForegroundColor White
+        Write-Host "  6. Dung cum Edge                       (docker compose down)" -ForegroundColor DarkYellow
+        Write-Host "  7. Don dep sach (Xoa Containers & Vol) (docker compose down -v)" -ForegroundColor Red
+        Write-Host "  0. Thoat" -ForegroundColor Gray
         Write-Host "----------------------------------------------------------------------" -ForegroundColor Cyan
         
-        $choice = Read-Host "Lựa chọn của bạn [0-7]"
+        $choice = Read-Host "Nhap lua chon cua ban [0-7]"
         switch ($choice) {
             "1" { Start-Edge -IncludeMock $false; break }
             "2" { Start-Edge -IncludeMock $true; break }
@@ -222,8 +222,8 @@ function Show-Menu {
             "5" { Restart-Edge; break }
             "6" { Stop-Edge; break }
             "7" { Clean-Edge; break }
-            "0" { Write-Info "Tạm biệt!"; exit 0 }
-            default { Write-Warn "Lựa chọn không hợp lệ. Vui lòng thử lại!" }
+            "0" { Write-Info "Tam biet!"; exit 0 }
+            default { Write-Warn "Lua chon khong hop le. Vui long thu lai!" }
         }
     }
 }

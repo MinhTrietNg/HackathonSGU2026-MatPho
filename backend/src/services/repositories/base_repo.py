@@ -13,6 +13,8 @@ logger = logging.getLogger("backend.repository.base")
 
 
 class BaseFirestoreRepository:
+    COLLECTION_NAME = ""
+
     def __init__(self):
         self._db = None
 
@@ -21,6 +23,10 @@ class BaseFirestoreRepository:
         if self._db is None:
             self._db = get_firestore_client()
         return self._db
+
+    @property
+    def collection(self):
+        return self.db.collection(self.COLLECTION_NAME)
 
     def get_document(
         self, collection_path: str, doc_id: str, transaction: Optional[firestore.Transaction] = None
@@ -76,3 +82,8 @@ class BaseFirestoreRepository:
             transaction.delete(doc_ref)
         else:
             doc_ref.delete()
+
+
+# Alias for backward compatibility
+BaseRepository = BaseFirestoreRepository
+

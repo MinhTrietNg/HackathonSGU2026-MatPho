@@ -245,3 +245,7 @@ def get_user_repo() -> UserRepository:
     if _user_repo_instance is None:
         _user_repo_instance = UserRepository()
     return _user_repo_instance
+
+
+get_user_repository = get_user_repo
+

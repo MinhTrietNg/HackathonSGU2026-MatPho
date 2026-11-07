@@ -19,6 +19,12 @@ Hàng chờ có giới hạn ``verifier.hang_cho_toi_da``; đầy thì mục cũ
 ``VLM_TIMEOUT`` (``qua_han_hang_cho``). Worker (số lượng ``vlm.max_workers``)
 lấy việc từ hàng và gọi VLM với timeout bằng ngân sách còn lại trừ
 :data:`DU_PHONG_S`; còn dưới :data:`TOI_THIEU_S` thì không gọi.
+
+Cầu dao (:class:`~firewatch.cau_dao.CauDao`): ``verifier.cau_dao.loi_lien_tiep``
+yêu cầu đã gọi VLM mà thất bại liên tiếp (lỗi, 429, quá ngân sách) thì mở
+``verifier.cau_dao.mo_s`` giây. Đang mở thì cảnh báo nhận ``VLM_OFF``
+(``cau_dao_mo``) ngay lúc gửi, không vào hàng; hết giờ mở thì nửa mở, đúng một
+mục được gọi thử, các mục khác trong lúc đó nhận ``VLM_OFF``.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from .alerts import VerifierInfo
+from .cau_dao import CauDao
 from .config import Config
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest, trang_thai_verifier
 
@@ -177,6 +184,8 @@ class DieuPhoiXacMinh:
         self._phat_tao, self._phat_cap_nhat = phat_tao, phat_cap_nhat
         self._dong_ho_rieng = dong_ho is None
         self._dong_ho: DongHo = dong_ho if dong_ho is not None else DongHoThat()
+        self.cau_dao = CauDao(cfg.verifier.cau_dao.loi_lien_tiep,
+                              cfg.verifier.cau_dao.mo_s, self._dong_ho.bay_gio)
         self._cv = threading.Condition()
         self._muc: dict[str, MucXacMinh] = {}
         """Mục chưa có trạng thái cuối."""
@@ -214,9 +223,10 @@ class DieuPhoiXacMinh:
             m = MucXacMinh(event_id, req, du_lieu, now, now + self._ngan_sach)
             self._muc[event_id] = m
             if not self._service.enabled:
-                self._ket_thuc(m, VerifyOutcome("UNVERIFIED", None, 0.0, 0,
-                                                "vlm disabled", "vlm_tat"),
-                               VerifierInfo.tao("VLM_OFF", reason="vlm_tat"))
+                self._vlm_off(m, "vlm_tat", "vlm disabled")
+                return
+            if self.cau_dao.dang_chan():
+                self._vlm_off(m, "cau_dao_mo", "cầu dao mở")
                 return
             if len(self._hang) >= self._toi_da:
                 cu_nhat = next(iter(self._hang.values()))
@@ -279,27 +289,43 @@ class DieuPhoiXacMinh:
                 if timeout < TOI_THIEU_S:
                     self._het_han(m, "qua_han_hang_cho")
                     continue
+                if not self.cau_dao.cho_phep():
+                    self._vlm_off(m, "cau_dao_mo", "cầu dao mở")
+                    continue
                 m.trang_thai = "dang_goi"
                 req = m.req
             outcome = self._service.goi_mot_lan(req, timeout)
             with self._cv:
                 if m.trang_thai == "xong":
+                    # Đã VLM_TIMEOUT (và đã tính thất bại cho cầu dao).
                     log.info("verifier %s: kết quả VLM đến sau ngân sách, bỏ",
                              m.event_id[:8])
                     continue
+                if outcome.result is not None:
+                    self.cau_dao.thanh_cong()
+                else:
+                    self.cau_dao.that_bai()
                 outcome.latency_s = self._dong_ho.bay_gio() - m.t_quyet
                 self._ket_thuc(m, outcome, trang_thai_verifier(outcome))
 
     # ---------------------------------------------------- trạng thái cuối
     def _het_han(self, m: MucXacMinh, ly_do: str) -> None:
         """``VLM_TIMEOUT``: ``qua_han_hang_cho`` nếu chưa gọi, ``timeout`` nếu
-        đã gọi."""
+        đã gọi (tính là một thất bại cho cầu dao)."""
         self._hang.pop(m.event_id, None)
         tre = self._dong_ho.bay_gio() - m.t_quyet
         da_goi = m.trang_thai == "dang_goi"
+        if da_goi:
+            self.cau_dao.that_bai()
         self._ket_thuc(m, VerifyOutcome("UNVERIFIED", None, tre, int(da_goi),
                                         f"quá ngân sách ({ly_do})", ly_do),
                        VerifierInfo.tao("VLM_TIMEOUT", reason=ly_do))
+
+    def _vlm_off(self, m: MucXacMinh, ly_do: str, loi: str) -> None:
+        """``VLM_OFF`` ngay, không gọi VLM: VLM tắt hoặc cầu dao mở."""
+        self._hang.pop(m.event_id, None)
+        self._ket_thuc(m, VerifyOutcome("UNVERIFIED", None, 0.0, 0, loi, ly_do),
+                       VerifierInfo.tao("VLM_OFF", reason=ly_do))
 
     def _ket_thuc(self, m: MucXacMinh, outcome: VerifyOutcome,
                   info: VerifierInfo) -> None:

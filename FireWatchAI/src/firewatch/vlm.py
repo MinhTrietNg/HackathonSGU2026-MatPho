@@ -432,15 +432,15 @@ def ma_loi(exc: BaseException) -> str:
 def trang_thai_verifier(outcome: VerifyOutcome) -> VerifierInfo:
     """Trạng thái verifier của một kết quả VLM đã có (cờ ``ben_vung`` bật).
 
-    Có câu trả lời: ``VERIFIED`` hoặc ``REJECTED`` kèm độ trễ. VLM tắt hoặc
-    thiếu key: ``VLM_OFF``. Lỗi: ``VLM_ERROR``. Hai trạng thái sau cần người
-    trực tự xác thực. Không bao giờ đổi mức cảnh báo.
+    Có câu trả lời: ``VERIFIED`` hoặc ``REJECTED`` kèm độ trễ. VLM tắt, thiếu
+    key hoặc cầu dao mở: ``VLM_OFF``. Lỗi: ``VLM_ERROR``. Hai trạng thái sau
+    cần người trực tự xác thực. Không bao giờ đổi mức cảnh báo.
     """
     if outcome.result is not None:
         status = "VERIFIED" if outcome.verification == "VERIFIED" else "REJECTED"
         return VerifierInfo.tao(status, latency_s=outcome.latency_s)
-    if outcome.reason == "vlm_tat":
-        return VerifierInfo.tao("VLM_OFF", reason="vlm_tat")
+    if outcome.reason in ("vlm_tat", "cau_dao_mo"):
+        return VerifierInfo.tao("VLM_OFF", reason=outcome.reason)
     return VerifierInfo.tao("VLM_ERROR", reason=outcome.reason or "loi_mang")
 
 

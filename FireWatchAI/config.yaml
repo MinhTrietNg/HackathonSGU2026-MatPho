@@ -104,14 +104,23 @@ vlm:
 verifier:
   ben_vung: false           # false (hoặc thiếu khối này): hành vi, log, JSON event y hệt trước đây.
                             # true: event có thêm object verifier (status, needs_human_check,
-                            # latency_ms, reason); VLM không hạ mức, không gỡ cảnh báo
+                            # latency_ms, reason); created PENDING ở vlm.grace_s, updated chậm
+                            # nhất ở ngan_sach_s; /health có thêm khối verifier; WS event_update
+                            # mang reason "verifier". VLM không hạ mức, không gỡ cảnh báo
   ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s.
-                            # Cờ bật: mỗi lượt gọi VLM có timeout = ngân sách còn lại - 0,5 s,
-                            # không retry (bỏ qua vlm.timeout_s, vlm.retries); < 1 s thì không gọi
-  hang_cho_toi_da: 8        # số mục tối đa đang chờ gọi VLM, khoá theo event_id
-  cau_dao:
-    loi_lien_tiep: 3        # thất bại liên tiếp thì mở cầu dao
-    mo_s: 60                # mở chừng này giây rồi cho một lượt gọi thử
+                            # Quá hạn -> updated VLM_TIMEOUT, needs_human_check = true, kết quả
+                            # đến muộn bị bỏ. Cờ bật: mỗi lượt gọi VLM có timeout = ngân sách
+                            # còn lại - 0,5 s, không retry (bỏ qua vlm.timeout_s, vlm.retries);
+                            # còn dưới 1 s thì không gọi (reason qua_han_hang_cho)
+  hang_cho_toi_da: 8        # số mục tối đa đang chờ worker gọi VLM, khoá theo event_id (cùng
+                            # event_id thì thay keyframe). Đầy -> mục cũ nhất VLM_TIMEOUT
+                            # (qua_han_hang_cho). Số worker = vlm.max_workers
+  cau_dao:                  # không gọi dồn khi VLM chết hoặc bị giới hạn (429)
+    loi_lien_tiep: 3        # số yêu cầu đã gọi VLM mà thất bại liên tiếp (lỗi, 429, quá ngân
+                            # sách) thì mở; thành công xoá đếm
+    mo_s: 60                # mở chừng này giây: không gọi VLM, event VLM_OFF (cau_dao_mo).
+                            # Hết giờ thì nửa mở: một lượt gọi thử, thành công đóng, thất bại
+                            # mở lại. Trạng thái xem ở /health -> verifier.breaker
 
 # ───────── [5] Alert sink ─────────
 alerts:

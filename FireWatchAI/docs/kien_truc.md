@@ -43,6 +43,13 @@ tới Gemini qua REST (hoặc `mock`) trên thread pool riêng. Alert chờ tố
 sau đó phát `UNVERIFIED`; kết quả về sau được vá vào cùng event. VLM chỉ quyết
 `verification`, không hạ severity.
 
+**Verifier bền vững (`xac_minh_nen.py`, `cau_dao.py`), sau cờ `verifier.ben_vung`.**
+Cờ bật thì cảnh báo được giao cho `DieuPhoiXacMinh`: hàng chờ giới hạn khoá theo
+`event_id`, worker gọi VLM với timeout bằng ngân sách còn lại, luồng hẹn giờ riêng phát
+`created` (`PENDING`) ở `vlm.grace_s` và `updated` (`VLM_TIMEOUT`) ở `verifier.ngan_sach_s`
+dù nguồn video treo. `CauDao` mở sau `loi_lien_tiep` thất bại liên tiếp, khi mở thì event
+nhận `VLM_OFF`. Thống kê cửa sổ 10 phút đi vào `/health` qua `PipelineHealth`.
+
 **Event và phát (`alerts.py`, `server.py`).** `EventStore` ghi JSON và ảnh keyframe, rồi
 đẩy event tới các bên đăng ký: WebSocket (`Broadcaster`), webhook (`WebhookSink`, thread
 riêng), và cập nhật cùng `event_id`. `server.py` là ứng dụng FastAPI: REST, `WS /ws`,
@@ -84,7 +91,7 @@ xem model bằng mắt, không đi qua voting hay alert.
 | Đánh giá 3 cấp: "Bộ test T1 giữ riêng" | T1 không còn là test mù (clip âm đã được xem qua kết quả model và dùng để chẩn đoán lỗi). Số đo chính thức là R3 ở FireWatch-Model, bảng chính là D-Fire test sạch; R3 là xác nhận sau khám phá | `docs/van_hanh.md` mục 2 |
 | Model registry: "models/*.pt → ONNX", "lưu tên mới, không ghi đè" | bảng đăng ký nằm ở FireWatch-Model, danh tính là SHA-256 của `.pt`; repo này ghim model vận hành FireWatch-v2.0 trong `models/README.md` | `models/README.md` |
 | Detector: "≈ 26 ms mỗi khung" | số đo R3 của FireWatch-v2.0: p50 30,8 ms, p95 44,0 ms (`benchmark_edge.py`, 4 luồng); lần chạy kiểm 07/11 trên clip mẫu trung bình 38 ms. Điều kiện đo khác nhau, không so trực tiếp | model card; `docs/van_hanh.md` mục 6 |
-| Verifier: một nhánh chờ 2 s, fail-open | vẫn đúng khi cờ tắt. Thêm verifier bền vững sau cờ `verifier.ben_vung` (mặc định tắt): đã có trạng thái, schema, config, hàng chờ và ngân sách nền 10 s (`xac_minh_nen.py`); cầu dao, `/health` chưa làm | `docs/decisions/2026-11-07-verifier-ben-vung.md` |
+| Verifier: một nhánh chờ 2 s, fail-open | vẫn đúng khi cờ tắt. Thêm verifier bền vững sau cờ `verifier.ben_vung` (mặc định tắt): trạng thái và schema, hàng chờ và ngân sách nền 10 s độc lập heartbeat (`xac_minh_nen.py`), cầu dao (`cau_dao.py`), khối `verifier` trên `/health`, `reason: "verifier"` trên WebSocket, console hiện `needs_human_check` | `docs/decisions/2026-11-07-verifier-ben-vung.md` |
 
 ### Sơ đồ vẽ nhưng FireWatchAI chưa có
 

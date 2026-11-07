@@ -1,9 +1,10 @@
-"""Command line entry point: ``python -m firewatch run|serve``."""
+"""Command line entry point: ``python -m firewatch run|serve|edge``."""
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 from . import __version__
@@ -44,6 +45,14 @@ def _build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--exit-on-pipeline-stop", action="store_true",
                        help="pipeline lỗi hay nguồn live kết thúc thì dừng serve với "
                             "mã 1, để supervisor khởi động lại (dùng trong container)")
+
+    edge = sub.add_parser(
+        "edge", help="chế độ nút biên (thay EdgeAI-MatPho/ai_service): nhiều camera "
+                     "từ biến môi trường, theo lịch quét của edge_backend; lệnh mặc "
+                     "định của image")
+    edge.add_argument("--host", default=None, help="ghi đè server.host (/health)")
+    edge.add_argument("--port", type=int, default=None,
+                      help="ghi đè server.port (/health)")
     return p
 
 
@@ -69,7 +78,35 @@ def main(argv: list[str] | None = None) -> int:
         return serve(cfg, source=args.source, realtime=args.realtime,
                      host=args.host, port=args.port,
                      exit_on_pipeline_stop=args.exit_on_pipeline_stop)
+    if args.cmd == "edge":
+        return _edge(args)
     return 1
+
+
+def _edge(args: argparse.Namespace) -> int:
+    """Nút biên nếu môi trường có camera hoặc edge_backend; không có mà có
+    ``FIREWATCH_SOURCE`` thì chạy ``serve`` một nguồn như trước (docs/van_hanh.md
+    mục 7)."""
+    from .nut_bien_cau_hinh import GHI_DE_MAC_DINH, doc_moi_truong
+
+    lg = logging.getLogger(__name__)
+    cfgb = doc_moi_truong(os.environ)
+    if cfgb is None:
+        nguon = os.environ.get("FIREWATCH_SOURCE", "").strip()
+        if not nguon:
+            lg.error("edge: không có AI_CAMERA_STREAMS, AI_CAMERA_IDS, "
+                     "EDGE_BACKEND_API_URL hay FIREWATCH_SOURCE; không có gì để chạy")
+            return 2
+        from .server import serve
+
+        lg.info("edge: không có cấu hình nút biên, chạy serve trên FIREWATCH_SOURCE")
+        cfg = load_config(args.config, overrides=args.overrides)
+        return serve(cfg, source=nguon, realtime=False, host=args.host,
+                     port=args.port, exit_on_pipeline_stop=True)
+    from .nut_bien import chay_nut_bien
+
+    cfg = load_config(args.config, overrides=[*GHI_DE_MAC_DINH, *args.overrides])
+    return chay_nut_bien(cfg, cfgb, host=args.host, port=args.port, env=os.environ)
 
 
 if __name__ == "__main__":

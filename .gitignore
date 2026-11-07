@@ -1,0 +1,67 @@
+# AI agent instructions + personal docs (local only, never pushed)
+CLAUDE.md
+.claude/
+docs/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+.history
+.idea/
+*.iml
+*.ipr
+*.iws
+# .vscode/ is left trackable on purpose (shared launch configs).
+
+# Logs and misc
+*.log
+*.class
+*.pyc
+.atom/
+.build/
+.buildlog/
+.svn/
+.swiftpm/
+migrate_working_dir/
+bugreport-*.zip
+
+# ---------------------------------------------------------------------------
+# Secrets / per-machine config — public repo, never commit
+# ---------------------------------------------------------------------------
+.env
+!.env.example
+**/google-services.json
+**/GoogleService-Info.plist
+**/local.properties
+**/key.properties
+*.keystore
+*.jks
+
+# ---------------------------------------------------------------------------
+# frontend/ (Flutter)
+# ---------------------------------------------------------------------------
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/frontend/build/
+/frontend/coverage/
+# Golden-test diff images written on failure
+**/failures/
+
+# Symbolication / obfuscation
+app.*.symbols
+app.*.map.json
+
+# Demo CCTV clips + stills: research/hackathon license, never redistribute.
+/frontend/assets/demo_clips/*
+!/frontend/assets/demo_clips/.gitkeep
+
+# Android Studio build artifacts
+/frontend/android/build/
+/frontend/android/app/debug
+/frontend/android/app/profile
+/frontend/android/app/release

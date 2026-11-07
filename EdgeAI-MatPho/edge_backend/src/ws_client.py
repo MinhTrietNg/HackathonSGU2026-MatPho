@@ -27,10 +27,12 @@ class OutboundCloudWSClient:
         db: EdgeDatabase,
         on_command: Callable[[Dict[str, Any]], Awaitable[Optional[Dict[str, Any]]]],
         get_status_snapshot: Callable[[], Dict[str, Any]],
+        get_public_hls_url: Optional[Callable[[], str]] = None,
     ):
         self.db = db
         self.on_command = on_command
         self.get_status_snapshot = get_status_snapshot
+        self.get_public_hls_url = get_public_hls_url
         self.edge_id = os.getenv("EDGE_DEVICE_ID", "edg_local_01")
         self.secret = os.getenv(
             "INTERNAL_API_SECRET_KEY", "secure_internal_key_for_ai_and_worker_communication"
@@ -42,9 +44,36 @@ class OutboundCloudWSClient:
             "CLOUD_BACKEND_API_URL", "http://localhost:8000"
         ).rstrip("/")
         self._stop = False
+        self._active_ws: Optional[Any] = None
 
     def stop(self) -> None:
         self._stop = True
+
+    async def announce_gateway_url(self, public_hls_url: str) -> bool:
+        """Instantly publish newly discovered Cloudflare public tunnel URL to Cloud."""
+        if not self._active_ws:
+            return False
+        snap = self.get_status_snapshot()
+        try:
+            cams = [c["cam_id"] for c in await self.db.list_cameras(only_active=True)]
+        except Exception:
+            cams = list(snap.keys())
+        try:
+            await self._active_ws.send(
+                json.dumps({
+                    "type": "EDGE_GATEWAY_ANNOUNCE",
+                    "edge_device_id": self.edge_id,
+                    "active_streams": len(snap),
+                    "public_hls_base_url": public_hls_url,
+                    "cameras": cams,
+                    "timestamp": time.time(),
+                })
+            )
+            logger.info("[GATEWAY WATCHDOG] Pushed public tunnel URL to Cloud: %s", public_hls_url)
+            return True
+        except Exception as exc:
+            logger.debug("Failed to push gateway announcement: %s", exc)
+            return False
 
     async def flush_offline_events(self) -> int:
         """Drain queued fire events from SQLite and POST them to Cloud Backend."""
@@ -86,9 +115,11 @@ class OutboundCloudWSClient:
                     ping_interval=15,
                     ping_timeout=10,
                 ) as ws:
+                    self._active_ws = ws
                     logger.info("Connected Outbound WebSocket to Cloud: %s", self.cloud_ws_url)
                     backoff = 2.0
 
+                    await self._send_heartbeat(ws)
                     await self.flush_offline_events()
 
                     hb_task = asyncio.create_task(self._heartbeat_loop(ws))
@@ -113,6 +144,7 @@ class OutboundCloudWSClient:
                             if reply:
                                 await ws.send(json.dumps(reply, ensure_ascii=False))
                     finally:
+                        self._active_ws = None
                         hb_task.cancel()
             except asyncio.CancelledError:
                 break
@@ -126,15 +158,25 @@ class OutboundCloudWSClient:
     async def _heartbeat_loop(self, ws) -> None:
         while not self._stop:
             await asyncio.sleep(10.0)
-            snap = self.get_status_snapshot()
-            await ws.send(
-                json.dumps(
-                    {
-                        "type": "EDGE_HEARTBEAT",
-                        "edge_device_id": self.edge_id,
-                        "active_streams": len(snap),
-                        "timestamp": time.time(),
-                    }
-                )
-            )
+            await self._send_heartbeat(ws)
             await self.flush_offline_events()
+
+    async def _send_heartbeat(self, ws) -> None:
+        snap = self.get_status_snapshot()
+        public_url = self.get_public_hls_url() if self.get_public_hls_url else ""
+        try:
+            cams = [c["cam_id"] for c in await self.db.list_cameras(only_active=True)]
+        except Exception:
+            cams = list(snap.keys())
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "EDGE_HEARTBEAT",
+                    "edge_device_id": self.edge_id,
+                    "active_streams": len(snap),
+                    "public_hls_base_url": public_url,
+                    "cameras": cams,
+                    "timestamp": time.time(),
+                }
+            )
+        )

@@ -76,12 +76,13 @@ services:
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
       - MEDIAMTX_HOST=${MEDIAMTX_HOST:-http://localhost:8888}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-matpho-c7e77}
       - FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-matpho-c7e77.firebasestorage.app}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-service-account.json
     volumes:
       - ./src:/app/src
+      - ./tests:/app/tests
       - ${FIREBASE_CREDENTIALS_PATH:-./credentials/firebase-service-account.json}:/app/credentials/firebase-service-account.json:ro
     depends_on:
       mediamtx:

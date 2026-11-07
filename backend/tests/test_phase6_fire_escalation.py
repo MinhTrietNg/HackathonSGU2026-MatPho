@@ -8,15 +8,26 @@ import random
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.src.main import app, INTERNAL_API_SECRET_KEY
-from backend.src.services.repositories.user_repo import get_user_repo
-from backend.src.services.repositories.group_repo import get_group_repo
-from backend.src.services.repositories.camera_repo import get_camera_repo
-from backend.src.services.repositories.alert_repo import get_alert_repository
-from backend.src.services.escalation_service import get_escalation_service
-from backend.src.core.security import generate_emergency_token
-from backend.src.models.common import UserRole, AlertStatus
-from backend.src.models.camera import WatchAreaModel
+try:
+    from src.main import app, INTERNAL_API_SECRET_KEY
+    from src.services.repositories.user_repo import get_user_repo
+    from src.services.repositories.group_repo import get_group_repo
+    from src.services.repositories.camera_repo import get_camera_repo
+    from src.services.repositories.alert_repo import get_alert_repository
+    from src.services.escalation_service import get_escalation_service
+    from src.core.security import generate_emergency_token
+    from src.models.common import UserRole, AlertStatus
+    from src.models.camera import WatchAreaModel
+except ImportError:
+    from backend.src.main import app, INTERNAL_API_SECRET_KEY
+    from backend.src.services.repositories.user_repo import get_user_repo
+    from backend.src.services.repositories.group_repo import get_group_repo
+    from backend.src.services.repositories.camera_repo import get_camera_repo
+    from backend.src.services.repositories.alert_repo import get_alert_repository
+    from backend.src.services.escalation_service import get_escalation_service
+    from backend.src.core.security import generate_emergency_token
+    from backend.src.models.common import UserRole, AlertStatus
+    from backend.src.models.camera import WatchAreaModel
 
 client = TestClient(app)
 

@@ -17,7 +17,7 @@
 [CmdletBinding()]
 param (
     [Parameter(Position = 0)]
-    [ValidateSet("up", "up-mock", "mock", "start", "down", "stop", "restart", "logs", "status", "ps", "clean", "")]
+    [ValidateSet("up", "up-mock", "mock", "up-gateway", "gateway", "start", "down", "stop", "restart", "logs", "status", "ps", "clean", "")]
     [string]$Command = ""
 )
 
@@ -118,16 +118,29 @@ function Show-Endpoints {
 
 # --- Actions ---
 function Start-Edge {
-    param([bool]$IncludeMock = $false)
+    param(
+        [bool]$IncludeMock = $false,
+        [bool]$IncludeGateway = $false
+    )
     Assert-DockerRunning
     Ensure-EnvFile
     Check-PortConflicts
 
-    if ($IncludeMock) {
+    $profiles = @()
+    if ($IncludeMock) { $profiles += "--profile", "mock" }
+    if ($IncludeGateway) { $profiles += "--profile", "gateway" }
+
+    if ($IncludeGateway) {
+        Write-Header "KHOI CHAY KHOI EDGE KEM HTTPS GATEWAY (CLOUDFLARE TUNNEL)"
+    } elseif ($IncludeMock) {
         Write-Header "KHOI CHAY KHOI EDGE KEM CAMERA GIA LAP (--profile mock)"
-        docker compose --profile mock up -d --build
     } else {
         Write-Header "KHOI CHAY KHOI EDGE TIEU CHUAN (3 CONTAINERS)"
+    }
+
+    if ($profiles.Count -gt 0) {
+        docker compose $profiles up -d --build
+    } else {
         docker compose up -d --build
     }
 

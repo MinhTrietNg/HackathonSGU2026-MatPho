@@ -89,8 +89,26 @@ class CloudWebhookClient:
                 )
                 return False
         except Exception as exc:
-            logger.error("[%s] Failed to send fire event webhook: %s", cam_id, exc)
+            logger.error("[%s] Cloud WAN unreachable (%s) -> Queueing to Edge SQLite offline buffer...", cam_id, exc)
+            await self._enqueue_offline_fallback(cam_id, payload)
             return False
+
+    async def _enqueue_offline_fallback(self, cam_id: str, payload: dict[str, Any]) -> bool:
+        """Store fire event in local Edge SQLite WAL queue (`POST /api/v1/edge/offline-events`) when WAN is down."""
+        fallback_url = f"{self.settings.edge_backend_url}/api/v1/edge/offline-events"
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                res = await client.post(
+                    fallback_url,
+                    json={"cam_id": cam_id, "event_type": "FIRE_DETECTED", "payload": payload},
+                    headers=self.headers,
+                )
+                if res.status_code in (200, 201, 202):
+                    logger.info("[%s] Saved fire event to Edge SQLite offline queue (Store-and-Forward).", cam_id)
+                    return True
+        except Exception as exc:
+            logger.error("[%s] Offline SQLite queue fallback also failed: %s", cam_id, exc)
+        return False
 
     async def report_verifying(
         self,

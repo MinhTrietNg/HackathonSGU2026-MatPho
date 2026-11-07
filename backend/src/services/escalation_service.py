@@ -34,6 +34,8 @@ class EscalationService:
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://redis:6379/0")
         self._redis = None
         self._in_memory_timers: Dict[str, Dict[str, Any]] = {}
+        # Local tracking set of active timers to prevent idle Redis polling (0 commands/day on Upstash when idle)
+        self._tracked_active_ids: set = set()
         self._connect_redis()
 
     def _connect_redis(self):
@@ -42,10 +44,15 @@ class EscalationService:
                 self._redis = redis.from_url(
                     self.redis_url,
                     decode_responses=True,
-                    socket_connect_timeout=2,
+                    socket_connect_timeout=3,
                 )
                 self._redis.ping()
-                logger.info(f"Connected to Redis escalation cache at {self.redis_url}")
+                # Hydrate existing active timers once at startup (for restart recovery)
+                existing = self._redis.smembers("escalation:active_timers")
+                if existing:
+                    self._tracked_active_ids.update(existing)
+                safe_url = self.redis_url.split("@")[-1] if "@" in self.redis_url else self.redis_url
+                logger.info(f"Connected to Redis escalation cache at {safe_url} (active timers: {len(self._tracked_active_ids)})")
             except Exception as e:
                 logger.warning(f"Could not connect to Redis ({e}), using in-memory escalation timer fallback")
                 self._redis = None
@@ -71,6 +78,7 @@ class EscalationService:
             "data": alert_data,
         }
         key = f"escalation:timer:{alert_id}"
+        self._tracked_active_ids.add(alert_id)
 
         if self._redis:
             try:
@@ -96,6 +104,7 @@ class EscalationService:
         """
         key = f"escalation:timer:{alert_id}"
         cancelled = False
+        self._tracked_active_ids.discard(alert_id)
 
         if self._redis:
             try:
@@ -171,6 +180,7 @@ class EscalationService:
             "sign": alert.sign.value if hasattr(alert.sign, "value") else str(alert.sign),
             "confidence": alert.confidence,
             "still_url": alert.still_url or alert.fire_image_url,
+            "bbox": alert.timeline_snapshots[-1].bbox if alert.timeline_snapshots else [],
             "summary": alert.summary,
             "detail": alert.detail,
             "verification": alert.verification.value if hasattr(alert.verification, "value") else str(alert.verification),
@@ -218,18 +228,26 @@ class EscalationService:
     async def check_and_escalate_expired(self):
         """
         Periodic worker check: finds expired timers and escalates them.
+        Zero-command idle optimization: Only queries Redis when _tracked_active_ids is non-empty,
+        protecting Upstash Free Tier quota (0 Redis commands/day when no fire incident is active).
         """
+        if not self._tracked_active_ids and not self._in_memory_timers:
+            return
+
         expired_ids: List[str] = []
 
-        # Check in Redis
-        if self._redis:
+        # Check in Redis only if there are tracked active timers
+        if self._redis and self._tracked_active_ids:
             try:
                 active_ids = self._redis.smembers("escalation:active_timers")
-                for aid in active_ids:
+                # Sync local tracking with Redis
+                self._tracked_active_ids = set(active_ids)
+                for aid in list(active_ids):
                     key = f"escalation:timer:{aid}"
                     if not self._redis.exists(key):
                         expired_ids.append(aid)
                         self._redis.srem("escalation:active_timers", aid)
+                        self._tracked_active_ids.discard(aid)
             except Exception as e:
                 logger.error(f"Error checking expired Redis timers: {e}")
 
@@ -239,6 +257,7 @@ class EscalationService:
             if now >= item["expire_at"]:
                 expired_ids.append(aid)
                 del self._in_memory_timers[aid]
+                self._tracked_active_ids.discard(aid)
 
         for aid in expired_ids:
             try:

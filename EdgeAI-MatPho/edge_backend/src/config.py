@@ -83,6 +83,10 @@ class DecoderSettings:
     backoff_max_s: float = 30.0
     stable_after_s: float = 30.0
     stats_interval_s: float = 30.0
+    stream_mode: str = "always_on"
+    live_idle_ttl_s: float = 60.0
+    edge_public_hls_url: str = ""
+    edge_public_webrtc_url: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -111,6 +115,10 @@ class DecoderSettings:
             raise ConfigError("timeouts must be > 0")
         if not 0 < self.backoff_initial_s <= self.backoff_max_s:
             raise ConfigError("backoff must satisfy 0 < initial <= max")
+        if self.stream_mode not in ("always_on", "on_demand"):
+            raise ConfigError("stream_mode must be 'always_on' or 'on_demand'")
+        if self.live_idle_ttl_s < 1.0:
+            raise ConfigError("live_idle_ttl_s must be >= 1.0")
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> DecoderSettings:
@@ -149,6 +157,10 @@ class DecoderSettings:
             backoff_max_s=pick("RECONNECT_BACKOFF_MAX_S", d["backoff_max_s"].default, float),
             stable_after_s=pick("RECONNECT_STABLE_AFTER_S", d["stable_after_s"].default, float),
             stats_interval_s=pick("STATS_INTERVAL_S", d["stats_interval_s"].default, float),
+            stream_mode=pick("STREAM_MODE", d["stream_mode"].default, str).lower(),
+            live_idle_ttl_s=pick("LIVE_IDLE_TTL_S", d["live_idle_ttl_s"].default, float),
+            edge_public_hls_url=pick("EDGE_PUBLIC_HLS_URL", d["edge_public_hls_url"].default, str).rstrip("/"),
+            edge_public_webrtc_url=pick("EDGE_PUBLIC_WEBRTC_URL", d["edge_public_webrtc_url"].default, str).rstrip("/"),
         )
 
     @property

@@ -28,6 +28,9 @@ hlsAlwaysRemux: yes
 webrtc: yes
 webrtcAddress: :8889
 webrtcAllowOrigin: '*'
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  - url: stun:stun.cloudflare.com:3478
 
 paths:
   # 1. Mock Camera Source (pushed by scripts/mock_camera.py)

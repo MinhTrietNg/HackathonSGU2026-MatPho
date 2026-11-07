@@ -57,6 +57,7 @@ def serialize_alert(a: FireAlertModel, address: str) -> dict:
             "timestamp": format_iso_utc(timestamp),
         })
 
+    latest_bbox = normalize_bbox(a.timeline_snapshots[-1].bbox) if a.timeline_snapshots else []
     return {
         "alert_id": a.alert_id,
         "cam_id": a.cam_id,
@@ -66,6 +67,7 @@ def serialize_alert(a: FireAlertModel, address: str) -> dict:
         "status": a.status.value if hasattr(a.status, "value") else str(a.status),
         "sign": a.sign.value if hasattr(a.sign, "value") else str(a.sign),
         "confidence": round(a.confidence or 0.0, 2),
+        "bbox": latest_bbox,
         "check_count": a.check_count,
         "verification": a.verification.value if hasattr(a.verification, "value") else str(a.verification),
         "summary": a.summary,
@@ -340,9 +342,14 @@ async def get_alert_escalation_status(
     current_user: UserModel = Depends(get_current_user),
 ):
     alert_repo = get_alert_repository()
+    group_repo = get_group_repository()
     a = alert_repo.get_alert(alert_id)
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
+
+    member = group_repo.get_member(a.group_id, current_user.user_id)
+    if not member:
+        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố này.")
 
     esc_svc = get_escalation_service()
     is_active = esc_svc.is_timer_active(alert_id)

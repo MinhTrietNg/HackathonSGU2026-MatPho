@@ -1,7 +1,7 @@
 # TRI THỨC TOÀN DIỆN KHỐI EDGE AI (`EdgeAI-MatPho`)
 ## SINGLE SOURCE OF TRUTH CHO CLOUD BACKEND, FRONTEND APP & TEAM AI
 
-> **Vị trí tài liệu**: `EdgeAI-MatPho/README.md` (Đồng bộ 100% với `docs/EDGE_AI_KNOWLEDGE_BASE.md`)  
+> **Vị trí tài liệu**: `docs/EDGE_AI_KNOWLEDGE_BASE.md` (Bản sao tại `EdgeAI-MatPho/README.md`)  
 > **Mục đích**: Đây là **Bản Tri Thức Chuẩn Hóa Duy Nhất (Single Source of Truth)** của toàn bộ khối `EdgeAI-MatPho`.  
 > Bất kỳ Agent hoặc Developer nào làm việc ở **Cloud Backend (`backend/`)**, **Flutter App (`frontend/`)**, hoặc **Team AI Model (`ai_service/`)** chỉ cần đọc file này là nắm được **100% kiến trúc, luồng video, cổng mạng, schema SQLite, hợp đồng API/WebSocket và chỗ gắn model AI** mà **KHÔNG CẦN đọc lại từng file code bên trong `EdgeAI-MatPho`**.
 
@@ -306,21 +306,23 @@ Khối Edge đã được trang bị sẵn 3 script điều khiển tự động
 1. **Trên Windows (PowerShell)**:
    ```powershell
    cd EdgeAI-MatPho
-   .\run_edge.ps1            # Mở Menu tương tác điều khiển [0-7]
+   .\run_edge.ps1            # Mở Menu tương tác điều khiển [0-8]
    .\run_edge.ps1 up         # Khởi chạy cụm Edge tiêu chuẩn (3 containers)
    .\run_edge.ps1 up-mock    # Khởi chạy KÈM Camera Giả Lập Mock Counter OSD
+   .\run_edge.ps1 up-gateway # Khởi chạy KÈM Edge HTTPS Gateway (Cloudflare Outbound Tunnel)
    .\run_edge.ps1 logs       # Xem logs thời gian thực
-   .\run_edge.ps1 status     # Kiểm tra trạng thái containers & healthcheck
+   .\run_edge.ps1 status     # Kiểm tra trạng thái containers, healthcheck & Public Gateway URL
    .\run_edge.ps1 down       # Dừng toàn bộ cụm Edge
    .\run_edge.ps1 clean      # Dọn dẹp sạch containers & volumes SQLite
    ```
 2. **Trên Windows (Batch / Click đúp File Explorer)**:
-   - Click đúp trực tiếp vào file [`run_edge.bat`](./run_edge.bat) trong File Explorer hoặc chạy:
+   - Click đúp trực tiếp vào file [`EdgeAI-MatPho/run_edge.bat`](../EdgeAI-MatPho/run_edge.bat) trong File Explorer hoặc chạy:
    ```cmd
    cd EdgeAI-MatPho
    run_edge.bat              # Menu tương tác
    run_edge.bat up           # Khởi chạy
    run_edge.bat up-mock      # Khởi chạy kèm camera giả lập
+   run_edge.bat up-gateway   # Khởi chạy kèm Cloudflare Tunnel HTTPS Gateway
    run_edge.bat down         # Dừng cụm
    ```
 3. **Trên Linux / macOS / WSL (POSIX Shell)**:
@@ -330,6 +332,7 @@ Khối Edge đã được trang bị sẵn 3 script điều khiển tự động
    ./run_edge.sh             # Mở Menu tương tác
    ./run_edge.sh up          # Khởi chạy
    ./run_edge.sh up-mock     # Khởi chạy kèm camera giả lập
+   ./run_edge.sh up-gateway  # Khởi chạy kèm Cloudflare Tunnel
    ./run_edge.sh logs        # Xem logs
    ./run_edge.sh down        # Dừng cụm
    ```
@@ -340,15 +343,42 @@ Khối Edge đã được trang bị sẵn 3 script điều khiển tự động
    cp .env.example .env
    # Khởi chạy 3 container tiêu chuẩn
    docker compose up -d --build
-   # HOẶC khởi chạy kèm container giả lập camera:
+   # Khởi chạy kèm container giả lập camera:
    docker compose --profile mock up -d --build
+   # Khởi chạy kèm Edge HTTPS Gateway xuyên mạng:
+   docker compose --profile gateway --profile mock up -d --build
    ```
 
-5. **Chạy Bộ Kiểm Thử Tự Động (163 Unit & Media Tests)**:
+5. **Chạy Bộ Kiểm Thử Tự Động (168 Unit & Media Tests)**:
    ```powershell
-   # Test Edge Backend & PyAV Stream Worker (156 tests)
+   # Test Edge Backend, PyAV Worker, Gateway Discovery & On-Demand Controller (161 tests)
    Push-Location EdgeAI-MatPho/edge_backend; pytest -q; Pop-Location
 
    # Test AI Service Skeleton & Watch Area Masking (7 tests)
    Push-Location EdgeAI-MatPho/ai_service; pytest -q; Pop-Location
    ```
+
+---
+
+## 7. KIẾN TRÚC ON-DEMAND STREAMING & EDGE HTTPS GATEWAY (PRODUCT STANDARD)
+
+Để đưa hệ thống ra vận hành thực tế tại hàng nghìn khu phố mà không làm nghẽn băng thông mạng nhà dân và không tốn chi phí thuê VPS Cloud đắt đỏ, khối Edge áp dụng kiến trúc chuẩn của các hãng camera thương mại (như Ezviz, Imou, Hik-Connect):
+
+### 1. Cơ chế Ngủ Đông & Đánh Thức On-Demand (Băng Thông Chờ 0 MB/s)
+- **99% thời gian**: Không có người xem trực tiếp trên App. Cục Edge chỉ đọc RTSP nội bộ trong mạng LAN (0 đồng tiền mạng Internet) để AI chạy ngầm. Nhánh Live Stream ra ngoài Internet hoàn toàn tắt (`IDLE`).
+- **Khi có người bấm xem trên App**:
+  1. Cloud Backend nhận request `GET /api/v1/cameras/{id}/stream` (đã xác thực JWT & phân quyền 4 vai trò).
+  2. Cloud Backend gửi lệnh `{"type": "START_LIVE", "cam_id": "cam_01"}` qua kênh Outbound WebSocket xuống cục Edge.
+  3. Edge Controller bật nhánh `live/{cam_id}` trên MediaMTX và đặt bộ đếm TTL 60 giây (`live_idle_ttl_s = 60.0`).
+  4. App gửi nhịp `POST /cameras/{id}/stream/keepalive` mỗi 30s để gia hạn xem tiếp.
+  5. Khi người dùng đóng App, gửi lệnh `POST /cameras/{id}/stream/stop` hoặc hết 60s không có người xem, Edge Controller tự động tắt nhánh Live về lại trạng thái ngủ đông.
+
+### 2. Edge HTTPS Gateway (Xuyên Mọi Tường Lửa Không Cần Mở Port Router)
+- **Container `edge-gateway` (`cloudflared`)**: Tự động mở đường hầm HTTPS bảo mật từ cục Edge ra mạng phân phối biên Cloudflare trên cổng `443`.
+- **Module `gateway_discovery.py`**: Tự động nhận diện Public URL của chính nó (từ biến môi trường `EDGE_PUBLIC_HLS_URL` hoặc log file `/app/data/tunnel.log`).
+- **Tự động đăng ký qua WebSocket**: Mỗi nhịp Heartbeat, Edge Node gửi kèm `public_hls_base_url` (ví dụ: `https://alpha-beta.trycloudflare.com` hoặc `https://edge-box-01.matpho.vn`) lên Cloud Backend `websocket_manager.py`.
+- **Xem Video Xuyên Mạng**: App người dùng ở mạng 4G/Wifi trường thi tải trực tiếp các segment HLS qua đường link HTTPS an toàn mà không cần chạm vào cấu hình Modem/Router của nhà dân!
+
+### 3. WebRTC P2P Chuẩn WHEP (Độ Trễ Dưới 0.5s)
+- `mediamtx.yml` đã được kích hoạt cổng WebRTC `:8889` kèm cấu hình máy chủ STUN công cộng (`stun:stun.l.google.com:19302`, `stun:stun.cloudflare.com:3478`).
+- Cho phép thiết lập luồng WebRTC P2P trực tiếp giữa điện thoại người xem và Cục Edge tại hiện trường khi cần xem video với độ trễ siêu thấp.

@@ -35,9 +35,22 @@ from ..services.mediamtx_service import get_mediamtx_service
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
 
-def build_hls_url(cam_id: str, request: Optional[Request] = None) -> str:
+def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id: Optional[str] = None) -> str:
     path_template = os.getenv("HLS_PATH_TEMPLATE", "live/{cam_id}")
     stream_path = path_template.format(cam_id=cam_id)
+
+    # 1. Edge Gateway Public URL Discovery (xuyên mạng qua Cloudflare Tunnel)
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        ws_mgr = get_websocket_manager()
+        target_edge_id = edge_device_id or ws_mgr.get_edge_for_camera(cam_id)
+        if target_edge_id:
+            edge_pub_url = ws_mgr.get_edge_public_hls_url(target_edge_id)
+            if edge_pub_url:
+                return f"{edge_pub_url}/{stream_path}/index.m3u8"
+    except Exception:
+        pass
+
     env_host = os.getenv("MEDIAMTX_HOST")
 
     if env_host and env_host.strip():
@@ -63,14 +76,39 @@ def build_hls_url(cam_id: str, request: Optional[Request] = None) -> str:
 # ==============================================================================
 
 @router.post("/probe", response_model=CameraProbeResponse, summary="Probe RTSP stream")
-def probe_camera(
+async def probe_camera(
     payload: CameraProbeRequest,
     current_user: UserModel = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Test connect RTSP stream within 3-5 seconds, extract resolution/fps and return preview snapshot.
+    If an Edge Node is connected via Outbound WebSocket, delegates LAN probing to the Edge Node first.
     Figma screens I2, I4, I5.
     """
+    url_lower = payload.rtsp_url.lower()
+    is_mock = any(k in url_lower for k in ("mock", "test-valid", "valid", "demo", "auth-fail", "vendor-blocked"))
+    if not is_mock and payload.rtsp_url.startswith("rtsp://"):
+        try:
+            from ..services.websocket_manager import get_websocket_manager
+            ws_mgr = get_websocket_manager()
+            # Delegate to first active Edge Node if connected
+            for edge_id in list(ws_mgr.edge_registry.keys()) or ["edg_local_01"]:
+                edge_res = await ws_mgr.request_from_edge(
+                    edge_id=edge_id,
+                    message={"action": "PROBE_CAMERA", "rtsp_url": payload.rtsp_url},
+                    timeout_s=4.5,
+                )
+                if edge_res and edge_res.get("reachable"):
+                    return {
+                        "device_name": edge_res.get("vendor") or "Camera IP (Edge LAN)",
+                        "resolution": edge_res.get("resolution") or "1920x1080",
+                        "fps": int(edge_res.get("fps") or 25),
+                        "preview_snapshot_url": edge_res.get("preview_snapshot_base64")
+                        or "https://storage.googleapis.com/matpho-c7e77.firebasestorage.app/probes/preview_captured.jpg",
+                    }
+        except Exception:
+            pass
+
     probe_svc = get_camera_probe_service()
     return probe_svc.probe_rtsp(payload.rtsp_url)
 
@@ -106,9 +144,27 @@ def create_camera(
         edge_device_id=payload.edge_device_id,
     )
 
-    # Register path in MediaMTX
+    # Register path in MediaMTX & push SYNC_CAMERA to connected Edge Node
     mtx = get_mediamtx_service()
     mtx.add_path(camera.cam_id, payload.rtsp_url)
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        target_edge_id = payload.edge_device_id or "edg_local_01"
+        sync_msg = {
+            "action": "SYNC_CAMERA",
+            "cam_id": camera.cam_id,
+            "cam_name": camera.cam_name,
+            "rtsp_url": payload.rtsp_url,
+            "watch_area": camera.watch_area.model_dump() if camera.watch_area else None,
+            "is_active": True,
+        }
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception:
+        pass
 
     hls_url = build_hls_url(camera.cam_id, request)
     return {
@@ -297,12 +353,87 @@ def get_camera_stream(
         if cam.cam_id not in user_camera_ids:
             raise PermissionDeniedException("Bạn không được phân công theo dõi camera này.")
 
+    # Trigger on-demand wake-up to Edge Node if connected
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
+        if edge_id:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "START_LIVE", "cam_id": cam.cam_id}))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    edge_dev_id = getattr(cam, "edge_device_id", None)
     return {
         "cam_id": cam.cam_id,
         "status": cam.status.value if hasattr(cam.status, "value") else str(cam.status),
         "stream_type": "HLS",
-        "stream_url": build_hls_url(cam.cam_id, request),
+        "stream_url": build_hls_url(cam.cam_id, request, edge_device_id=edge_dev_id),
     }
+
+
+@router.post("/{cam_id}/stream/keepalive", summary="Keep live stream alive (extends on-demand TTL)")
+def keepalive_camera_stream(
+    cam_id: str,
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Extends the on-demand viewing TTL on the edge node."""
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam:
+        raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
+        if edge_id:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "KEEPALIVE_LIVE", "cam_id": cam.cam_id}))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return {"status": "ok", "cam_id": cam.cam_id}
+
+
+@router.post("/{cam_id}/stream/stop", summary="Stop live stream (On-Demand auto-sleep)")
+def stop_camera_stream(
+    cam_id: str,
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Informs the edge node that the client has closed the stream viewer."""
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam:
+        raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
+        if edge_id:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "STOP_LIVE", "cam_id": cam.cam_id}))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return {"status": "ok", "cam_id": cam.cam_id}
 
 
 @router.post("/{cam_id}/reconnect", summary="Reconnect camera stream")
@@ -350,6 +481,14 @@ def dismiss_suspect(
     cam = camera_repo.get_camera(cam_id)
     if not cam:
         raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    group_repo = get_group_repo()
+    member = group_repo.get_member(cam.group_id, current_user.user_id)
+    if not member or member.role == UserRole.NOTIFIER:
+        raise PermissionDeniedException("Bạn không có quyền bỏ qua dấu hiệu nghi ngờ trên camera này.")
+
+    from ..services.repositories.alert_repo import get_alert_repository
+    get_alert_repository().dismiss_suspect(cam_id, current_user.user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -394,6 +533,25 @@ def update_camera(
         mtx = get_mediamtx_service()
         mtx.add_path(cam_id, payload.rtsp_url)
 
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        target_edge_id = getattr(updated, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
+        sync_msg = {
+            "action": "SYNC_CAMERA",
+            "cam_id": updated.cam_id,
+            "cam_name": updated.cam_name,
+            "rtsp_url": updated.rtsp_url,
+            "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
+            "is_active": updated.is_active,
+        }
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception:
+        pass
+
     return {
         "cam_id": updated.cam_id,
         "cam_name": updated.cam_name,
@@ -432,6 +590,24 @@ def update_watch_area(
         actor_id=current_user.user_id,
         watch_area=payload,
     )
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        target_edge_id = getattr(updated, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
+        sync_msg = {
+            "action": "SYNC_CAMERA",
+            "cam_id": updated.cam_id,
+            "cam_name": updated.cam_name,
+            "rtsp_url": updated.rtsp_url,
+            "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
+            "is_active": updated.is_active,
+        }
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception:
+        pass
     return {
         "cam_id": updated.cam_id,
         "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
@@ -461,6 +637,16 @@ def delete_camera(
     camera_repo.soft_delete_camera(cam_id, current_user.user_id)
     mtx = get_mediamtx_service()
     mtx.remove_path(cam_id)
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        target_edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(ws_mgr.send_to_edge(target_edge_id, {"action": "REMOVE_CAMERA", "cam_id": cam_id}))
+    except Exception:
+        pass
 
     purge_at_dt = datetime.now(timezone.utc) + timedelta(days=30)
     return {

@@ -97,6 +97,29 @@ class EdgeDatabase:
             await db.commit()
             return cursor.rowcount > 0
 
+    async def get_camera(self, cam_id: str) -> Optional[Dict[str, Any]]:
+        query = "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, updated_at FROM local_cameras WHERE cam_id = ?"
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(query, (cam_id,)) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return None
+                watch_area = None
+                if row["watch_area_json"]:
+                    try:
+                        watch_area = json.loads(row["watch_area_json"])
+                    except Exception:
+                        watch_area = None
+                return {
+                    "cam_id": row["cam_id"],
+                    "cam_name": row["cam_name"],
+                    "rtsp_url": row["rtsp_url"],
+                    "watch_area": watch_area,
+                    "is_active": bool(row["is_active"]),
+                    "updated_at": row["updated_at"],
+                }
+
     async def list_cameras(self, only_active: bool = False) -> List[Dict[str, Any]]:
         query = "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, updated_at FROM local_cameras"
         if only_active:

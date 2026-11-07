@@ -173,7 +173,8 @@ class CameraRepository(BaseFirestoreRepository):
             return results
 
     def list_trash_cameras(self, group_id: str) -> List[CameraModel]:
-        """List soft-deleted cameras in the 30-day trash bin."""
+        """List soft-deleted cameras in the 30-day trash bin (auto-purging expired items)."""
+        now_dt = datetime.now(timezone.utc)
         try:
             docs = (
                 self.db.collection("cameras")
@@ -181,18 +182,51 @@ class CameraRepository(BaseFirestoreRepository):
                 .where(filter=FieldFilter("is_deleted", "==", True))
                 .stream()
             )
-            return [self._parse_camera(d.to_dict()) for d in docs]
+            raw_list = [d.to_dict() for d in docs]
         except Exception:
             docs = (
                 self.db.collection("cameras")
                 .where(filter=FieldFilter("group_id", "==", group_id))
                 .stream()
             )
-            return [
-                self._parse_camera(d.to_dict())
+            raw_list = [
+                d.to_dict()
                 for d in docs
                 if d.to_dict().get("is_deleted", False)
             ]
+
+        results: List[CameraModel] = []
+        for data in raw_list:
+            cam = self._parse_camera(data)
+            if not cam:
+                continue
+            if cam.purge_at and now_dt >= cam.purge_at:
+                try:
+                    self.permanent_delete_camera(cam.cam_id, actor_id="system_auto_purge")
+                except Exception as e:
+                    logger.warning(f"Auto-purge failed for expired camera {cam.cam_id}: {e}")
+                continue
+            results.append(cam)
+        return results
+
+    def purge_expired_cameras(self) -> int:
+        """Scan and permanently delete all soft-deleted cameras whose 30-day retention (purge_at) has expired."""
+        now_dt = datetime.now(timezone.utc)
+        purged_count = 0
+        try:
+            docs = (
+                self.db.collection("cameras")
+                .where(filter=FieldFilter("is_deleted", "==", True))
+                .stream()
+            )
+            for d in docs:
+                cam = self._parse_camera(d.to_dict())
+                if cam and cam.purge_at and now_dt >= cam.purge_at:
+                    if self.permanent_delete_camera(cam.cam_id, actor_id="system_auto_purge"):
+                        purged_count += 1
+        except Exception as e:
+            logger.debug(f"Error during scheduled camera trash purge: {e}")
+        return purged_count
 
     def update_camera(
         self,

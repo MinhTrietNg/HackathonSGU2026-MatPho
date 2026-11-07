@@ -239,8 +239,19 @@ async def edge_websocket_endpoint(
                                 status=st,
                                 fps=fps,
                             )
-                    elif msg_type == "EDGE_HEARTBEAT":
-                        logger.debug(f"Heartbeat from Edge {req_edge_id}: {payload.get('active_streams')} active streams")
+                    elif msg_type in ("EDGE_HEARTBEAT", "EDGE_GATEWAY_ANNOUNCE"):
+                        pub_url = payload.get("public_hls_base_url")
+                        cams = payload.get("cameras")
+                        ws_manager.register_edge_node(
+                            edge_id=req_edge_id,
+                            public_hls_base_url=pub_url,
+                            cameras=cams,
+                        )
+                        logger.debug(f"{msg_type} from Edge {req_edge_id}: {payload.get('active_streams')} active streams, gateway: {pub_url}")
+                    elif msg_type == "PROBE_RESULT":
+                        req_id = payload.get("request_id")
+                        if req_id:
+                            ws_manager.resolve_edge_response(req_id, payload.get("data") or payload)
                 except Exception as ex:
                     logger.debug(f"Edge message processing exception: {ex}")
     except WebSocketDisconnect:

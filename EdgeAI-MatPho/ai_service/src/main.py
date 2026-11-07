@@ -14,7 +14,8 @@ import time
 import asyncio
 import logging
 import threading
-from typing import List
+from typing import List, Dict, Optional
+import httpx
 
 from .config import AISettings, CameraStreamTarget
 from .inference_stub import DetectionResult, MockFireModel
@@ -55,6 +56,9 @@ class CameraAIWorker:
             daemon=True,
         )
         self._last_alert_at: float = 0.0
+
+    def update_watch_area(self, watch_area) -> None:
+        self.target.watch_area = watch_area
 
     def start(self) -> None:
         self._thread.start()
@@ -132,26 +136,48 @@ async def main_async() -> None:
     webhook = CloudWebhookClient(settings=settings)
     loop = asyncio.get_running_loop()
 
-    workers = [
-        CameraAIWorker(t, settings, model, webhook, loop)
-        for t in settings.camera_streams
-    ]
-    for w in workers:
+    workers_map: Dict[str, CameraAIWorker] = {}
+    for t in settings.camera_streams:
+        w = CameraAIWorker(t, settings, model, webhook, loop)
         w.start()
+        workers_map[t.cam_id] = w
 
     logger.info(
         "FireWatch AI Skeleton started with %d RTSP input stream(s) on template '%s'",
-        len(workers),
+        len(workers_map),
         settings.stream_path_template,
     )
 
     try:
         while True:
             await asyncio.sleep(5.0)
+            # Dynamic synchronization of cameras & watch_area from edge-backend SQLite
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    res = await client.get(f"{settings.edge_backend_url}/api/v1/edge/cameras")
+                    if res.status_code == 200:
+                        cams = res.json().get("cameras", [])
+                        active_ids = set()
+                        for c in cams:
+                            cid = c.get("cam_id")
+                            if not cid or not c.get("is_active", True):
+                                continue
+                            active_ids.add(cid)
+                            w_area = c.get("watch_area")
+                            if cid in workers_map:
+                                workers_map[cid].update_watch_area(w_area)
+                            else:
+                                new_t = CameraStreamTarget(cam_id=cid, watch_area=w_area)
+                                new_w = CameraAIWorker(new_t, settings, model, webhook, loop)
+                                new_w.start()
+                                workers_map[cid] = new_w
+                                logger.info("[cam_id=%s] Dynamically started AI worker from Edge DB.", cid)
+            except Exception as exc:
+                logger.debug("Edge DB camera sync skipped: %s", exc)
     except asyncio.CancelledError:
         pass
     finally:
-        for w in workers:
+        for w in workers_map.values():
             w.stop()
 
 

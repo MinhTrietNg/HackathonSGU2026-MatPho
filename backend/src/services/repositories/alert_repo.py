@@ -5,6 +5,7 @@ Alert Repository & Incident Aggregation Engine for Mắt Phố (Phase 6)
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 from .base_repo import BaseRepository
 from .camera_repo import get_camera_repository
@@ -79,13 +80,18 @@ class AlertRepository(BaseRepository):
         firestore_payload = dict(data)
         firestore_payload["created_at"] = firestore.SERVER_TIMESTAMP
         self.db.collection("audit_logs").document(log_id).set(firestore_payload)
+        if group_id and group_id != "system":
+            try:
+                self.set_document(f"groups/{group_id}/audit_logs", log_id, data)
+            except Exception:
+                pass
         return AuditLogModel(**data)
 
     def list_audit_logs_by_group(self, group_id: str, limit: int = 50) -> List[AuditLogModel]:
         try:
             stream = (
                 self.db.collection("audit_logs")
-                .where("group_id", "==", group_id)
+                .where(filter=FieldFilter("group_id", "==", group_id))
                 .order_by("created_at", direction=firestore.Query.DESCENDING)
                 .limit(limit)
                 .stream()
@@ -97,7 +103,7 @@ class AlertRepository(BaseRepository):
             return logs
         except Exception:
             # Fallback in-memory
-            stream = self.db.collection("audit_logs").where("group_id", "==", group_id).stream()
+            stream = self.db.collection("audit_logs").where(filter=FieldFilter("group_id", "==", group_id)).stream()
             logs = [AuditLogModel(**d) for doc in stream for d in [doc.to_dict()]]
             logs.sort(key=lambda x: str(x.created_at) if x.created_at else "", reverse=True)
             return logs[:limit]
@@ -106,7 +112,7 @@ class AlertRepository(BaseRepository):
         try:
             stream = (
                 self.db.collection("audit_logs")
-                .where("target_entity", "==", target_entity)
+                .where(filter=FieldFilter("target_entity", "==", target_entity))
                 .order_by("created_at", direction=firestore.Query.DESCENDING)
                 .limit(limit)
                 .stream()
@@ -118,7 +124,7 @@ class AlertRepository(BaseRepository):
             return logs
         except Exception:
             # Fallback in-memory
-            stream = self.db.collection("audit_logs").where("target_entity", "==", target_entity).stream()
+            stream = self.db.collection("audit_logs").where(filter=FieldFilter("target_entity", "==", target_entity)).stream()
             logs = [AuditLogModel(**d) for doc in stream for d in [doc.to_dict()]]
             logs.sort(key=lambda x: str(x.created_at) if x.created_at else "", reverse=True)
             return logs[:limit]
@@ -158,7 +164,7 @@ class AlertRepository(BaseRepository):
         try:
             ordered_stream = (
                 self.collection
-                .where("cam_id", "==", cam_id)
+                .where(filter=FieldFilter("cam_id", "==", cam_id))
                 .order_by("created_at", direction=firestore.Query.DESCENDING)
                 .limit(10)
                 .stream()
@@ -179,7 +185,7 @@ class AlertRepository(BaseRepository):
                     existing_alert_doc = doc
                     break
         except Exception:
-            fallback_stream = self.collection.where("cam_id", "==", cam_id).stream()
+            fallback_stream = self.collection.where(filter=FieldFilter("cam_id", "==", cam_id)).stream()
             for doc in fallback_stream:
                 d = doc.to_dict()
                 if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
@@ -486,7 +492,7 @@ class AlertRepository(BaseRepository):
 
     def list_alerts_by_group(self, group_id: str, limit: int = 50) -> List[FireAlertModel]:
         try:
-            query = self.collection.where("group_id", "==", group_id)
+            query = self.collection.where(filter=FieldFilter("group_id", "==", group_id))
             results = []
             for doc in query.stream():
                 results.append(self._parse_alert(doc.to_dict()))

@@ -505,18 +505,18 @@ def remove_member(
 @router.get("/{group_id}/cameras", summary="List cameras belonging to group (Alias)")
 def get_group_cameras(
     group_id: str,
+    request: Any = None,
     subgroup_id: Optional[str] = Query(None),
     current_user: UserModel = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
-    """List cameras for a specific group. Detailed implementation in Phase 4."""
-    check_group_permission(group_id, current_user.user_id, [
-        UserRole.LEADER,
-        UserRole.MEMBER_MANAGER,
-        UserRole.MEMBER,
-        UserRole.NOTIFIER,
-    ])
-    # Placeholder returning empty camera list until Phase 4 Cameras implementation
-    return []
+    """List cameras for a specific group (Alias for GET /api/v1/cameras?group_id={group_id})."""
+    from .cameras import list_cameras
+    return list_cameras(
+        request=request,
+        group_id=group_id,
+        subgroup_id=subgroup_id,
+        current_user=current_user,
+    )
 
 
 @router.get("/{group_id}/audit-logs", summary="List group security audit logs")

@@ -102,7 +102,8 @@ class FCMService:
     ) -> int:
         """Dispatches critical siren FCM push."""
         if not emergency_token:
-            emergency_token = f"emg_{alert_id}"
+            from ..core.security import generate_emergency_token
+            emergency_token = generate_emergency_token(alert_id)
 
         data = {
             "type": "FIRE_ALERT",

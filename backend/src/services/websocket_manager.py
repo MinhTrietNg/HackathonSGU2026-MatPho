@@ -4,6 +4,7 @@ Points 5, 6, 7: Heartbeat with fps, AI_VERIFYING with sign/confidence/steps, FIR
 """
 
 import json
+import time
 import logging
 from typing import Dict, Set, Optional, List, Any
 from fastapi import WebSocket
@@ -19,6 +20,83 @@ class WebSocketConnectionManager:
         self.active_connections: Dict[WebSocket, Set[str]] = {}
         # room -> set of sockets
         self.rooms: Dict[str, Set[WebSocket]] = {}
+        # edge_id -> { "public_hls_base_url": str, "cameras": List[str], "last_seen": float }
+        self.edge_registry: Dict[str, Dict[str, Any]] = {}
+        # request_id -> asyncio.Future (for duplex RPC like PROBE_CAMERA -> PROBE_RESULT)
+        self.pending_edge_requests: Dict[str, Any] = {}
+
+    async def request_from_edge(
+        self,
+        edge_id: str,
+        message: Dict[str, Any],
+        timeout_s: float = 4.5,
+    ) -> Optional[Dict[str, Any]]:
+        """Send a request with request_id to Edge Node and await its response over WebSocket."""
+        import asyncio
+        import uuid
+        req_id = message.get("request_id") or f"req_{uuid.uuid4().hex[:10]}"
+        message["request_id"] = req_id
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self.pending_edge_requests[req_id] = fut
+        try:
+            sent = await self.send_to_edge(edge_id, message)
+            if not sent:
+                return None
+            return await asyncio.wait_for(fut, timeout=timeout_s)
+        except Exception:
+            return None
+        finally:
+            self.pending_edge_requests.pop(req_id, None)
+
+    def resolve_edge_response(self, request_id: str, data: Dict[str, Any]) -> bool:
+        """Complete a pending future when Edge Node returns PROBE_RESULT or command response."""
+        fut = self.pending_edge_requests.get(request_id)
+        if fut and not fut.done():
+            fut.set_result(data)
+            return True
+        return False
+
+    def register_edge_node(
+        self,
+        edge_id: str,
+        public_hls_base_url: Optional[str] = None,
+        cameras: Optional[List[str]] = None,
+    ):
+        """Update active Edge Node metadata from WebSocket handshake or heartbeat."""
+        now = time.time()
+        record = self.edge_registry.get(edge_id, {})
+        if public_hls_base_url:
+            record["public_hls_base_url"] = public_hls_base_url.rstrip("/")
+        if cameras is not None:
+            record["cameras"] = cameras
+        record["last_seen"] = now
+        self.edge_registry[edge_id] = record
+        logger.info(
+            f"Edge node registered: {edge_id} (HLS Gateway: {record.get('public_hls_base_url')}, {len(record.get('cameras', []))} cameras)"
+        )
+
+    def get_edge_public_hls_url(self, edge_id: str) -> Optional[str]:
+        """Return the public HLS base URL of an active Edge node."""
+        node = self.edge_registry.get(edge_id)
+        if node and node.get("public_hls_base_url"):
+            return node["public_hls_base_url"]
+        return None
+
+    def get_edge_for_camera(self, cam_id: str) -> Optional[str]:
+        """Find the edge_id managing this cam_id."""
+        for edge_id, node in self.edge_registry.items():
+            if cam_id in node.get("cameras", []):
+                return edge_id
+        return None
+
+    async def send_to_edge(self, edge_id: str, message: Dict[str, Any]) -> bool:
+        """Send command JSON message to a connected Edge node via its dedicated room."""
+        room = f"edge_{edge_id}"
+        if room in self.rooms and len(self.rooms[room]) > 0:
+            await self.broadcast_to_room(room, message)
+            return True
+        return False
 
     async def connect(self, websocket: WebSocket, rooms: Optional[List[str]] = None):
         """Accept incoming WebSocket connection and register rooms."""

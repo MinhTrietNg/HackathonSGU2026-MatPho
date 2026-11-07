@@ -131,6 +131,7 @@ async def receive_ai_fire_events(
             "sign": alert_record.sign.value if hasattr(alert_record.sign, "value") else str(alert_record.sign),
             "confidence": payload.confidence,
             "still_url": still_url,
+            "bbox": payload.bbox,
             "summary": alert_record.summary,
             "detail": alert_record.detail,
             "verification": alert_record.verification.value if hasattr(alert_record.verification, "value") else str(alert_record.verification),

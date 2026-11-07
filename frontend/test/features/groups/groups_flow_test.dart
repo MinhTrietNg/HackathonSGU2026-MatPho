@@ -39,6 +39,7 @@ Future<ProviderContainer> _pump(
   required String initial,
   String? groupId,
   List<Override> overrides = const [],
+  FakeScenario scenario = const FakeScenario.test(),
 }) async {
   tester.view
     ..physicalSize = const Size(360, 780) * 2
@@ -47,7 +48,7 @@ Future<ProviderContainer> _pump(
   addTearDown(hideMpToast);
   final container = ProviderContainer(
     overrides: fakeOverrides([
-      fakeScenarioProvider.overrideWithValue(const FakeScenario.test()),
+      fakeScenarioProvider.overrideWithValue(scenario),
       authSessionProvider.overrideWith(_SignedIn.new),
       ...overrides,
     ]),
@@ -465,6 +466,44 @@ void main() {
           tester.element(find.text(_settingsStub)),
         ).push<void>(GroupRoutes.groups),
       );
+      await _settle(tester);
+      expect(find.text('NHÓM CỦA BẠN · 4'), findsOneWidget);
+      expect(find.text('hi'), findsOneWidget);
+    });
+
+    testWidgets('no count before the groups arrive; a refresh keeps them', (
+      tester,
+    ) async {
+      final c = await _pump(
+        tester,
+        initial: AppRoutes.settings,
+        scenario: const FakeScenario(freezeClock: true),
+      );
+      unawaited(
+        GoRouter.of(
+          tester.element(find.text(_settingsStub)),
+        ).push<void>(GroupRoutes.groups),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Tạo nhóm'), findsOneWidget);
+      expect(find.textContaining('NHÓM CỦA BẠN'), findsNothing);
+
+      await _settle(tester);
+      expect(find.text('NHÓM CỦA BẠN · 3'), findsOneWidget);
+
+      _groups(c).add(_joinedElsewhere);
+      await tester.fling(
+        find.text('Mỗi nhóm có camera và người riêng.'),
+        const Offset(0, 400),
+        1000,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(c.read(groupsProvider).isLoading, isTrue);
+      expect(find.text('NHÓM CỦA BẠN · 3'), findsOneWidget);
+      expect(find.text('Văn phòng công ty'), findsOneWidget);
+
       await _settle(tester);
       expect(find.text('NHÓM CỦA BẠN · 4'), findsOneWidget);
       expect(find.text('hi'), findsOneWidget);

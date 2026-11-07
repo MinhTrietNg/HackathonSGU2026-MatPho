@@ -30,6 +30,22 @@ Không nhập: `curation/`, `data/`, `docs/`, `models/`, `notebooks/`, `reports/
 `test_stats.py`, `test_t1_dev.py`, `test_train_notebook.py`,
 `test_train_script.py`, `test_video_segments.py`.
 
+## Phần nhập thêm sau đó (2026-11-07, bảo trì)
+
+Cùng commit nguồn `afa5a70`. Không file nào được chép nguyên: tài liệu được viết lại theo
+mã hiện tại, script được chép rồi sửa docstring.
+
+| Nguồn @ `afa5a70` | Đích trong `FireWatchAI/` | Sửa gì |
+|---|---|---|
+| `README.md` mục 3, 3b, 4 | `docs/ban_giao_backend.md` | đối chiếu lại với `alerts.py`, `server.py`; bỏ số đo độ trễ Gemini và đường dẫn `reports/` của repo cũ; thêm mục verifier sau cờ |
+| `README.md` mục 1, 2, 3, 5, 6 và phần nguồn live ở mục 8 | `docs/van_hanh.md` | trọng số theo FireWatch-v2.0; bỏ bảng nghiệm thu đo bằng model cũ và đường dẫn clip mẫu; đánh giá trỏ sang R3 của FireWatch-Model |
+| `README.md` mục 7 | `docs/kien_truc.md` | viết theo bố cục `FireWatchAI/` hiện tại; thêm mục thay đổi so với sơ đồ 05/11 |
+| `README.md` mục 8 | `docs/decisions/2026-11-06-quyet-dinh-thiet-ke-goc.md` | ba chỗ sửa ghi ở cuối file đó |
+| `scripts/annotate_video.py` | `tools/annotate_video.py` | chỉ sửa docstring (đường dẫn script và tên weights) |
+
+Không nhập lần này: các script, tài liệu, dữ liệu và báo cáo thuộc phần benchmark. Bốn
+file trong số đó chưa có chỗ ở FireWatch-Model, ghi ở `docs/ton_dong.md`.
+
 ## Đối chiếu SHA-256 ba module lõi
 
 SHA-256 tính trên nội dung file đã commit (xuống dòng LF), lấy bằng

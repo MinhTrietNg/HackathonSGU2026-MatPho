@@ -152,10 +152,11 @@ class CauDaoConfig(_Strict):
 
 
 class VerifierConfig(_Strict):
-    """Verifier bền vững, sau cờ ``ben_vung`` (mặc định tắt).
+    """Verifier bền vững, sau cờ ``ben_vung``.
 
-    Cờ tắt, hoặc thiếu khối ``verifier`` trong ``config.yaml``: hành vi, log và
-    JSON của event y hệt trước khi có cờ.
+    ``config.yaml`` bật cờ từ 2026-11-08. Mặc định của model vẫn tắt: cờ tắt,
+    hoặc thiếu khối ``verifier``, thì hành vi, log và JSON của event y hệt trước
+    khi có cờ.
     """
 
     ben_vung: bool = False

@@ -97,7 +97,7 @@ xem model bằng mắt, không đi qua voting hay alert.
 | Đánh giá 3 cấp: "Bộ test T1 giữ riêng" | T1 không còn là test mù (clip âm đã được xem qua kết quả model và dùng để chẩn đoán lỗi). Số đo chính thức là R3 ở FireWatch-Model, bảng chính là D-Fire test sạch; R3 là xác nhận sau khám phá | `docs/van_hanh.md` mục 2 |
 | Model registry: "models/*.pt → ONNX", "lưu tên mới, không ghi đè" | bảng đăng ký nằm ở FireWatch-Model, danh tính là SHA-256 của `.pt`; repo này ghim model vận hành FireWatch-v2.0 trong `models/README.md` | `models/README.md` |
 | Detector: "≈ 26 ms mỗi khung" | số đo R3 của FireWatch-v2.0: p50 30,8 ms, p95 44,0 ms (`benchmark_edge.py`, 4 luồng); lần chạy kiểm 07/11 trên clip mẫu trung bình 38 ms. Điều kiện đo khác nhau, không so trực tiếp | model card; `docs/van_hanh.md` mục 6 |
-| Verifier: một nhánh chờ 2 s, fail-open | vẫn đúng khi cờ tắt. Thêm verifier bền vững sau cờ `verifier.ben_vung` (mặc định tắt): trạng thái và schema, hàng chờ và ngân sách nền 10 s độc lập heartbeat (`xac_minh_nen.py`), cầu dao (`cau_dao.py`), khối `verifier` trên `/health`, `reason: "verifier"` trên WebSocket, console hiện `needs_human_check` | `docs/decisions/2026-11-07-verifier-ben-vung.md` |
+| Verifier: một nhánh chờ 2 s, fail-open | vẫn đúng khi cờ tắt. Thêm verifier bền vững sau cờ `verifier.ben_vung` (bật trong `config.yaml` từ 2026-11-08): trạng thái và schema, hàng chờ và ngân sách nền 10 s độc lập heartbeat (`xac_minh_nen.py`), cầu dao (`cau_dao.py`), khối `verifier` trên `/health`, `reason: "verifier"` trên WebSocket, console hiện `needs_human_check` | `docs/decisions/2026-11-07-verifier-ben-vung.md` |
 
 ### Sơ đồ vẽ nhưng FireWatchAI chưa có
 

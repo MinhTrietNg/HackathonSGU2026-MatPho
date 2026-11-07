@@ -119,10 +119,11 @@ def test_service_ghi_ma_loi_khi_vlm_hong(tmp_path):
 
 
 # ------------------------------------------------------------------- Config
-def test_config_thieu_khoi_verifier_thi_co_tat():
+def test_config_thieu_khoi_verifier_thi_co_tat_config_yaml_bat():
+    """Thiếu khối thì tắt (hành vi cũ); config.yaml vận hành bật từ 2026-11-08."""
     assert Config().verifier.ben_vung is False
     cfg = load_config(ROOT / "config.yaml")
-    assert cfg.verifier.ben_vung is False
+    assert cfg.verifier.ben_vung is True
     assert (cfg.verifier.ngan_sach_s, cfg.verifier.hang_cho_toi_da,
             cfg.verifier.cau_dao.loi_lien_tiep, cfg.verifier.cau_dao.mo_s) == (
         10, 8, 3, 60)

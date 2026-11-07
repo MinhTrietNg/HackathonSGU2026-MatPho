@@ -159,15 +159,16 @@ header, payload là event đầy đủ, `type` `created` rồi `updated` cùng `
 `xyxy` / `xyxyn`, và `snapshot_base64` là JPEG gốc dưới 200 KB khi bật.
 `tests/test_mau_event.py` kiểm `docs/mau_event.json` khớp đúng tập trường của schema.
 
-## 5. Verifier bền vững (sau cờ, mặc định tắt)
+## 5. Verifier bền vững (sau cờ, bật trong `config.yaml` từ 2026-11-08)
 
 Thiết kế ở `docs/decisions/2026-11-07-verifier-ben-vung.md`.
 
-**Trạng thái hiện tại.** Đã làm đủ theo ADR trên nhánh `FireWatch-AI`: trạng thái,
+**Trạng thái hiện tại.** Đã làm đủ theo ADR, đã merge vào `main`: trạng thái,
 schema, config; hàng chờ và ngân sách nền (`PENDING` ở 2 s, `VLM_TIMEOUT` ở 10 s, độc
 lập heartbeat); cầu dao; khối `verifier` trên `/health`; `reason: "verifier"` trên
-WebSocket; console người trực. Cờ `verifier.ben_vung` mặc định tắt cho tới khi chủ repo
-chạy thử và chốt.
+WebSocket; console người trực. Cờ `verifier.ben_vung` bật trong `config.yaml` từ
+2026-11-08, sau lần chạy thử và kiểm chấp nhận 30 phút (`docs/van_hanh.md` mục 8 và
+10). Backend phải coi mọi trường mới là tuỳ chọn.
 
 Khi cờ tắt, hoặc config không có khối `verifier`, event giữ đúng schema mục 1 và trường
 `verifier` không xuất hiện.

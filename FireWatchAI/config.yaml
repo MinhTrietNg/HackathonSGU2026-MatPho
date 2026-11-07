@@ -105,7 +105,8 @@ vlm:
 
 # ───────── [4b] Verifier bền vững (docs/decisions/2026-11-07-verifier-ben-vung.md) ─────────
 verifier:
-  ben_vung: false           # false (hoặc thiếu khối này): hành vi, log, JSON event y hệt trước đây.
+  ben_vung: true            # bật từ 2026-11-08 (docs/van_hanh.md mục 8 và 10). false, hoặc
+                            # thiếu khối này: hành vi, log, JSON event y hệt trước khi có cờ.
                             # true: event có thêm object verifier (status, needs_human_check,
                             # latency_ms, reason); created PENDING ở vlm.grace_s, updated chậm
                             # nhất ở ngan_sach_s; /health có thêm khối verifier; WS event_update

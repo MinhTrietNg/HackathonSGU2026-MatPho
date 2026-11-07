@@ -1,7 +1,8 @@
 # ADR 2026-11-07: Verifier bền vững (hàng chờ, ngân sách nền, cầu dao)
 
-Trạng thái: đã cài đặt trên nhánh `FireWatch-AI` (xem `docs/ban_giao_backend.md` mục 5),
-sau cờ `verifier.ben_vung`, mặc định tắt cho tới khi chủ repo chạy thử và chốt.
+Trạng thái: đã cài đặt và merge vào `main` (xem `docs/ban_giao_backend.md` mục 5), sau
+cờ `verifier.ben_vung`. Cờ bật trong `config.yaml` từ 2026-11-08, sau lần chạy thử và
+kiểm chấp nhận 30 phút (`docs/van_hanh.md` mục 8 và 10).
 
 ## Bối cảnh
 

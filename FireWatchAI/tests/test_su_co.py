@@ -9,13 +9,14 @@ nên sau mỗi heartbeat test chờ bộ điều phối xong (giờ thật, tố
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
 from firewatch.acks import Ack, AckStore, EscalationWatcher
-from firewatch.alerts import Event, EventStore, sample_event
+from firewatch.alerts import Event, EventStore, gio_iso, sample_event
 from firewatch.detector import Detection
 from firewatch.pipeline import Pipeline, RunSummary
 from firewatch.vlm import GeminiHTTPError, VerificationService, VLMVerifier
@@ -117,7 +118,8 @@ def test_chay_10_phut_mot_created_toi_da_20_updated_3_vlm(tmp_path):
                                                                  "CRITICAL")
         assert dau.verifier.status == "VERIFIED"
         assert all(e.status == "open" for e, _ in cap_nhat)
-        assert cap_nhat[-1][0].last_seen_ts > dau.last_seen_ts
+        assert (datetime.fromisoformat(cap_nhat[-1][0].last_seen_ts)
+                > datetime.fromisoformat(dau.last_seen_ts))
         # hết cháy: đúng một updated ended, sau khoang_cach_s
         _chay(h, 600, 800, ())
         het = [(e, luc) for e, luc in _theo_loai(h, "updated")
@@ -126,7 +128,7 @@ def test_chay_10_phut_mot_created_toi_da_20_updated_3_vlm(tmp_path):
         assert 599 + 120 <= het[0][1] <= 599 + 121
         assert het[0][0].event_id == eid
         assert h.store.get(eid).status == "ended"
-        assert h.store.get(eid).last_seen_ts == GOC_GIO + 599
+        assert h.store.get(eid).last_seen_ts == gio_iso(GOC_GIO + 599)
         assert vlm.so_luot <= 3
         assert len(_theo_loai(h, "created")) == 1
         assert h.s.alerts[0]["status"] == "ended" and len(h.s.alerts) == 1
@@ -227,7 +229,8 @@ def test_khong_kiem_lai_khi_khong_con_thay_chay(tmp_path):
 def test_truong_su_co_chi_co_khi_bat_co():
     d = sample_event().model_dump()
     assert not {"status", "last_seen_ts", "luot_xac_minh"} & set(d)
-    co = sample_event().model_copy(update={"status": "open", "last_seen_ts": 1.0,
+    co = sample_event().model_copy(update={"status": "open",
+                                           "last_seen_ts": gio_iso(1.0),
                                            "luot_xac_minh": 1})
     assert {"status", "last_seen_ts", "luot_xac_minh"} <= set(co.model_dump())
 

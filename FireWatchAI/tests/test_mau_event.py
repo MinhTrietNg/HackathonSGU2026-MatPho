@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime
 from pathlib import Path
 
 from firewatch.alerts import Event, EventBox
@@ -29,7 +30,7 @@ def test_mau_event_co_dung_tap_truong_cua_schema():
 def test_mau_event_gia_tri_hop_le():
     ev = Event.model_validate_json(MAU.read_text(encoding="utf-8"))
     assert ev.type == "created" and ev.status == "open" and ev.luot_xac_minh == 1
-    assert ev.last_seen_ts >= ev.frame_ts > 0
+    assert datetime.fromisoformat(ev.last_seen_ts).timestamp() >= ev.frame_ts > 0
     assert ev.verifier is not None and ev.verifier.verification == ev.verification
     assert ev.frame_w > 0 and ev.frame_h > 0 and ev.frame_ts > 0
     assert ev.boxes

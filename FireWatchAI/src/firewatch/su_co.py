@@ -36,7 +36,7 @@ from typing import Any
 
 import numpy as np
 
-from .alerts import EventStore, VerifierInfo
+from .alerts import EventStore, VerifierInfo, gio_iso
 from .config import Config
 from .detector import Detection
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest
@@ -251,7 +251,7 @@ class GomSuCo:
     # --------------------------------------------------------------- phát
     def _truong_su_co(self, sc: SuCo) -> dict[str, Any]:
         return {"status": "ended" if sc.da_ket_thuc else "open",
-                "last_seen_ts": round(sc.last_seen_unix, 3),
+                "last_seen_ts": gio_iso(sc.last_seen_unix),
                 "luot_xac_minh": sc.luot}
 
     def _danh_dau(self, sc: SuCo) -> None:

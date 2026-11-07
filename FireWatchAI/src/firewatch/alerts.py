@@ -179,8 +179,10 @@ class Event(BaseModel):
     status: Literal["open", "ended"] | None = None
     """Sự cố còn mở hay đã kết thúc (quá ``su_co.khoang_cach_s`` không thấy
     cháy). Chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
-    last_seen_ts: float | None = None
-    """Giây Unix (UTC) của khung gần nhất còn thấy cháy thuộc sự cố này."""
+    last_seen_ts: str | None = None
+    """Giờ thật của khung gần nhất còn thấy cháy thuộc sự cố này, ISO 8601 có
+    múi giờ và mili giây (cùng kiểu với ``started_at``; backend khai báo trường
+    này là chuỗi). Event cũ trên đĩa ghi giây Unix được đổi khi nạp lại."""
     luot_xac_minh: int | None = Field(None, ge=1)
     """Lượt xác minh hiện tại của sự cố, bắt đầu 1; tăng khi leo thang mức
     hoặc kiểm lại định kỳ."""
@@ -194,6 +196,14 @@ class Event(BaseModel):
                 data.pop(k, None)
         return data
 
+    @field_validator("last_seen_ts", mode="before")
+    @classmethod
+    def _last_seen_tu_giay_unix(cls, v: Any) -> Any:
+        """Event ghi trước 2026-11-08 lưu giây Unix: đổi sang ISO 8601."""
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return gio_iso(float(v))
+        return v
+
     @model_validator(mode="after")
     def _verification_khop_verifier(self) -> "Event":
         if (self.verifier is not None
@@ -201,6 +211,23 @@ class Event(BaseModel):
             raise ValueError(f"verification {self.verification} không khớp "
                              f"verifier.status {self.verifier.status}")
         return self
+
+
+def gio_iso(unix_s: float) -> str:
+    """Giây Unix thành ISO 8601 theo giờ địa phương, có múi giờ và mili giây.
+
+    Parameters
+    ----------
+    unix_s : float
+        Giây Unix (UTC).
+
+    Returns
+    -------
+    str
+        Ví dụ ``2026-11-07T22:30:17.059+07:00``.
+    """
+    return datetime.fromtimestamp(unix_s, timezone.utc).astimezone().isoformat(
+        timespec="milliseconds")
 
 
 def sample_event() -> Event:

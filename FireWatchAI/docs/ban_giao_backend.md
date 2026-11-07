@@ -40,7 +40,7 @@ mà file mẫu chưa xuất lại (`python tools/xuat_mau_event.py --source <cli
 | `snapshot_base64` | str, tuỳ chọn | keyframe **gốc, không vẽ box**, JPEG base64, dưới `webhook.anh_toi_da_kb` (mặc định 200 KB). Chỉ có trong payload webhook khi `webhook.gui_anh: true`; JSON trên đĩa, REST và WebSocket không có trường này |
 | `verifier` | object, tuỳ chọn | trạng thái xác minh tự động; chỉ có khi cờ `verifier.ben_vung` bật (mục 5) |
 | `status` | `open` \| `ended`, tuỳ chọn | sự cố còn mở hay đã kết thúc; chỉ có khi cờ bật (mục 6) |
-| `last_seen_ts` | float, tuỳ chọn | giây Unix (UTC) của khung gần nhất còn thấy cháy; chỉ có khi cờ bật |
+| `last_seen_ts` | str ISO 8601, tuỳ chọn | giờ thật của khung gần nhất còn thấy cháy, có múi giờ và mili giây (ví dụ `2026-11-07T22:30:17.059+07:00`); chỉ có khi cờ bật. Trước 2026-11-08 là float giây Unix, đổi để khớp `AIFireEventPayload` của backend (khai báo chuỗi; float bị trả 422) |
 | `luot_xac_minh` | int ≥ 1, tuỳ chọn | lượt xác minh hiện tại của sự cố; chỉ có khi cờ bật |
 
 `docs/mau_event.json` được xuất với cờ bật nên có đủ mọi trường trên. Khi cờ tắt, bốn
@@ -51,6 +51,9 @@ trường tuỳ chọn cuối không xuất hiện; parser của backend phải 
 - `severity` do detector quyết: CRITICAL khi đủ `voting.k_fire` heartbeat có box lửa,
   ngược lại là WARNING. VLM **không** hạ severity.
 - `started_at` là giờ thật của khung hình xác nhận cháy, không phải lúc VLM trả lời.
+- `tests/test_hop_dong_backend.py` cho mẫu event và payload `updated`/`ended` đi qua
+  `AIFireEventPayload` và `AISnapshotUploadPayload` thật của `backend/` khi thư mục đó
+  có trong repo.
 - `vlm` là `null` khi VLM tắt, lỗi hay hết giờ.
 - `vlm.fire_type` chỉ được hỏi khi `context = NGOAI`; với HAM và TRET luôn là
   `UNCONTROLLED`. `CONTROLLED` **không** đổi `verification` hay severity: event vẫn phát,

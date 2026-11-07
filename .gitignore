@@ -1,5 +1,5 @@
 # Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
-# phần đó (ví dụ FireWatchAI/.gitignore).
+# phần đó (ví dụ EdgeAI-MatPho/FireWatchAI/.gitignore).
 
 # ---------------------------------------------------------------------------
 # 1. Secrets / credentials / per-machine config — public repo, never commit
@@ -207,4 +207,4 @@ migrate_working_dir/
 bugreport-*.zip
 
 # FireWatchAI cần run.ps1 (chạy trên Windows, kiểm SHA-256 trọng số) trong git.
-!FireWatchAI/run.ps1
+!EdgeAI-MatPho/FireWatchAI/run.ps1

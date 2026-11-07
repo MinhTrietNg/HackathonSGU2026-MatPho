@@ -5,8 +5,8 @@ Backend (``backend/src/models/fire_alert.py``) kiểm mọi event bằng
 biên (``EdgeAI-MatPho/edge_backend``) chuyển nguyên payload lên đó và gửi ảnh
 riêng bằng ``AISnapshotUploadPayload``.
 
-Model thật được nạp từ thư mục ``backend/`` cạnh ``FireWatchAI/`` (repo gốc) hoặc
-cạnh ``EdgeAI-MatPho/`` (khi FireWatchAI nằm ở ``EdgeAI-MatPho/ai_service``).
+Model thật được nạp từ thư mục ``backend/`` ở gốc repo: cạnh ``EdgeAI-MatPho/`` (vị
+trí hiện tại ``EdgeAI-MatPho/FireWatchAI``) hoặc cạnh ``FireWatchAI/`` (bố cục cũ).
 Không thấy thì các test dùng model thật được bỏ qua; test kiểu trường thời gian
 vẫn chạy.
 """

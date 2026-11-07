@@ -1,12 +1,13 @@
 # FireWatch chạy như dịch vụ. Lệnh mặc định "edge":
 #
-# 1. Thay EdgeAI-MatPho/ai_service (docs/van_hanh.md mục 11): docker-compose của nút
-#    biên build thư mục này, truyền camera, MediaMTX, edge_backend và bí mật bằng
-#    biến môi trường, gắn ai_service/weights vào /app/weights. Mọi camera chạy
+# 1. Dịch vụ firewatch-ai của EdgeAI-MatPho (docs/van_hanh.md mục 11): docker-compose
+#    của nút biên build thư mục này, truyền camera, MediaMTX, edge_backend và bí mật
+#    bằng biến môi trường, gắn FireWatchAI/models vào /app/weights. Mọi camera chạy
 #    trong một container, theo lịch quét của edge_backend.
 # 2. Một nguồn (docs/van_hanh.md mục 7): không có biến của nút biên mà có
 #    FIREWATCH_SOURCE thì "edge" chạy serve trên nguồn đó, như trước:
 #
+#   cd EdgeAI-MatPho
 #   docker build -t firewatch FireWatchAI
 #   docker run -d --restart unless-stopped -p 8000:8000 --env-file FireWatchAI/.env \
 #     -e FIREWATCH_SOURCE=rtsp://camera/stream \

@@ -22,7 +22,7 @@ else
 fi
 export PYTHONUTF8=1
 
-# Trọng số gắn từ ngoài: docker-compose của EdgeAI-MatPho gắn ai_service/weights
+# Trọng số gắn từ ngoài: docker-compose của EdgeAI-MatPho gắn FireWatchAI/models
 # vào /app/weights, chỉ đọc. Chép .pt rồi mới chép .onnx sang models/ (ghi được),
 # để ONNX mới hơn .pt và detector không phải export lại. Thư mục không có thì bỏ
 # qua; file cùng tên trong models/ bị ghi đè bằng bản gắn ngoài.

@@ -47,9 +47,9 @@ def _build_parser() -> argparse.ArgumentParser:
                             "mã 1, để supervisor khởi động lại (dùng trong container)")
 
     edge = sub.add_parser(
-        "edge", help="chế độ nút biên (thay EdgeAI-MatPho/ai_service): nhiều camera "
-                     "từ biến môi trường, theo lịch quét của edge_backend; lệnh mặc "
-                     "định của image")
+        "edge", help="chế độ nút biên (dịch vụ firewatch-ai của EdgeAI-MatPho): "
+                     "nhiều camera từ biến môi trường, theo lịch quét của "
+                     "edge_backend; lệnh mặc định của image")
     edge.add_argument("--host", default=None, help="ghi đè server.host (/health)")
     edge.add_argument("--port", type=int, default=None,
                       help="ghi đè server.port (/health)")

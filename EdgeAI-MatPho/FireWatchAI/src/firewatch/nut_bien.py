@@ -1,4 +1,4 @@
-"""Chế độ nút biên: nhiều camera trong một tiến trình, thay ``ai_service``.
+"""Chế độ nút biên: nhiều camera trong một tiến trình (dịch vụ ``firewatch-ai``).
 
 ``python -m firewatch edge`` (lệnh mặc định của image) đọc cấu hình nút biên từ
 biến môi trường (``nut_bien_cau_hinh``), rồi:
@@ -8,7 +8,7 @@ biến môi trường (``nut_bien_cau_hinh``), rồi:
 - mỗi 2 s hỏi ``GET /api/v1/edge/cameras`` của edge_backend: camera có
   ``should_ai_scan_now`` thì chạy (kể cả camera mới), camera đang nghỉ theo lịch
   hoặc bị tắt thì ngắt RTSP ngay; camera không có trong danh sách giữ nguyên.
-  Đây đúng là cách khung ``ai_service`` cũ làm;
+  giống khung ``ai_service`` mà FireWatchAI đã thay;
 - gửi event tới cổng chuyển tiếp ``/api/v1/edge/ai-events`` của edge_backend
   (cloud backend nếu không có edge_backend), kèm ``X-Internal-Secret``;
 - phục vụ ``GET /health`` cho HEALTHCHECK của Docker.

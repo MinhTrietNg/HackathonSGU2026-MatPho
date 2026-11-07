@@ -1,8 +1,8 @@
 """Cấu hình nút biên (EdgeAI-MatPho) đọc từ biến môi trường.
 
-Khi FireWatchAI chạy thay ``EdgeAI-MatPho/ai_service``, docker-compose của nút
-biên truyền cấu hình qua biến môi trường: ``.env`` của nút biên và khối
-``environment`` của dịch vụ ``firewatch-ai``. Module này dịch các biến đó sang
+Khi FireWatchAI chạy làm dịch vụ ``firewatch-ai`` của ``EdgeAI-MatPho``,
+docker-compose của nút biên truyền cấu hình qua biến môi trường: ``.env`` của nút
+biên và khối ``environment`` của dịch vụ. Module này dịch các biến đó sang
 danh sách camera, nguồn RTSP và đích webhook, theo đúng giao diện của khung
 ``ai_service`` cũ.
 

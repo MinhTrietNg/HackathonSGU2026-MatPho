@@ -1,4 +1,4 @@
-"""Chế độ nút biên (FireWatchAI thay ``EdgeAI-MatPho/ai_service``).
+"""Chế độ nút biên (FireWatchAI làm dịch vụ ``firewatch-ai`` của ``EdgeAI-MatPho``).
 
 Biến môi trường trong test lấy đúng giá trị của ``EdgeAI-MatPho/docker-compose.yml``
 (dịch vụ ``firewatch-ai``) và ``.env.example`` của nút biên. Pipeline là đồ giả:

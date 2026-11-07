@@ -38,6 +38,8 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
   @override
   Future<AlertState> build() async {
     final generation = ++_generation;
+    // A reload keeps the actions on screen until the role is read again.
+    final closing = state.value?.closing ?? AlertClosing.unknown;
     ref.onDispose(() {
       _undoTimer?.cancel();
       final resolving = _resolving;
@@ -52,7 +54,7 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
     ref.onDispose(updates.cancel);
     final event = await repository.getAlert(eventId);
     unawaited(_loadRole(event.cameraId, generation));
-    return AlertState(event);
+    return AlertState(event, closing: closing);
   }
 
   void _onUpdate(AlertUpdate update) {

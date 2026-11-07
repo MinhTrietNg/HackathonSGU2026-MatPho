@@ -21,10 +21,12 @@ import 'package:mat_pho/features/history/history_screen.dart';
 import 'package:mat_pho/features/history/history_state.dart';
 
 class _ScriptedRepository implements HistoryRepository {
-  _ScriptedRepository(this.onList);
+  _ScriptedRepository(this.onList, {this.onDetail});
 
   final Future<List<FireEvent>> Function(int call) onList;
+  final Future<FireEvent> Function(int call)? onDetail;
   var calls = 0;
+  var detailCalls = 0;
 
   @override
   Future<List<FireEvent>> list({HistoryFilter filter = HistoryFilter.all}) =>
@@ -32,6 +34,7 @@ class _ScriptedRepository implements HistoryRepository {
 
   @override
   Future<FireEvent> detail(String eventId) async =>
+      await onDetail?.call(detailCalls++) ??
       FakeData.history().firstWhere((e) => e.id == eventId);
 }
 
@@ -244,27 +247,145 @@ void main() {
     expect(find.text('Kiểm tra kết nối rồi thử lại.'), findsNothing);
   });
 
-  testWidgets('"Thử lại" reloads (G8 → G2 → G1)', (tester) async {
-    final second = Completer<List<FireEvent>>();
-    final repository = _ScriptedRepository(
-      (call) =>
-          call == 0 ? Future.error(const NetworkException()) : second.future,
-    );
+  testWidgets('"Thử lại" keeps G8 on screen while it reloads, then G1', (
+    tester,
+  ) async {
+    final retries = <Completer<List<FireEvent>>>[];
+    final repository = _ScriptedRepository((call) {
+      if (call == 0) return Future.error(const NetworkException());
+      final retry = Completer<List<FireEvent>>();
+      retries.add(retry);
+      return retry.future;
+    });
     await _pump(
       tester,
       overrides: [historyRepositoryProvider.overrideWithValue(repository)],
     );
     expect(find.text('Không tải được'), findsOneWidget);
+    final button = find.byType(MpButton);
+    bool busy() => tester.widget<MpButton>(button).busy;
+    expect(busy(), isFalse);
 
-    await tester.tap(find.text('Thử lại'));
+    await tester.tap(button);
     await tester.pump();
     expect(repository.calls, 2);
-    expect(find.text('Không tải được'), findsNothing);
-    expect(find.text('Tất cả'), findsOneWidget);
+    expect(find.text('Không tải được'), findsOneWidget);
+    expect(find.text('Tất cả'), findsNothing);
+    expect(busy(), isTrue);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    second.complete(FakeData.history());
+    await tester.tap(button, warnIfMissed: false);
+    await tester.pump();
+    expect(repository.calls, 2);
+
+    retries[0].completeError(const NetworkException());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Không tải được'), findsOneWidget);
+    expect(find.text('Kiểm tra kết nối rồi thử lại.'), findsOneWidget);
+    expect(busy(), isFalse);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(button);
+    await tester.pump();
+    expect(repository.calls, 3);
+    expect(find.text('Không tải được'), findsOneWidget);
+    expect(busy(), isTrue);
+
+    retries[1].complete(FakeData.history());
+    await _settle(tester);
+    expect(find.text('Không tải được'), findsNothing);
+    expect(find.text('Lửa ở xe máy'), findsOneWidget);
+  });
+
+  testWidgets('"Thử lại" on the detail keeps G8 on screen while it reloads', (
+    tester,
+  ) async {
+    final retry = Completer<FireEvent>();
+    final repository = _ScriptedRepository(
+      (_) => Future.value(FakeData.history()),
+      onDetail: (call) =>
+          call == 0 ? Future.error(const ServerException()) : retry.future,
+    );
+    await _pump(
+      tester,
+      initialLocation: AppRoutes.historyDetail('evt-fire'),
+      overrides: [historyRepositoryProvider.overrideWithValue(repository)],
+    );
+    expect(find.text('Không tải được'), findsOneWidget);
+
+    await tester.tap(find.byType(MpButton));
+    await tester.pump();
+    expect(repository.detailCalls, 2);
+    expect(find.text('Không tải được'), findsOneWidget);
+    expect(tester.widget<MpButton>(find.byType(MpButton)).busy, isTrue);
+
+    retry.complete(FakeData.history().firstWhere((e) => e.id == 'evt-fire'));
+    await _settle(tester);
+    expect(find.text('Không tải được'), findsNothing);
+    expect(find.text('23/10 · 21:47:31'), findsOneWidget);
+  });
+
+  testWidgets('a reload keeps the rows on screen until it answers', (
+    tester,
+  ) async {
+    final second = Completer<List<FireEvent>>();
+    final repository = _ScriptedRepository(
+      (call) => call == 0 ? Future.value(FakeData.history()) : second.future,
+    );
+    await _pump(
+      tester,
+      overrides: [historyRepositoryProvider.overrideWithValue(repository)],
+    );
+    expect(find.text('Lửa ở xe máy'), findsOneWidget);
+
+    ProviderScope.containerOf(
+      tester.element(find.byType(HistoryScreen)),
+    ).invalidate(historyListProvider);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(repository.calls, 2);
+    for (final title in _rows) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('Đã hiện hết · 30 ngày gần nhất'), findsOneWidget);
+
+    second.complete(FakeData.history().take(1).toList());
     await _settle(tester);
     expect(find.text('Lửa ở xe máy'), findsOneWidget);
+    expect(find.text('Hơi nước từ ống xả'), findsNothing);
+  });
+
+  testWidgets('a filter not loaded yet keeps the last list until it answers', (
+    tester,
+  ) async {
+    final filtered = Completer<List<FireEvent>>();
+    final repository = _ScriptedRepository(
+      (call) => call == 0 ? Future.value(FakeData.history()) : filtered.future,
+    );
+    await _pump(
+      tester,
+      overrides: [historyRepositoryProvider.overrideWithValue(repository)],
+    );
+
+    await tester.tap(find.text('Không cháy').first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(repository.calls, 2);
+    expect(find.text('Lửa ở xe máy'), findsOneWidget);
+    expect(find.text('Đã hiện hết · 30 ngày gần nhất'), findsOneWidget);
+
+    filtered.complete([
+      for (final e in FakeData.history())
+        if (e.status == EventStatus.dismissed) e,
+    ]);
+    await _settle(tester);
+    expect(find.text('Lửa ở xe máy'), findsNothing);
+    expect(find.text('Đèn xe chiếu lên tường'), findsOneWidget);
+    expect(
+      find.text('Đang lọc “Không cháy” · 30 ngày gần nhất'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a failed reload keeps the rows already on the device', (

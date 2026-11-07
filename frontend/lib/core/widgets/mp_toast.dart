@@ -174,7 +174,9 @@ void showMpToast(
   _current = entry;
 }
 
-void hideMpToast() => _current?.dismiss();
+void hideMpToast() {
+  _current?.dismiss();
+}
 
 _ToastEntry? _current;
 

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../fakes/fake_overrides.dart';
 import '../../fakes/fake_data.dart';
 import '../../fakes/fake_scenario.dart';
+import 'package:mat_pho/data/models/models.dart';
 import 'package:mat_pho/features/cameras/camera_state.dart';
 import 'package:mat_pho/features/groups/current_group.dart';
 import 'package:mat_pho/features/groups/group_state.dart';
@@ -124,6 +125,44 @@ void main() {
     final places = await container.read(cameraPlacesProvider.future);
     final sky = places.firstWhere((p) => p.group.id == 'g-sky');
     expect(sky.cameraCount, before + 1);
+  });
+
+  test('I8 "Thêm lại RTSP" sends the new link to the same camera, in its '
+      'place, not the current one', () async {
+    container
+      ..listen(groupsProvider, (_, _) {})
+      ..listen(groupCamerasProvider('g-sky'), (_, _) {});
+    container.read(currentGroupIdProvider.notifier).select('g-home');
+    final old = (await container.read(
+      groupCamerasProvider('g-sky').future,
+    )).firstWhere((c) => c.id == 'cam-down');
+
+    final flow = container.read(addCameraProvider.notifier)..startReplace(old);
+    expect(container.read(addCameraProvider).rtspUrl, isEmpty);
+    expect(container.read(addCameraProvider).name, 'Lối xuống');
+    expect(container.read(addCameraProvider).areaId, 'a-b2');
+    expect((await container.read(addCameraPlaceProvider.future)).id, 'g-sky');
+    expect(
+      [for (final a in await container.read(placeAreasProvider.future)) a.id],
+      ['a-b1', 'a-b2', 'a-lobby'],
+    );
+
+    expect(await flow.connect('rtsp://10.0.0.9:554/stream1'), isNull);
+    final saved = await flow.save(areaId: 'a-b2');
+    expect(saved.id, 'cam-down');
+    expect(saved.groupId, 'g-sky');
+    expect(saved.areaId, 'a-b2');
+    expect(saved.name, 'Lối xuống');
+    expect(saved.rtspUrl, 'rtsp://10.0.0.9:554/stream1');
+    expect(saved.status, CameraStatus.watching);
+
+    final cameras = await container.read(groupCamerasProvider('g-sky').future);
+    expect(cameras.where((c) => c.id == 'cam-down'), hasLength(1));
+    final sky = (await container.read(
+      groupsProvider.future,
+    )).firstWhere((g) => g.id == 'g-sky');
+    expect(sky.cameraCount, 5);
+    expect((await container.read(currentPlaceProvider.future)).id, 'g-sky');
   });
 
   test('a group left (J14) leaves the place picker too', () async {

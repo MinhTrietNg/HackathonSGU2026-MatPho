@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/app_router.dart';
+import '../../core/theme/theme.dart';
 import '../../core/time_format.dart';
 import '../../core/widgets/mp_banner.dart';
 import '../../core/widgets/mp_button.dart';
@@ -13,6 +14,7 @@ import '../../core/widgets/mp_header.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_page.dart';
 import '../../core/widgets/mp_tips_card.dart';
+import '../../core/widgets/mp_toast.dart';
 import '../../data/errors.dart';
 import '../../data/models/models.dart';
 import '../../data/providers.dart';
@@ -62,22 +64,59 @@ class _SignalLost extends ConsumerStatefulWidget {
   ConsumerState<_SignalLost> createState() => _SignalLostState();
 }
 
+// I8: a failed "Thử kết nối lại" shows "Vẫn chưa kết nối được"; from the
+// second failure, owners and managers also get "Thêm lại RTSP" (I2 → I5 sends
+// a new link for this same camera).
 class _SignalLostState extends ConsumerState<_SignalLost> {
   bool _busy = false;
+
+  int _failures = 0;
+
+  static const _replaceAfter = 2;
 
   Future<void> _reconnect() async {
     setState(() => _busy = true);
     final id = widget.detail.camera.id;
+    var fixed = false;
     try {
-      await ref.read(cameraRepositoryProvider).reconnect(id);
+      final camera = await ref.read(cameraRepositoryProvider).reconnect(id);
+      fixed = camera.status != CameraStatus.signalLost;
       ref
         ..invalidate(groupCamerasProvider(widget.detail.group.id))
         ..invalidate(cameraDetailProvider(id));
     } on MpException {
       // Still down: stay on I8.
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          if (!fixed) _failures++;
+        });
+      }
     }
+    if (!fixed && mounted) _showStillDown();
+  }
+
+  void _showStillDown() {
+    final c = context.mpColors;
+    showMpToast(
+      context,
+      MpToast(
+        icon: MpDuotoneIcon(
+          MpIcons.wifiOff,
+          outline: c.statusWarn,
+          accent: c.statusWarn,
+          size: 18,
+        ),
+        title: 'Vẫn chưa kết nối được',
+      ),
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  void _replace() {
+    ref.read(addCameraProvider.notifier).startReplace(widget.detail.camera);
+    context.push(AppRoutes.addCamera);
   }
 
   @override
@@ -116,6 +155,12 @@ class _SignalLostState extends ConsumerState<_SignalLost> {
           label: 'Thử kết nối lại',
           onPressed: _busy ? null : _reconnect,
         ),
+        if (_failures >= _replaceAfter && widget.detail.group.myRole.canManage)
+          MpButton(
+            label: 'Thêm lại RTSP',
+            kind: MpButtonKind.ghost,
+            onPressed: _busy ? null : _replace,
+          ),
       ],
     );
   }

@@ -46,6 +46,7 @@ enum FakeCase {
   cameraVendorBlocked,
 
   cameraReconnectFails,
+  cameraUpdateFails,
 
   alertsOnlyRole,
 }

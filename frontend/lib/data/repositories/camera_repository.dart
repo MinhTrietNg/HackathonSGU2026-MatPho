@@ -28,6 +28,7 @@ abstract interface class CameraRepository {
     String? areaId,
     WatchArea? watchArea,
     bool? enabled,
+    String? rtspUrl,
   });
 
   Future<void> deleteCamera(String cameraId);

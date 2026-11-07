@@ -295,5 +295,178 @@ void main() {
     await _tap(tester, find.text('Thử kết nối lại'));
     expect(find.text('Mất tín hiệu từ 21:30'), findsOneWidget);
     expect(find.textContaining('watch '), findsNothing);
+    await _toastGone(tester);
+  });
+
+  _i8Tests();
+}
+
+Override _skyRole(GroupRole role) => fakeWorldProvider.overrideWith((ref) {
+  final world = FakeWorld(ref.watch(fakeScenarioProvider));
+  ref.onDispose(world.dispose);
+  final sky = world.group(FakeData.skyGarden.id);
+  world.replaceGroup(
+    Group(
+      id: sky.id,
+      name: sky.name,
+      myRole: role,
+      myNickname: sky.myNickname,
+      cameraCount: sky.cameraCount,
+      memberCount: sky.memberCount,
+      address: sky.address,
+    ),
+  );
+  return world;
+});
+
+FakeWorld _world(WidgetTester tester) => ProviderScope.containerOf(
+  tester.element(find.byType(Navigator).first),
+).read(fakeWorldProvider);
+
+Future<void> _toastGone(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 5));
+  await tester.pumpAndSettle();
+}
+
+const _stillDown = 'Vẫn chưa kết nối được';
+const _readd = 'Thêm lại RTSP';
+
+Future<GoRouter> _pumpLost(
+  WidgetTester tester, {
+  int failures = 2,
+  Set<FakeCase> cases = const {},
+  List<Override> overrides = const [],
+}) async {
+  final router = await _pumpCameras(
+    tester,
+    cases: {FakeCase.cameraReconnectFails, ...cases},
+    initialLocation: CameraRoutes.signalLost('cam-down'),
+    overrides: overrides,
+  );
+  for (var i = 0; i < failures; i++) {
+    await _tap(tester, find.text('Thử kết nối lại'));
+  }
+  return router;
+}
+
+void _i8Tests() {
+  testWidgets('I8 · a failed reconnect shows "$_stillDown"; the second one '
+      'adds "$_readd"', (tester) async {
+    await _pumpLost(tester, failures: 0);
+    expect(find.text(_readd), findsNothing);
+
+    await _tap(tester, find.text('Thử kết nối lại'));
+    expect(find.text(_stillDown), findsOneWidget);
+    expect(find.text('Mất tín hiệu từ 21:30'), findsOneWidget);
+    expect(find.text(_readd), findsNothing);
+
+    await _tap(tester, find.text('Thử kết nối lại'));
+    expect(find.text(_stillDown), findsOneWidget);
+    expect(find.text(_readd), findsOneWidget);
+    await _toastGone(tester);
+  });
+
+  testWidgets('I8 · a manager gets "$_readd" too', (tester) async {
+    await _pumpLost(tester, overrides: [_skyRole(GroupRole.manager)]);
+    expect(find.text(_readd), findsOneWidget);
+    await _toastGone(tester);
+  });
+
+  for (final role in [GroupRole.member, GroupRole.alertsOnly]) {
+    testWidgets('I8 · ${role.name} never gets "$_readd"', (tester) async {
+      await _pumpLost(tester, failures: 3, overrides: [_skyRole(role)]);
+      expect(find.text(_stillDown), findsOneWidget);
+      expect(find.text(_readd), findsNothing);
+      await _toastGone(tester);
+    });
+  }
+
+  testWidgets('I8 "$_readd": I2 empty → I5 with the camera\'s name and area '
+      '→ "Lưu" gives the same camera the new link and opens its E2', (
+    tester,
+  ) async {
+    final router = await _pumpLost(tester);
+    await _toastGone(tester);
+    final before = _world(tester).cameras.length;
+
+    await _tap(tester, find.text(_readd));
+    expect(find.text('Thêm camera RTSP'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    await tester.enterText(find.byType(TextField), FakeData.rtspExample);
+    await _tap(tester, find.text('Kết nối'));
+
+    expect(find.text('Đặt tên camera'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Lối xuống',
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Hầm B2')),
+      matchesSemantics(
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: true,
+      ),
+    );
+
+    await _tap(tester, find.text('Lưu'));
+    final world = _world(tester);
+    expect(world.cameras, hasLength(before));
+    final same = world.cameras.firstWhere((c) => c.id == 'cam-down');
+    expect(same.name, 'Lối xuống');
+    expect(same.groupId, 'g-sky');
+    expect(same.areaId, 'a-b2');
+    expect(same.rtspUrl, FakeData.rtspExample);
+    expect(same.status, CameraStatus.watching);
+    final matches = router.routerDelegate.currentConfiguration.matches;
+    expect(matches.first.matchedLocation, AppRoutes.monitor);
+    expect(matches.last.matchedLocation, AppRoutes.watch('cam-down'));
+    expect(find.text('watch cam-down'), findsOneWidget);
+
+    router.pop();
+    await _settle(tester);
+    expect(find.text('Lối xuống'), findsOneWidget);
+    expect(find.text('· 1 mất tín hiệu'), findsNothing);
+    expect(find.text('Mất tín hiệu từ 21:30'), findsNothing);
+  });
+
+  testWidgets('I8 "$_readd": the server refuses the new link → a toast, '
+      'still on I5, the camera unchanged', (tester) async {
+    await _pumpLost(tester, cases: {FakeCase.cameraUpdateFails});
+    await _toastGone(tester);
+    final before = _world(tester).cameras.firstWhere((c) => c.id == 'cam-down');
+    await _tap(tester, find.text(_readd));
+    await tester.enterText(find.byType(TextField), FakeData.rtspExample);
+    await _tap(tester, find.text('Kết nối'));
+    await _tap(tester, find.text('Lưu'));
+
+    expect(find.text('Máy chủ đang bận. Thử lại sau ít phút.'), findsOneWidget);
+    expect(find.text('Đặt tên camera'), findsOneWidget);
+    final after = _world(tester).cameras.firstWhere((c) => c.id == 'cam-down');
+    expect(after.rtspUrl, before.rtspUrl);
+    expect(after.status, CameraStatus.signalLost);
+    await _toastGone(tester);
+  });
+
+  testWidgets('I8 "$_readd" then back from I2: back on I8, nothing changed', (
+    tester,
+  ) async {
+    final router = await _pumpLost(tester);
+    await _toastGone(tester);
+    final before = [..._world(tester).cameras];
+
+    await _tap(tester, find.text(_readd));
+    expect(find.text('Thêm camera RTSP'), findsOneWidget);
+    await _tap(tester, find.bySemanticsLabel('Quay lại'));
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      CameraRoutes.signalLost('cam-down'),
+    );
+    expect(find.text('Mất tín hiệu từ 21:30'), findsOneWidget);
+    expect(find.text(_readd), findsOneWidget);
+    expect(_world(tester).cameras, before);
   });
 }

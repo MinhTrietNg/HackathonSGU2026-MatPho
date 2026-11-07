@@ -334,4 +334,29 @@ void main() {
       AppRoutes.watch('cam_down'),
     );
   });
+
+  testWidgets('I8 · the router says ONLINE but the camera read again is '
+      'still OFFLINE: "Vẫn chưa kết nối được", still on I8', (tester) async {
+    final server = _sky()
+      ..on('GET', '/cameras/cam_down', camerasJson.last)
+      ..on('POST', '/cameras/cam_down/reconnect', {
+        'cam_id': 'cam_down',
+        'cam_name': 'Lối xuống',
+        'status': 'ONLINE',
+        'live_stream_url': null,
+      });
+    final router = await _pump(
+      tester,
+      server,
+      initial: CameraRoutes.signalLost('cam_down'),
+    );
+    await _tap(tester, find.text('Thử kết nối lại'));
+    expect(find.text('Vẫn chưa kết nối được'), findsOneWidget);
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      CameraRoutes.signalLost('cam_down'),
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
 }

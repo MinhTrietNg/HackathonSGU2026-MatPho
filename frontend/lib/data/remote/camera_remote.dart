@@ -94,6 +94,7 @@ final class RemoteCameraRepository implements CameraRepository {
     String? areaId,
     WatchArea? watchArea,
     bool? enabled,
+    String? rtspUrl,
   }) async => parseCamera(
     asJsonMap(
       await _api.patch(
@@ -103,6 +104,7 @@ final class RemoteCameraRepository implements CameraRepository {
           'subgroup_id': ?areaId,
           if (watchArea != null) 'watch_area': _watchAreaJson(watchArea),
           'is_active': ?enabled,
+          'rtsp_url': ?rtspUrl,
         },
       ),
     ),

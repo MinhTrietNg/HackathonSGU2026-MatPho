@@ -61,8 +61,20 @@ final placeCamerasProvider = FutureProvider<List<CameraSection>>((ref) async {
   ];
 });
 
+final addCameraPlaceProvider = FutureProvider<Group>((ref) async {
+  final groupId = ref.watch(
+    addCameraProvider.select((s) => s.replacing?.groupId),
+  );
+  if (groupId == null) return ref.watch(currentPlaceProvider.future);
+  final groups = await ref.watch(groupsProvider.future);
+  return groups.firstWhere(
+    (g) => g.id == groupId,
+    orElse: () => throw StateError('No place $groupId'),
+  );
+});
+
 final placeAreasProvider = FutureProvider<List<Area>>((ref) async {
-  final group = await ref.watch(currentPlaceProvider.future);
+  final group = await ref.watch(addCameraPlaceProvider.future);
   return ref.watch(groupAreasProvider(group.id).future);
 });
 
@@ -139,6 +151,7 @@ final watchCameraProvider = Provider.autoDispose
 
 final class AddCameraState {
   const AddCameraState({
+    this.replacing,
     this.rtspUrl = '',
     this.probe,
     this.error,
@@ -146,6 +159,8 @@ final class AddCameraState {
     this.name = '',
     this.areaId,
   });
+
+  final Camera? replacing;
 
   final String rtspUrl;
 
@@ -168,6 +183,7 @@ final class AddCameraState {
     String? name,
     String? areaId,
   }) => AddCameraState(
+    replacing: replacing,
     rtspUrl: rtspUrl ?? this.rtspUrl,
     probe: probe ?? this.probe,
     error: clearError ? null : error ?? this.error,
@@ -185,6 +201,14 @@ class AddCameraNotifier extends Notifier<AddCameraState> {
   }
 
   void start() => state = const AddCameraState();
+
+  // I8 "Thêm lại RTSP": I2 starts empty (the server never sends the old link
+  // back); I5 keeps the camera's name and area, in its place.
+  void startReplace(Camera camera) => state = AddCameraState(
+    replacing: camera,
+    name: camera.name,
+    areaId: camera.areaId,
+  );
 
   Future<CameraConnectException?> connect(String rtspUrl) async {
     state = state.copyWith(rtspUrl: rtspUrl, busy: true);
@@ -205,23 +229,38 @@ class AddCameraNotifier extends Notifier<AddCameraState> {
 
   void selectArea(String areaId) => state = state.copyWith(areaId: areaId);
 
+  // A replacing flow (I8) sends the new link to the same camera
+  // (PATCH /cameras/{cam_id} with rtsp_url): its id, history and member
+  // access stay.
   Future<Camera> save({required String areaId}) async {
     state = state.copyWith(busy: true);
+    final repository = ref.read(cameraRepositoryProvider);
+    final rtspUrl = state.probe?.rtspUrl ?? state.rtspUrl;
     try {
-      final group = await ref.read(currentPlaceProvider.future);
-      final camera = await ref
-          .read(cameraRepositoryProvider)
-          .saveCamera(
-            groupId: group.id,
-            rtspUrl: state.probe?.rtspUrl ?? state.rtspUrl,
-            name: state.name.trim(),
-            areaId: areaId,
-            watchArea: WatchArea.full,
-            deviceName: state.probe?.deviceName,
-          );
-      ref
-        ..invalidate(groupCamerasProvider(group.id))
-        ..invalidate(groupsProvider);
+      final Camera camera;
+      if (state.replacing case final old?) {
+        camera = await repository.updateCamera(
+          cameraId: old.id,
+          rtspUrl: rtspUrl,
+          name: state.name.trim(),
+          areaId: areaId,
+        );
+        ref
+          ..read(currentGroupIdProvider.notifier).select(old.groupId)
+          ..invalidate(cameraDetailProvider(old.id));
+      } else {
+        final group = await ref.read(currentPlaceProvider.future);
+        camera = await repository.saveCamera(
+          groupId: group.id,
+          rtspUrl: rtspUrl,
+          name: state.name.trim(),
+          areaId: areaId,
+          watchArea: WatchArea.full,
+          deviceName: state.probe?.deviceName,
+        );
+        ref.invalidate(groupsProvider);
+      }
+      ref.invalidate(groupCamerasProvider(camera.groupId));
       return camera;
     } finally {
       state = state.copyWith(busy: false);

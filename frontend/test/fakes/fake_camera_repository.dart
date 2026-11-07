@@ -124,19 +124,23 @@ final class FakeCameraRepository implements CameraRepository {
     String? areaId,
     WatchArea? watchArea,
     bool? enabled,
+    String? rtspUrl,
   }) async {
     await _world.delay();
     final before = _camera(cameraId);
     _requireManager(before.groupId);
+    if (_s.has(FakeCase.cameraUpdateFails)) {
+      throw const ServerException();
+    }
     final after = Camera(
       id: before.id,
       groupId: before.groupId,
       areaId: areaId ?? before.areaId,
       name: name ?? before.name,
-      rtspUrl: before.rtspUrl,
+      rtspUrl: rtspUrl ?? before.rtspUrl,
       watchArea: watchArea ?? before.watchArea,
-      status: before.status,
-      signalLostSince: before.signalLostSince,
+      status: rtspUrl != null ? CameraStatus.watching : before.status,
+      signalLostSince: rtspUrl != null ? null : before.signalLostSince,
       liveStreamUrl: before.liveStreamUrl,
       deviceName: before.deviceName,
     );

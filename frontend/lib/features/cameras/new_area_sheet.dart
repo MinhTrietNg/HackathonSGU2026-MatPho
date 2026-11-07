@@ -64,7 +64,7 @@ class _NewAreaSheetState extends ConsumerState<NewAreaSheet> {
     if (name.isEmpty) return;
     setState(() => _busy = true);
     try {
-      final group = await ref.read(currentPlaceProvider.future);
+      final group = await ref.read(addCameraPlaceProvider.future);
       final area = await ref
           .read(cameraRepositoryProvider)
           .createArea(groupId: group.id, name: name);

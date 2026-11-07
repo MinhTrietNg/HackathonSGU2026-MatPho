@@ -309,6 +309,21 @@ void main() {
       expect(camera.watchArea, box);
     });
 
+    test('I8 "Thêm lại RTSP": rtsp_url with name and area', () async {
+      server.on('PATCH', '/cameras/cam_charger', _detailJson);
+      await repo.updateCamera(
+        cameraId: 'cam_charger',
+        rtspUrl: 'rtsp://10.0.0.9:554/stream1',
+        name: 'Hầm B1',
+        areaId: 'sub_b1',
+      );
+      expect(server.body('PATCH', '/cameras/cam_charger'), {
+        'cam_name': 'Hầm B1',
+        'subgroup_id': 'sub_b1',
+        'rtsp_url': 'rtsp://10.0.0.9:554/stream1',
+      });
+    });
+
     test('enabled → is_active alone', () async {
       server.on('PATCH', '/cameras/cam_charger', _detailJson);
       await repo.updateCamera(cameraId: 'cam_charger', enabled: false);

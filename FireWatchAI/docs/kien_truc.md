@@ -68,7 +68,13 @@ soát)" xuất ảnh làm hard negative.
 
 **Vòng lặp chính (`pipeline.py`, `__main__.py`).** `pipeline.py` nối các tầng, giữ các
 alert đang chờ VLM, và ghi `summary.json`. `__main__.py` là CLI `python -m firewatch run |
-serve`. `PipelineHealth` cấp số liệu cho `/health`.
+serve | edge`. `PipelineHealth` cấp số liệu cho `/health`.
+
+**Nút biên (`nut_bien.py`, `nut_bien_cau_hinh.py`).** `edge` thay `EdgeAI-MatPho/ai_service`:
+đọc camera, MediaMTX, edge_backend và bí mật từ biến môi trường; mỗi camera một
+`Pipeline` chung một model; bật tắt camera theo lịch quét của edge_backend; gửi event
+qua cổng chuyển tiếp của edge_backend; `/health` gộp mọi camera (`docs/van_hanh.md`
+mục 11).
 
 **Cấu hình (`config.py`, `config.yaml`).** Một file cấu hình duy nhất, kiểm bằng pydantic
 (sai tên khoá là lỗi). `--set` ghi đè tại chỗ.
@@ -104,5 +110,5 @@ xem model bằng mắt, không đi qua voting hay alert.
 | Sơ đồ ghi | Thực tế |
 |---|---|
 | "chỉ quét vùng `watch_area`" | FireWatchAI chưa có vùng quét: detector xử lý cả khung. Hàm che `watch_area` hiện chỉ có trong khung `ai_service` ở nhánh `backend` |
-| MediaMTX cấp RTSP :8554 | FireWatchAI không có cấu hình MediaMTX; MediaMTX nằm ở `EdgeAI-MatPho/` của nhánh `backend`. FireWatch nhận URL RTSP bất kỳ, nên đọc được luồng MediaMTX. Container của FireWatch (một tiến trình một camera) đã có: `Dockerfile`, xem `docs/van_hanh.md` mục 7 |
+| MediaMTX cấp RTSP :8554 | FireWatchAI không có cấu hình MediaMTX; MediaMTX nằm ở `EdgeAI-MatPho/` của nhánh `backend`. FireWatch nhận URL RTSP bất kỳ, nên đọc được luồng MediaMTX. Container của FireWatch đã có (`Dockerfile`); lệnh mặc định `edge` chạy mọi camera của nút biên trong một container, thay `ai_service` (`docs/van_hanh.md` mục 7 và 11) |
 | Gemini "p50 ≈ 2 s" | số từ một lần đo trên 50 khung val của bộ dữ liệu cũ (README nguồn); chưa đo lại với model và prompt hiện tại |

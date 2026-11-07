@@ -139,12 +139,13 @@ Hợp đồng đã chốt với đội backend ngày 2026-11-07.
 
 | Mục | Giá trị |
 |---|---|
-| URL | do backend cung cấp, đặt vào `FIREWATCH_WEBHOOK_URL` trong `.env`. Không đặt thì FireWatch không gửi webhook |
+| URL | do backend cung cấp, đặt vào `FIREWATCH_WEBHOOK_URL` trong `.env`. Không đặt thì FireWatch không gửi webhook. Chế độ nút biên (`python -m firewatch edge`, lệnh mặc định của image) tự đặt `<EDGE_BACKEND_API_URL>/api/v1/edge/ai-events` (cổng chuyển tiếp của edge_backend), hoặc `<CLOUD_BACKEND_API_URL>/api/v1/internal/ai/fire-events` khi không có edge_backend (`docs/van_hanh.md` mục 11) |
 | Phương thức | `POST`, `Content-Type: application/json` |
-| Xác thực | token đặt vào `FIREWATCH_WEBHOOK_TOKEN`. Có token thì gửi **cả hai** header với cùng giá trị: `Authorization: Bearer <token>` và `X-Internal-Secret: <token>`. Token rỗng hoặc chưa đặt thì không gửi header xác thực nào |
+| Xác thực | token đặt vào `FIREWATCH_WEBHOOK_TOKEN`; chế độ nút biên lấy `INTERNAL_API_SECRET_KEY` khi biến này trống. Có token thì gửi **cả hai** header với cùng giá trị: `Authorization: Bearer <token>` và `X-Internal-Secret: <token>`. Token rỗng hoặc chưa đặt thì không gửi header xác thực nào |
 | Payload | event **đầy đủ** đúng schema mục 1, không đổi, không cắt bớt trường; thêm `snapshot_base64` khi `webhook.gui_anh: true` |
 | Cập nhật | mọi lần gửi lại cùng `event_id` (event đã cập nhật) đi **cùng URL đó** với cùng payload và header, `type: "updated"`. Backend upsert theo `event_id` |
-| Ảnh | `webhook.gui_anh` (mặc định `false`): bật thì mọi lần gửi của event (cả `created` và `updated`) kèm keyframe gốc. Tắt thì backend lấy ảnh qua `GET /snapshots/<file>` theo `snapshot_path` (ảnh đã vẽ box) |
+| Mã camera | `camera_id` = `camera.id` của config; chế độ nút biên đặt bằng `cam_id` của camera trong `AI_CAMERA_STREAMS` / edge_backend. Backend tra camera theo mã này và trả 404 nếu không có |
+| Ảnh | `webhook.gui_anh` (mặc định `false`, chế độ nút biên bật): bật thì mọi lần gửi của event (cả `created` và `updated`) kèm keyframe gốc. Tắt thì backend lấy ảnh qua `GET /snapshots/<file>` theo `snapshot_path` (ảnh đã vẽ box) |
 | Không dùng | các endpoint `/internal/ai/verifying` và `/internal/ai/suppressed` của backend. Trạng thái xác minh và `SUPPRESSED` đã nằm trong event (`verification`, `vlm`, và `verifier` khi bật cờ) |
 
 Bên gửi:

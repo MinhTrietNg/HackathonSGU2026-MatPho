@@ -30,6 +30,12 @@ server: `./run.sh run --source <video.mp4>`, kết quả vào `runs/` và `event
 dịch vụ (Docker, tự khởi động lại, gắn vào docker-compose của backend): `docs/van_hanh.md`
 mục 7.
 
+**Nút biên `EdgeAI-MatPho`.** Thư mục này thay được `EdgeAI-MatPho/ai_service`: đặt nội
+dung vào đó, chép trọng số vào `ai_service/weights/`, thêm `GEMINI_API_KEY` vào
+`EdgeAI-MatPho/.env`, rồi `docker compose up -d --build`. Lệnh mặc định của image
+(`edge`) chạy mọi camera trong `AI_CAMERA_STREAMS` theo lịch quét của edge_backend và
+gửi event qua cổng chuyển tiếp của nó (`docs/van_hanh.md` mục 11).
+
 ## Cấu hình
 
 `config.yaml` là file cấu hình duy nhất, mọi tham số có chú thích tại chỗ.

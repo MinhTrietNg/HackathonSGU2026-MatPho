@@ -142,7 +142,7 @@ docker run -d --name firewatch --restart unless-stopped -p 8000:8000 \
 
 | Mục | Cách làm |
 |---|---|
-| Lệnh | `run.sh serve --host 0.0.0.0 --port 8000 --exit-on-pipeline-stop`: kiểm SHA rồi chạy `python -m firewatch serve` với `/app/config.yaml` |
+| Lệnh | `run.sh edge --host 0.0.0.0 --port 8000`: kiểm SHA rồi chạy `python -m firewatch edge` với `/app/config.yaml`. Không có biến của nút biên (mục 11) thì `edge` chạy `serve --exit-on-pipeline-stop` trên `FIREWATCH_SOURCE` |
 | Trọng số | mount `models/` vào `/app/models`. Chép `.pt` rồi ONNX theo `models/README.md`; mount `:ro` được khi ONNX đã có và mới hơn `.pt`, nếu không thì mount ghi được để detector export ONNX |
 | Bí mật | `.env` không nằm trong image; truyền bằng `--env-file` hay `env_file` |
 | Event và ảnh | volume `/app/events` (JSON, keyframe, `acks.json`; `/snapshots` phục vụ từ đây) |
@@ -151,6 +151,9 @@ docker run -d --name firewatch --restart unless-stopped -p 8000:8000 \
 | Tự khởi động lại | `--exit-on-pipeline-stop`: pipeline lỗi hay nguồn live kết thúc thì `serve` thoát mã 1, và `restart: unless-stopped` khởi động lại cả tiến trình. Docker không tự khởi động lại container chỉ vì `unhealthy`; cờ này là thứ biến "pipeline chết" thành "tiến trình chết" |
 
 ### Gắn vào docker-compose của backend
+
+Với nút biên `EdgeAI-MatPho`, làm theo mục 11: FireWatchAI thay hẳn
+`ai_service`, mọi camera trong một container. Cách dưới đây chạy một nguồn mỗi service.
 
 Không sửa nhánh `backend`. Thêm service sau vào `docker-compose.yml` của backend, đường
 dẫn tính từ thư mục chứa file compose đó tới `FireWatchAI/` của repo:
@@ -331,3 +334,77 @@ Giới hạn của lần đo:
   bộ nhớ khi cờ bật; đường có cảnh báo đã chạy thử ở mục 8.
 - Khoảng phút 2–5 có một lệnh tìm kiếm khác chạy trên một luồng CPU. `/health` vẫn trả
   200 và heartbeat không bị trễ trong lúc đó.
+
+## 11. Chạy thay `EdgeAI-MatPho/ai_service`
+
+Nút biên `EdgeAI-MatPho` (thư mục cùng cấp với `FireWatchAI/`, từ PR #2) có dịch vụ
+`firewatch-ai` build từ `./ai_service`. Thư mục đó vốn là một khung trống chờ gắn model.
+FireWatchAI đặt vào chỗ đó thì chạy được ngay, không sửa `docker-compose.yml`,
+`edge_backend` hay backend.
+
+**Các bước.**
+1. Thay nội dung `EdgeAI-MatPho/ai_service/` bằng nội dung `FireWatchAI/` (giữ cả
+   `models/README.md`, `run.sh`, `uv.lock`, `Dockerfile`). `.gitignore` gốc đã có ngoại lệ
+   cho `EdgeAI-MatPho/ai_service/` để `git add` không bỏ sót file `.md`, `docs/` và
+   `run.ps1`.
+2. Chép `firewatch-v2.0.pt` rồi `firewatch-v2.0_640.onnx` vào
+   `EdgeAI-MatPho/ai_service/weights/` (thư mục này không vào git). Compose gắn nó vào
+   `/app/weights` ở chế độ chỉ đọc; `run.sh` chép sang `models/` rồi kiểm SHA-256, sai
+   hoặc thiếu thì container dừng mã 1 với thông báo rõ.
+3. Thêm `GEMINI_API_KEY=<key>` vào `EdgeAI-MatPho/.env`. Không có key thì VLM tắt và mọi
+   event ra `VLM_OFF`, cần người xác thực.
+4. `cd EdgeAI-MatPho && ./run_edge.sh up` (hoặc `docker compose up -d --build`).
+
+**Biến môi trường được dùng** (đúng như khung `ai_service` cũ):
+
+| Biến | Dùng để |
+|---|---|
+| `AI_CAMERA_STREAMS` (JSON) hoặc `AI_CAMERA_IDS` | camera chạy ngay khi khởi động; `cam_id` thành `camera.id` của event. Mỗi mục có thể thêm `"context": "HAM"`, `"TRET"` hoặc `"NGOAI"`, mặc định lấy `camera.context` của `config.yaml` |
+| `MEDIAMTX_RTSP_URL`, `STREAM_PATH_TEMPLATE` | nguồn mỗi camera: `rtsp://mediamtx:8554/live/{cam_id}` |
+| `EDGE_BACKEND_API_URL` | mỗi 2 s đọc `GET /api/v1/edge/cameras`: camera có `should_ai_scan_now` thì nối (kể cả camera mới thêm), camera tắt hoặc đang trong giờ nghỉ theo lịch thì ngắt RTSP ngay; camera không có trong danh sách giữ nguyên. Event gửi tới `POST /api/v1/edge/ai-events` |
+| `CLOUD_BACKEND_API_URL` | đích event khi không có `EDGE_BACKEND_API_URL` (`/api/v1/internal/ai/fire-events`) |
+| `INTERNAL_API_SECRET_KEY` | gửi trong `Authorization: Bearer` và `X-Internal-Secret` |
+| `GEMINI_API_KEY` | VLM thật |
+
+`FIREWATCH_WEBHOOK_URL` và `FIREWATCH_WEBHOOK_TOKEN`, nếu đặt, thắng các giá trị suy ra ở
+trên. `AI_TARGET_FPS`, `AI_SAMPLING_FPS`, `AI_CONFIDENCE_THRESHOLD`, `AI_ALERT_COOLDOWN_S`,
+`ALERT_COOLDOWN_SECONDS` và `AI_MODEL_WEIGHTS_PATH` bị **bỏ qua**, có ghi một dòng log
+lúc khởi động. Nhịp heartbeat, ngưỡng, voting và cooldown lấy từ `config.yaml`, nên điểm
+vận hành giữ đúng như đã kiểm ở mục 6, 8 và 10. `watch_area` của camera cũng chưa được
+dùng; khung cũ cũng không dùng (tồn đọng).
+
+**Đường đi của một cảnh báo.** FireWatch gửi `POST /api/v1/edge/ai-events` tới
+edge_backend. Edge_backend đổi `camera_id` sang `cam_id`, tách `snapshot_base64` và chuyển
+tín hiệu lên `POST /api/v1/internal/ai/fire-events` của cloud trong vòng 4 s. Mất WAN thì
+nó xếp event vào hàng SQLite. Ảnh được tải riêng một lần mỗi `event_id` (pha 2). Lệnh
+`edge` tự bật `webhook.gui_anh` để pha 2 có ảnh, và đặt timeout webhook 10 s; `--set`
+vẫn ghi đè được.
+
+**Trong container.**
+- Mọi camera dùng chung một model (gọi tuần tự có khoá). Event nằm ở `/app/events/<cam_id>/`,
+  `run.log` ở `/app/runs/<cam_id>/`, mỗi dòng log có `[cam-<cam_id>]`.
+- Camera không mở được nguồn (MediaMTX chưa phát luồng) hoặc mất nguồn thì tự chạy lại:
+  chờ 2 s, gấp đôi, tối đa 30 s.
+- `GET /health` trên cổng 8000 trong container: 200 khi mọi camera đang chạy có heartbeat
+  đều, 503 khi có camera `stale`, camera đã từng chạy rồi mất nguồn, hoặc camera chưa có
+  heartbeat nào sau 120 s. Thân trả về liệt kê từng camera, camera đang nghỉ theo lịch
+  (`paused`) và lần đồng bộ edge_backend gần nhất.
+- Không chạy bộ nhắc lại của console (`alerts.escalation_s`): backend tự leo thang.
+
+**Đã kiểm (2026-11-08, trên máy, không Docker).** Chạy `run.sh edge` với trọng số thật;
+hai "camera" là file phát lặp theo thời gian thực: clip có cháy và clip âm. Edge_backend
+giả làm đúng các bước của `relay_ai_fire_event`. Cloud giả kiểm payload bằng
+`AIFireEventPayload` và `AISnapshotUploadPayload` thật của `backend/`.
+
+| Kiểm | Kết quả |
+|---|---|
+| `created` qua edge tới cloud | 202, `cam_id` đúng, `last_seen_ts` dạng ISO |
+| Ảnh pha 2 | 202, một lần, 91 KB |
+| `updated` | 202, đều 30 s một lần |
+| Camera vào giờ nghỉ rồi hết | ngắt ở lần đồng bộ kế tiếp (nhịp 2 s), pipeline dừng trong cùng giây; nối lại ở lần đồng bộ kế tiếp |
+| `/health` | 200 suốt 110 s |
+| Dòng ERROR | 0 |
+
+**Chưa kiểm:** build image và chạy cả cụm `docker compose` thật (MediaMTX, edge_backend,
+RTSP), vì Docker Desktop đang tắt; edge_backend thật cần `aiosqlite`, `av`,
+`pydantic-settings`, không có trong `.venv` của FireWatchAI.

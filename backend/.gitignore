@@ -2,6 +2,13 @@
 # Mắt Phố - Backend .gitignore
 # ==============================================================================
 
+# Chặn toàn bộ file Markdown (.md)
+*.md
+
+# Chặn scripts cục bộ (.bat, .ps1)
+*.bat
+*.ps1
+
 # Environment files
 .env
 .env.*
@@ -15,7 +22,6 @@ credentials/*.json
 *service-account*.json
 *service_account*.json
 !credentials/.gitkeep
-!credentials/README.md
 !credentials/firebase_client/**
 
 # Secrets & Keys

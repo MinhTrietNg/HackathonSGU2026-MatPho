@@ -22,8 +22,6 @@ firebase-service-account*.json
 credentials/*.json
 !**/credentials/.gitkeep
 !credentials/.gitkeep
-!**/credentials/README.md
-!credentials/README.md
 !**/credentials/firebase_client/**
 !credentials/firebase_client/**
 
@@ -60,14 +58,22 @@ data/
 *.ipc
 
 # ------------------------------------------------------------------------------
-# 3. AI AGENTS, LOCAL RULES & KNOWLEDGE BASE (LOCAL ONLY - NEVER PUSHED)
+# 3. AI AGENTS, LOCAL RULES, DOCS & MARKDOWN FILES (LOCAL ONLY - NEVER PUSHED)
 # ------------------------------------------------------------------------------
+# Chặn toàn bộ tất cả các file Markdown (.md) trên toàn bộ repository
+*.md
+
+# Chặn script thực thi cục bộ Windows (.bat, .ps1)
+*.bat
+*.ps1
+
+# Chặn công cụ test RTSP nội bộ
+tool_test_rtsp/
+**/tool_test_rtsp/
+
 # Chặn toàn bộ thư mục kỹ năng và cấu hình AI cục bộ
 .agents/
 skills-lock.json
-AGENTS.md
-GEMINI.md
-GLOSSARY.md
 
 # Chặn kho tài liệu kiến thức (giữ nội bộ máy phát triển)
 docs/

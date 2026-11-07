@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.error_handlers import register_exception_handlers
 from .services.firebase_service import init_firebase
-from .routers import health
+from .routers import health, auth, users
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,3 +64,5 @@ app.add_middleware(
 
 # 3. Include Routers
 app.include_router(health.router)
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)

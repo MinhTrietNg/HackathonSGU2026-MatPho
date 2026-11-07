@@ -1,0 +1,57 @@
+# ==============================================================================
+# MediaMTX Configuration for EdgeAI-MatPho (Master Spec v4.0)
+# Zero-Copy RTSP Remuxer & On-Demand HLS Streaming Gateway
+# ==============================================================================
+
+# Global logging
+logLevel: info
+logDestinations: [stdout]
+
+# Control REST API (Used by edge-backend for dynamic path CRUD)
+api: yes
+apiAddress: :9997
+
+# RTSP Server Configuration
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+# HLS Server Configuration (On-Demand for Flutter Mobile App)
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: no              # Zero-copy: Only remuxes when a viewer actively requests HLS
+hlsSegmentDuration: 2s          # 2-second segments for smooth playback and minimal latency (< 2s)
+hlsPartDuration: 500ms
+hlsSegmentCount: 7
+
+# Disable unused protocols to conserve edge CPU/RAM
+rtmp: no
+webrtc: no
+srt: no
+
+# Internal Authentication & API Permissions
+# NOTE: In Phase 4.1, permissions are open for dev/mock testing.
+# For strict Stream Ticket verification (blocking role NOTIFIER),
+# enable authHTTPAddress: http://edge-backend:8000/api/v1/auth/stream-ticket
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: api
+      - action: publish
+      - action: read
+
+# Standardized Paths (Strictly adhering to live/{cam_id} prefix)
+paths:
+  # Mock Camera Ingest & Relay
+  mock/cam_test:
+    # Dedicated path for Mock Camera generator
+
+  live/cam_mock:
+    source: rtsp://localhost:8554/mock/cam_test
+
+  # Dynamic fallback on-demand for all live cameras
+  ~^live/(.*)$:
+    source: rtsp://localhost:8554/mock/cam_test
+    sourceOnDemand: yes
+
+  all_others:

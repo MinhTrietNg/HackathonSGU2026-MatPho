@@ -112,6 +112,16 @@ class ConflictException(AppException):
         super().__init__(code=code, message=message, status_code=409)
 
 
+class PhoneAlreadyRegisteredException(ConflictException):
+    def __init__(self, message: str = "Số điện thoại này đã được đăng ký trong hệ thống."):
+        super().__init__(message=message, code="PHONE_ALREADY_REGISTERED")
+
+
+class PhoneNotRegisteredException(NotFoundException):
+    def __init__(self, message: str = "Số điện thoại này chưa được đăng ký trong hệ thống."):
+        super().__init__(message=message, code="PHONE_NOT_REGISTERED")
+
+
 class ServiceUnavailableException(AppException):
     def __init__(self, message: str = "Dịch vụ tạm thời không khả dụng.", code: str = "SERVICE_UNAVAILABLE"):
         super().__init__(code=code, message=message, status_code=503)

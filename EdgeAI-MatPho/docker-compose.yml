@@ -1,0 +1,131 @@
+# ==============================================================================
+# EdgeAI-MatPho: On-Premise Edge Node Orchestration (Master Spec v4.0)
+# Multi-Container Deployment: MediaMTX + Edge Backend + Mock Camera + AI Engine
+# ==============================================================================
+
+networks:
+  edge-net:
+    driver: bridge
+    name: edgeai_matpho_net
+
+volumes:
+  edge_data:
+    name: edgeai_matpho_data
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. MediaMTX: Local RTSP Remuxer & On-Demand HLS Streaming Gateway
+  # ----------------------------------------------------------------------------
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: edge_mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"       # RTSP Ingest & Local Publish/Read (:8554/live/{cam_id})
+      - "8888:8888"       # HLS Playback (On-Demand for Mobile App via Tunnel)
+      - "9997:9997"       # Control REST API (for edge-backend dynamic path CRUD)
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    networks:
+      - edge-net
+
+  # ----------------------------------------------------------------------------
+  # 2. Edge Backend: Autonomous Stream Worker, SQLite WAL Cache & Cloud WS Sync
+  # ----------------------------------------------------------------------------
+  edge-backend:
+    build:
+      context: ./edge_backend
+      dockerfile: Dockerfile
+    container_name: edge_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - EDGE_DEVICE_ID=${EDGE_DEVICE_ID:-edg_local_01}
+      - MEDIAMTX_API_URL=http://mediamtx:9997
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
+      - CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.matpho.vn}
+      - CLOUD_BACKEND_WS_URL=${CLOUD_BACKEND_WS_URL:-wss://api.matpho.vn/api/v1/internal/edge/ws}
+      - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
+      - SQLITE_DB_PATH=/app/data/edge.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8080:8000"
+    volumes:
+      - edge_data:/app/data
+      - ./edge_backend/src:/app/src
+    depends_on:
+      - mediamtx
+    networks:
+      - edge-net
+
+  # ----------------------------------------------------------------------------
+  # 3. Mock Camera Simulator (Profile: mock)
+  # docker compose --profile mock up -d
+  # Tự động sinh luồng RTSP 1080p @ 25fps phát vào MediaMTX để test không cần cam thật
+  # ----------------------------------------------------------------------------
+  mock-camera:
+    profiles: ["mock"]
+    build:
+      context: ./edge_backend
+      dockerfile: Dockerfile
+    container_name: edge_mock_camera
+    restart: unless-stopped
+    command: ["python", "/app/scripts/mock_camera.py", "--url", "rtsp://mediamtx:8554/mock/cam_test"]
+    volumes:
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      - mediamtx
+    networks:
+      - edge-net
+
+  # ----------------------------------------------------------------------------
+  # 4. Cloudflare Tunnel (Zero Trust Outbound Tunnel - Profile: tunnel)
+  # Đưa luồng HLS :8888 ra Internet qua domain công khai không cần mở port modem
+  # docker compose --profile tunnel up -d
+  # ----------------------------------------------------------------------------
+  tunnel:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    container_name: edge_tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - mediamtx
+    networks:
+      - edge-net
+
+  # ----------------------------------------------------------------------------
+  # 5. FireWatch AI Service (Profile: ai)
+  # Nhận RTSP từ MediaMTX (:8554), chạy suy luận mô hình và bắn webhook lên Cloud
+  # docker compose --profile ai up -d
+  # ----------------------------------------------------------------------------
+  ai-service:
+    profiles: ["ai"]
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    container_name: edge_ai_service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
+      - EDGE_BACKEND_URL=http://edge-backend:8000
+      - CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.matpho.vn}
+      - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
+      - AI_CAMERA_IDS=${AI_CAMERA_IDS:-cam_mock}
+      - AI_SAMPLING_FPS=${AI_SAMPLING_FPS:-1.0}
+      - AI_CONFIDENCE_THRESHOLD=${AI_CONFIDENCE_THRESHOLD:-0.60}
+      - ALERT_COOLDOWN_SECONDS=${ALERT_COOLDOWN_SECONDS:-30.0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./ai_service/src:/app/src
+      - ./ai_service/weights:/app/weights
+    depends_on:
+      - mediamtx
+      - edge-backend
+    networks:
+      - edge-net

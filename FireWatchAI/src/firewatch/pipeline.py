@@ -39,7 +39,7 @@ from .alerts import Event, EventStore, VerifierInfo
 from .annotate import draw_detections, draw_tracks, write_jpeg
 from .config import Config
 from .detector import DetectResult, Detector, Detection
-from .sources import Heartbeat, HeartbeatSampler, open_source
+from .sources import Heartbeat, HeartbeatSampler, VideoSource, open_source
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest, build_verifier
 from .voting import Severity, TrackEvent, VotingEngine, union
 from .su_co import GomSuCo
@@ -165,7 +165,7 @@ class Pipeline:
                  show: bool | None = None, max_heartbeats: int | None = None,
                  weights: str | None = None, store: EventStore | None = None,
                  strict: bool = False, health: PipelineHealth | None = None,
-                 acks: AckStore | None = None):
+                 acks: AckStore | None = None, detector: object | None = None):
         self.cfg = cfg
         self.source_spec = source_spec
         self.realtime = realtime
@@ -184,14 +184,37 @@ class Pipeline:
         self._gom: GomSuCo | None = None
         """Lớp gom sự cố; chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
         """Chỉ có khi cờ ``verifier.ben_vung`` bật."""
+        self._detector = detector
+        """Detector dùng chung (chế độ nút biên: nhiều camera một model, có
+        khoá); ``None`` thì ``run()`` tự dựng ``Detector`` riêng."""
+        self._dung = threading.Event()
+        self._source: VideoSource | None = None
         if weights:
             cfg.detector.weights = Path(weights)
+
+    def dung(self) -> None:
+        """Dừng ``run()`` từ thread khác, như người dùng dừng chủ động.
+
+        Nguồn live được đóng ngay để vòng đọc khung không phải chờ khung kế
+        tiếp hay chờ kết nối lại; nguồn file dừng ở khung kế tiếp. ``run()``
+        vẫn chạy phần dọn dẹp như bình thường và không coi là mất nguồn.
+        """
+        self._dung.set()
+        src = self._source
+        if src is not None and src.is_live:
+            src.close()
+
+    @property
+    def da_yeu_cau_dung(self) -> bool:
+        """``dung()`` đã được gọi."""
+        return self._dung.is_set()
 
     def run(self) -> RunSummary:
         cfg = self.cfg
         if self.explicit_weights and not cfg.resolve(cfg.detector.weights).is_file():
             raise SystemExit(f"--weights không tồn tại: {cfg.detector.weights}")
         source = open_source(self.source_spec, cfg.source, realtime=self.realtime)
+        self._source = source
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         runs_root = cfg.resolve(cfg.output.dir)
         _prune_runs(runs_root, cfg.output.keep_runs)
@@ -203,7 +226,8 @@ class Pipeline:
             self.health.source_live = source.is_live
             self.health.heartbeat_interval_s = cfg.heartbeat.interval_s
 
-        detector = Detector(cfg.detector, cfg)
+        detector = (self._detector if self._detector is not None
+                    else Detector(cfg.detector, cfg))
         if detector.keep_ids is None and (self.strict or source.is_live
                                           or cfg.detector.require_classes):
             raise SystemExit(
@@ -230,7 +254,11 @@ class Pipeline:
             self.acks.subscribe(self._ack_queue.put)
         try:
             with source:
+                if self._dung.is_set() and source.is_live:
+                    source.close()   # dung() gọi lúc đang mở: open() đã xoá cờ
                 for frame in source:
+                    if self._dung.is_set():
+                        break
                     summary.frames_read += 1
                     last_ts = frame.video_ts
                     hb = sampler.push(frame)
@@ -258,6 +286,9 @@ class Pipeline:
                         log.info("đủ %d heartbeat, dừng", self.max_heartbeats)
                         stopped_by_us = True
                         break
+            if self._dung.is_set():
+                log.info("dừng theo yêu cầu: %s", self.source_spec)
+                stopped_by_us = True
         except BaseException as exc:
             if self.health:
                 self.health.error = f"{type(exc).__name__}: {exc}"
@@ -556,6 +587,11 @@ def _prune_runs(root: Path, keep: int) -> int:
     return n
 
 
+DINH_DANG_LOG = "%(asctime)s %(levelname)s %(message)s"
+"""Định dạng của ``run.log``. Chế độ nút biên thêm tên thread (một thread mỗi
+camera) để log của nhiều camera trong cùng tiến trình phân biệt được."""
+
+
 def _attach_file_log(path: Path, toi_da_mb: float = 20.0,
                      so_ban: int = 5) -> logging.Handler:
     """Mirror the root logger to ``path`` for the duration of one run.
@@ -567,6 +603,6 @@ def _attach_file_log(path: Path, toi_da_mb: float = 20.0,
     fh = logging.handlers.RotatingFileHandler(
         path, maxBytes=int(toi_da_mb * 1024 * 1024), backupCount=so_ban,
         encoding="utf-8")
-    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    fh.setFormatter(logging.Formatter(DINH_DANG_LOG))
     logging.getLogger().addHandler(fh)
     return fh

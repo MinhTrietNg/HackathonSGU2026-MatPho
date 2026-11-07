@@ -43,6 +43,8 @@ final groupAreasProvider = FutureProvider.family<List<Area>, String>((
 });
 
 typedef CurrentGroupView = ({
+  // The `currentGroupIdProvider` value this view was built for.
+  String? selectedId,
   Group group,
   List<Member> members,
   List<Camera> cameras,
@@ -50,14 +52,39 @@ typedef CurrentGroupView = ({
 });
 
 final currentGroupViewProvider = FutureProvider<CurrentGroupView>((ref) async {
+  final selectedId = ref.watch(currentGroupIdProvider);
   final group = await ref.watch(currentGroupProvider.future);
   final (members, cameras, areas) = await (
     ref.watch(groupMembersProvider(group.id).future),
     ref.watch(groupCamerasProvider(group.id).future),
     ref.watch(groupAreasProvider(group.id).future),
   ).wait;
-  return (group: group, members: members, cameras: cameras, areas: areas);
+  return (
+    selectedId: selectedId,
+    group: group,
+    members: members,
+    cameras: cameras,
+    areas: areas,
+  );
 });
+
+// What a screen bound to the current group may show. While a FutureProvider
+// reloads, its value is still the previous one, so right after a switch
+// `currentGroupViewProvider` keeps handing back the group switched away from.
+// This gives null until the selected group's own view has loaded (the
+// first-load state, no actions); a reload of the same group keeps its view.
+final selectedGroupViewProvider = Provider<CurrentGroupView?>((ref) {
+  final view = ref.watch(currentGroupViewProvider).value;
+  final id = ref.watch(currentGroupIdProvider);
+  if (view == null) return null;
+  return view.group.id == id || view.selectedId == id ? view : null;
+});
+
+// A destructive action keeps the group that was on screen when it was tapped
+// and checks this right before calling the repository: a switch meanwhile
+// (say, during its confirm dialog) cancels it.
+bool isSelectedGroup(WidgetRef ref, String groupId) =>
+    ref.read(selectedGroupViewProvider)?.group.id == groupId;
 
 final myInvitationsProvider = FutureProvider<List<Invitation>>((ref) {
   ref.watch(sessionUserIdProvider);

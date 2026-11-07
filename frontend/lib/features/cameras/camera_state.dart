@@ -135,7 +135,13 @@ final watchCameraProvider = Provider.autoDispose
       final place = ref.watch(currentPlaceProvider).value;
       for (final section in ref.watch(placeCamerasProvider).value ?? const []) {
         for (final camera in section.cameras) {
-          if (camera.id != cameraId || place == null) continue;
+          // Right after a switch the sections can still be the previous
+          // place's: never pair a camera with a place it isn't in.
+          if (camera.id != cameraId ||
+              place == null ||
+              camera.groupId != place.id) {
+            continue;
+          }
           return AsyncData(
             CameraDetail(
               camera: camera,

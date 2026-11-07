@@ -22,6 +22,7 @@ import '../ai_mode/ai_mode_state.dart' show aiActivityAt, aiActivityLabel;
 import '../auth/notifications_off_banner.dart';
 import '../auth/permission_controller.dart';
 import '../detection/watch_widgets.dart' show WatchTicker;
+import '../groups/current_group.dart' show currentGroupIdProvider;
 import '../groups/group_state.dart' show groupDisplayName, roleLabel;
 import 'camera_routes.dart';
 import 'camera_state.dart';
@@ -33,8 +34,26 @@ class CameraMonitorScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final place = ref.watch(currentPlaceProvider).value;
-    final sections = ref.watch(placeCamerasProvider).value;
+    // Right after a switch both providers still hold the previous place:
+    // show the first-load frame instead of its name or its cameras.
+    final selectedId = ref.watch(currentGroupIdProvider);
+    final placeAsync = ref.watch(currentPlaceProvider);
+    final lastPlace = placeAsync.value;
+    final place =
+        selectedId == null ||
+            !placeAsync.isLoading ||
+            lastPlace?.id == selectedId
+        ? lastPlace
+        : null;
+    final lastSections = ref.watch(placeCamerasProvider).value;
+    final sections =
+        place != null &&
+            lastSections != null &&
+            lastSections.every(
+              (s) => s.cameras.every((c) => c.groupId == place.id),
+            )
+        ? lastSections
+        : null;
     ref.watch(cameraPlacesProvider);
     final canManage = place?.myRole.canManage ?? false;
     final notificationsOff =

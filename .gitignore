@@ -72,6 +72,10 @@ GLOSSARY.md
 # Chặn kho tài liệu kiến thức (giữ nội bộ máy phát triển)
 docs/
 
+# Chặn Postman collections & environments cục bộ
+postman/
+**/postman/
+
 # Chặn cache và cơ sở dữ liệu đồ thị phân tích Understand-Anything
 .ua/
 .understand-anything/

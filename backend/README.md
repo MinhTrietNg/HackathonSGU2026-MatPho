@@ -28,19 +28,40 @@ Hệ thống Mắt Phố được thiết kế theo mô hình **Hybrid Cloud & E
 
 ---
 
-## 3. Khởi Động Docker
+## 3. Khởi Động Docker Tự Động (One-Click)
 
-1. **Chuẩn bị cấu hình:**
-   ```bash
-   cp .env.example .env
-   ```
-2. **Chuẩn bị chứng chỉ Firebase:**
-   Đặt file `firebase-service-account.json` vào thư mục:
-   `credentials/firebase-service-account.json`
-3. **Khởi chạy container:**
-   ```bash
-   docker compose up -d
-   ```
-4. **Kiểm tra trạng thái:**
-   - Swagger API Docs: `http://localhost:8000/docs`
-   - Healthcheck: `http://localhost:8000/api/v1/health`
+Bạn có thể chạy toàn bộ cụm Backend với 1 lệnh duy nhất (script tự kiểm tra Docker daemon, tự copy `.env`, kiểm tra chứng chỉ Firebase, khởi động container và chờ kiểm tra sức khỏe API):
+
+- **Cách 1: Windows PowerShell (Khuyến nghị)**:
+  ```powershell
+  .\run_docker.ps1
+  ```
+  *Các cờ tiện ích:*
+  - Build lại image: `.\run_docker.ps1 -Build`
+  - Xem logs thời gian thực: `.\run_docker.ps1 -Logs`
+  - Khởi động lại: `.\run_docker.ps1 -Restart`
+  - Dừng hệ thống: `.\run_docker.ps1 -Down`
+
+- **Cách 2: Windows Double-Click (File .bat)**:
+  - Nhấp đúp chuột vào file `run_docker.bat` để chạy.
+  - Nhấp đúp chuột vào file `stop_docker.bat` để dừng.
+
+- **Cách 3: Linux / macOS / Git Bash**:
+  ```bash
+  chmod +x run_docker.sh
+  ./run_docker.sh
+  ```
+
+- **Cách 4: Sử dụng Docker Compose thủ công**:
+  ```bash
+  docker compose up -d
+  ```
+
+---
+
+## 4. Kiểm Tra & Truy Cập Dịch Vụ
+- **Swagger API Docs**: `http://localhost:8000/docs`
+- **Healthcheck**: `http://localhost:8000/api/v1/health`
+- **Redis Cache**: `localhost:6379`
+- **MediaMTX Control API**: `http://localhost:9997`
+- **MediaMTX HLS Playback**: `http://localhost:8888`

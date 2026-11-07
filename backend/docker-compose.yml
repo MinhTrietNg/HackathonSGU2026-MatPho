@@ -3,6 +3,8 @@
 # Dành riêng cho cụm Backend (FastAPI Gateway + Redis State Cache + MediaMTX)
 # ==============================================================================
 
+name: matpho_backend
+
 networks:
   backend-net:
     driver: bridge

@@ -8,7 +8,7 @@
 | Commit nguồn | `afa5a70788ebd872b0523cc722f4c372e4f7f6c4` (2026-11-06 15:25 +0700) |
 | Ngày nhập | 2026-11-07 |
 | Commit nhập | `42b9f631602d21128ba0342b82e03c850aa279da` ("Nhập mã nguồn FireWatch làm bản gốc của repo") |
-| Vị trí hiện tại | thư mục `ai/` (đã dời từ gốc repo sang `ai/` ở commit đổi bố cục) |
+| Vị trí hiện tại | thư mục `FireWatchAI/` (dời từ gốc repo sang `ai/` ở commit đổi bố cục, sau đó đổi tên `ai/` thành `FireWatchAI/`) |
 
 Phần được nhập, so theo hash object của git giữa `afa5a70` và `42b9f63` (hash object
 trùng nghĩa là nội dung trùng từng byte):
@@ -37,7 +37,7 @@ SHA-256 tính trên nội dung file đã commit (xuống dòng LF), lấy bằng
 
 - Cột 1: `Model-Mat-Pho-` @ `afa5a70`, đường dẫn `src/firewatch/<file>`.
 - Cột 2: repo này @ `7d29bca`, đường dẫn `src/firewatch/<file>` (trước khi dời; sau
-  khi dời sang `ai/src/firewatch/<file>` nội dung không đổi).
+  khi dời sang `FireWatchAI/src/firewatch/<file>` nội dung không đổi).
 - Cột 3: `MinhTrietNg/FireWatch-Model` @ `f61f8f2468ef98ed23fbcf4822a7d79bf8a9942b`,
   đường dẫn `src/firewatch/<file>`.
 
@@ -57,5 +57,5 @@ commit thêm `.gitattributes` (`* text=auto eol=lf`), bản checkout giữ LF v�
 kiểm trực tiếp:
 
 ```bash
-sha256sum ai/src/firewatch/{voting,detector,sources}.py
+sha256sum FireWatchAI/src/firewatch/{voting,detector,sources}.py
 ```

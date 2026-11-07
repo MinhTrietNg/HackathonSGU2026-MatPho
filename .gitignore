@@ -1,5 +1,5 @@
 # Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
-# phần đó (ví dụ ai/.gitignore).
+# phần đó (ví dụ FireWatchAI/.gitignore).
 
 # Môi trường
 .venv/

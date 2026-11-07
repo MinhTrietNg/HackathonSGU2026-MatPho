@@ -1,4 +1,4 @@
-# ai/: FireWatch
+# FireWatchAI/: FireWatch
 
 Pipeline phát hiện cháy và khói từ camera giám sát khu để xe:
 
@@ -9,19 +9,19 @@ nguồn video → heartbeat → detector (YOLO26n) → voting → xác minh VLM 
 Mỗi cảnh báo thành một event (JSON + ảnh keyframe), được đẩy qua REST, WebSocket và
 webhook cho backend, và hiện trên console người trực (`/console`).
 
-Mọi lệnh dưới đây chạy **trong thư mục `ai/`**: `config.yaml` được tìm từ thư mục hiện
-tại trở lên, `.env` được đọc cạnh `config.yaml`. Chạy từ chỗ khác thì thêm
-`--config <đường dẫn tới ai/config.yaml>`.
+Mọi lệnh dưới đây chạy **trong thư mục `FireWatchAI/`**: `config.yaml` được tìm từ thư
+mục hiện tại trở lên, `.env` được đọc cạnh `config.yaml`. Chạy từ chỗ khác thì thêm
+`--config <đường dẫn tới FireWatchAI/config.yaml>`.
 
 ## Cài đặt
 
 ```bash
-cd ai
-uv sync                 # tạo ai/.venv từ uv.lock
+cd FireWatchAI
+uv sync                 # tạo FireWatchAI/.venv từ uv.lock
 cp .env.example .env    # điền GEMINI_API_KEY, webhook nếu dùng; .env không commit
 ```
 
-Trọng số detector không nằm trong git. Đặt file `.pt` vào `ai/models/` đúng tên ở
+Trọng số detector không nằm trong git. Đặt file `.pt` vào `FireWatchAI/models/` đúng tên ở
 `detector.weights` trong `config.yaml`. Thiếu file đó thì detector dùng
 `detector.fallback_weights`, nhưng `serve` và nguồn live sẽ từ chối chạy nếu trọng số
 không có lớp `fire` / `smoke`.

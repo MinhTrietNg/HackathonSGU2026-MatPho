@@ -1,4 +1,4 @@
-# Giữ LF khi checkout để SHA-256 trong ai/docs/nguon_goc.md kiểm được trên mọi máy.
+# Giữ LF khi checkout để SHA-256 trong FireWatchAI/docs/nguon_goc.md kiểm được trên mọi máy.
 * text=auto eol=lf
 *.pt binary
 *.onnx binary

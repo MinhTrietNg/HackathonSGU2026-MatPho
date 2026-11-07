@@ -26,6 +26,12 @@
         "--dart-define=ENV=prod",
         "--dart-define-from-file=.env"
       ]
+    },
+    {
+      "name": "Mắt Phố (Mock - backend giả, không cần mạng)",
+      "request": "launch",
+      "type": "dart",
+      "program": "test/mock/main.dart"
     }
   ]
 }

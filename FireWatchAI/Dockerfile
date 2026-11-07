@@ -1,5 +1,11 @@
-# FireWatch chạy như dịch vụ: python -m firewatch serve với config.yaml.
-# Hướng dẫn build, chạy và gắn vào docker-compose của backend: docs/van_hanh.md mục 7.
+# FireWatch chạy như dịch vụ. Lệnh mặc định "edge":
+#
+# 1. Thay EdgeAI-MatPho/ai_service (docs/van_hanh.md mục 11): docker-compose của nút
+#    biên build thư mục này, truyền camera, MediaMTX, edge_backend và bí mật bằng
+#    biến môi trường, gắn ai_service/weights vào /app/weights. Mọi camera chạy
+#    trong một container, theo lịch quét của edge_backend.
+# 2. Một nguồn (docs/van_hanh.md mục 7): không có biến của nút biên mà có
+#    FIREWATCH_SOURCE thì "edge" chạy serve trên nguồn đó, như trước:
 #
 #   docker build -t firewatch FireWatchAI
 #   docker run -d --restart unless-stopped -p 8000:8000 --env-file FireWatchAI/.env \
@@ -7,9 +13,9 @@
 #     -v "$PWD/FireWatchAI/models:/app/models:ro" -v firewatch_events:/app/events \
 #     firewatch
 #
-# Trọng số không nằm trong image: mount models/ (kiểm SHA-256 lúc khởi động bằng
-# tools/kiem_trong_so.py, sai thì container dừng). .env không nằm trong image:
-# truyền bằng --env-file / env_file.
+# Trọng số không nằm trong image: gắn models/ hoặc /app/weights (run.sh chép sang
+# models/ rồi kiểm SHA-256 bằng tools/kiem_trong_so.py, sai thì container dừng).
+# .env không nằm trong image: truyền bằng --env-file / env_file.
 
 FROM python:3.11-slim
 
@@ -46,12 +52,15 @@ RUN pip install --no-deps . && mkdir -p /app/events /app/runs
 VOLUME ["/app/events", "/app/runs"]
 EXPOSE 8000
 
-# /health trả 503 khi pipeline chết hoặc quá lâu không có heartbeat: urlopen ném
-# lỗi, lệnh thoát khác 0, container thành unhealthy.
+# /health trả 503 khi pipeline chết, quá lâu không có heartbeat, hoặc (edge) có
+# camera đang chạy mà hỏng: urlopen ném lỗi, lệnh thoát khác 0, container thành
+# unhealthy.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
 
 ENV FIREWATCH_PYTHON=python
 ENTRYPOINT ["sh", "/app/run.sh"]
-# Pipeline chết thì serve thoát mã 1 để restart: unless-stopped khởi động lại.
-CMD ["serve", "--host", "0.0.0.0", "--port", "8000", "--exit-on-pipeline-stop"]
+# edge: nút biên nếu có AI_CAMERA_STREAMS / AI_CAMERA_IDS / EDGE_BACKEND_API_URL,
+# ngược lại serve --exit-on-pipeline-stop trên FIREWATCH_SOURCE. Lỗi không chạy
+# lại được (trọng số sai) thì thoát mã 1 để restart: unless-stopped khởi động lại.
+CMD ["edge", "--host", "0.0.0.0", "--port", "8000"]

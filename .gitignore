@@ -85,6 +85,8 @@ redis_data/
 
 # Ngoại lệ: Cho phép script run.ps1 của FireWatchAI chạy kiểm tra SHA-256
 !EdgeAI-MatPho/FireWatchAI/run.ps1
+!RUN_MATPHO_SYSTEM.bat
+!scripts/
 
 # Chặn công cụ test RTSP nội bộ
 tool_test_rtsp/

@@ -206,3 +206,15 @@ __pycache__/
 # Kết quả chạy
 runs/
 origin/main
+
+# ------------------------------------------------------------------------------
+# FireWatchAI: hợp đồng với backend (docs/), bảng SHA-256 trọng số
+# (models/README.md, cần để build image và để run.sh cho chạy) và run.ps1 phải
+# nằm trong git. Áp cho cả bản đặt ở EdgeAI-MatPho/ai_service.
+# ------------------------------------------------------------------------------
+!FireWatchAI/**/*.md
+!FireWatchAI/docs/
+!FireWatchAI/run.ps1
+!EdgeAI-MatPho/ai_service/**/*.md
+!EdgeAI-MatPho/ai_service/docs/
+!EdgeAI-MatPho/ai_service/run.ps1

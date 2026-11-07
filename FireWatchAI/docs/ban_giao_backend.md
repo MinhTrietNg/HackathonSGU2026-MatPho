@@ -8,18 +8,39 @@ hợp đồng sửa tại đây. Nguồn gốc: README của `Model-Mat-Pho-` @ 
 
 Một alert là một event. Schema top-level **không tự đổi**; chỉ được thêm trường mới.
 
+**Mẫu thật: `docs/mau_event.json`.** Đó là payload webhook `created` của một lần chạy
+pipeline trên clip có lửa (VLM giả, `webhook.gui_anh` bật, ảnh nén dưới 10 KB cho file
+nhỏ). Backend dùng file này để test parser. `tests/test_mau_event.py` hỏng nếu schema đổi
+mà file mẫu chưa xuất lại (`python tools/xuat_mau_event.py --source <clip có lửa>`).
+
 ```json
 {
   "event_id": "uuid", "camera_id": "cam01", "context": "HAM|TRET|NGOAI",
   "severity": "WARNING|CRITICAL", "verification": "VERIFIED|UNVERIFIED|SUPPRESSED",
   "started_at": "ISO8601", "video_ts_sec": 12.0,
-  "boxes": [{"cls": "fire", "conf": 0.87, "xyxy": [120, 80, 260, 210]}],
+  "boxes": [{"cls": "fire", "conf": 0.87, "xyxy": [120, 80, 260, 210],
+             "xyxyn": [0.0938, 0.1111, 0.2031, 0.2917]}],
   "vlm": {"is_fire": true, "is_smoke": true, "confidence": 0.92,
           "description_vi": "...", "fire_type": "UNCONTROLLED|CONTROLLED|UNKNOWN|null"},
-  "snapshot_path": "events/20261102_120000_xxxxxxxx.jpg"
+  "snapshot_path": "events/20261102_120000_xxxxxxxx.jpg",
+  "type": "created|updated", "frame_w": 1280, "frame_h": 720, "frame_ts": 1762060800.0,
+  "snapshot_base64": "<JPEG base64, chỉ trong webhook khi webhook.gui_anh bật>"
 }
 ```
 
+| Trường | Kiểu | Ý nghĩa |
+|---|---|---|
+| `boxes[].cls` | `fire` \| `smoke` | lớp của box |
+| `boxes[].conf` | float [0, 1] | độ tin cậy của detector |
+| `boxes[].xyxy` | 4 float | góc trái trên, phải dưới, **pixel trên khung gốc** `frame_w × frame_h` |
+| `boxes[].xyxyn` | 4 float [0, 1] | `xyxy` chia cho `frame_w`, `frame_h`; vẽ được trên ảnh bất kỳ cỡ nào (kể cả `snapshot_base64` đã thu nhỏ) bằng cách nhân với cỡ ảnh đó |
+| `type` | `created` \| `updated` | `created` ở lần gửi đầu của `event_id`; `updated` ở mọi lần gửi lại cùng `event_id` (kết quả VLM, nhắc lại, verifier đổi trạng thái) |
+| `frame_w`, `frame_h` | int | cỡ khung gốc, pixel |
+| `frame_ts` | float | giây Unix (UTC) của khung keyframe; cùng thời điểm với `started_at` |
+| `snapshot_base64` | str, tuỳ chọn | keyframe **gốc, không vẽ box**, JPEG base64, dưới `webhook.anh_toi_da_kb` (mặc định 200 KB). Chỉ có trong payload webhook khi `webhook.gui_anh: true`; JSON trên đĩa, REST và WebSocket không có trường này |
+
+- Event ghi trên đĩa trước khi có các trường trên vẫn nạp lại được; khi đó `frame_w`,
+  `frame_h`, `frame_ts` là 0 và `xyxyn` toàn 0.
 - `severity` do detector quyết: CRITICAL khi đủ `voting.k_fire` heartbeat có box lửa,
   ngược lại là WARNING. VLM **không** hạ severity.
 - `started_at` là giờ thật của khung hình xác nhận cháy, không phải lúc VLM trả lời.
@@ -109,12 +130,14 @@ Hợp đồng đã chốt với đội backend ngày 2026-11-07.
 | URL | do backend cung cấp, đặt vào `FIREWATCH_WEBHOOK_URL` trong `.env`. Không đặt thì FireWatch không gửi webhook |
 | Phương thức | `POST`, `Content-Type: application/json` |
 | Xác thực | token đặt vào `FIREWATCH_WEBHOOK_TOKEN`. Có token thì gửi **cả hai** header với cùng giá trị: `Authorization: Bearer <token>` và `X-Internal-Secret: <token>`. Token rỗng hoặc chưa đặt thì không gửi header xác thực nào |
-| Payload | event **đầy đủ** đúng schema mục 1, không đổi, không cắt bớt trường |
-| Cập nhật | mọi lần gửi lại cùng `event_id` (event đã cập nhật) đi **cùng URL đó** với cùng payload và header. Backend upsert theo `event_id` |
+| Payload | event **đầy đủ** đúng schema mục 1, không đổi, không cắt bớt trường; thêm `snapshot_base64` khi `webhook.gui_anh: true` |
+| Cập nhật | mọi lần gửi lại cùng `event_id` (event đã cập nhật) đi **cùng URL đó** với cùng payload và header, `type: "updated"`. Backend upsert theo `event_id` |
+| Ảnh | `webhook.gui_anh` (mặc định `false`): bật thì mọi lần gửi của event (cả `created` và `updated`) kèm keyframe gốc. Tắt thì backend lấy ảnh qua `GET /snapshots/<file>` theo `snapshot_path` (ảnh đã vẽ box) |
 | Không dùng | các endpoint `/internal/ai/verifying` và `/internal/ai/suppressed` của backend. Trạng thái xác minh và `SUPPRESSED` đã nằm trong event (`verification`, `vlm`, và `verifier` khi bật cờ) |
 
 Bên gửi:
-- Gửi trên thread riêng, không chặn pipeline.
+- Gửi trên một thread riêng theo hàng FIFO, không chặn pipeline. Backend nhận đúng thứ
+  tự phát: `updated` không bao giờ tới trước `created` của cùng `event_id`.
 - Có ba trường hợp gửi lại cùng `event_id`: cập nhật VLM, nhắc lại CRITICAL, và object
   `verifier` đổi trạng thái (mục 5, khi bật cờ).
 - Lỗi 4xx (trừ 408 và 429) không retry, vì gửi lại cũng vậy. Lỗi 5xx và lỗi mạng retry
@@ -122,7 +145,9 @@ Bên gửi:
 - Backend nên trả 2xx ngay khi đã nhận, rồi mới xử lý.
 
 Test: `tests/test_webhook_hop_dong.py` dựng một backend giả trên localhost, kiểm đủ hai
-header và payload là event đầy đủ.
+header, payload là event đầy đủ, `type` `created` rồi `updated` cùng `event_id`, toạ độ
+`xyxy` / `xyxyn`, và `snapshot_base64` là JPEG gốc dưới 200 KB khi bật.
+`tests/test_mau_event.py` kiểm `docs/mau_event.json` khớp đúng tập trường của schema.
 
 ## 5. Verifier bền vững (sau cờ, mặc định tắt)
 

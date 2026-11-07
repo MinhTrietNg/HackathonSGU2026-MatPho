@@ -12,13 +12,14 @@ from firewatch.config import Config
 from firewatch.detector import Detection
 
 SCHEMA_KEYS = {"event_id", "camera_id", "context", "severity", "verification",
-               "started_at", "video_ts_sec", "boxes", "vlm", "snapshot_path"}
+               "started_at", "video_ts_sec", "boxes", "vlm", "snapshot_path",
+               "type", "frame_w", "frame_h", "frame_ts"}
 
 
 def test_event_schema_keys_are_exactly_the_agreed_ones():
     assert set(sample_event().model_dump().keys()) == SCHEMA_KEYS
     box_keys = set(sample_event().model_dump()["boxes"][0].keys())
-    assert box_keys == {"cls", "conf", "xyxy"}
+    assert box_keys == {"cls", "conf", "xyxy", "xyxyn"}
     # fire_type nằm TRONG object vlm (nullable, backend đọc lỏng); top-level không đổi
     assert set(sample_event().model_dump()["vlm"].keys()) == {
         "is_fire", "is_smoke", "confidence", "description_vi", "fire_type"}
@@ -83,3 +84,17 @@ def test_store_reloads_existing_events(tmp_path: Path):
                  detections=[], image=None)
     again = EventStore(cfg.alerts, cfg.camera, cfg)
     assert len(again) == 1 and again.all()[0].severity == "WARNING"
+
+
+def test_event_cu_tren_dia_van_nap_duoc(tmp_path: Path):
+    """JSON ghi trước khi có type / frame_* / xyxyn vẫn được nạp lại."""
+    d = tmp_path / "events"
+    d.mkdir()
+    (d / "20261102_000000_cu.json").write_text(
+        '{"event_id":"cu","camera_id":"c","context":"HAM","severity":"WARNING",'
+        '"verification":"UNVERIFIED","started_at":"2026-11-02T00:00:00+07:00",'
+        '"video_ts_sec":1.0,"boxes":[{"cls":"fire","conf":0.5,"xyxy":[1,2,3,4]}],'
+        '"vlm":null,"snapshot_path":""}', encoding="utf-8")
+    cfg = Config(alerts={"events_dir": str(d)}, root=tmp_path)
+    ev = EventStore(cfg.alerts, cfg.camera, cfg).get("cu")
+    assert ev is not None and ev.type == "created" and ev.frame_w == 0

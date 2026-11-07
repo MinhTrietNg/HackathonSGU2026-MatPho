@@ -303,7 +303,8 @@ class EventStore:
                video_ts: float, detections: list[Detection],
                image: np.ndarray | None, vlm: VLMResult | None = None,
                started_at: datetime | None = None,
-               verifier: VerifierInfo | None = None) -> Event:
+               verifier: VerifierInfo | None = None,
+               event_id: str | None = None) -> Event:
         """Persist one alert (JSON + annotated snapshot) and notify listeners.
 
         Parameters
@@ -313,9 +314,12 @@ class EventStore:
         verifier : VerifierInfo, optional
             Trạng thái xác minh khi cờ ``verifier.ben_vung`` bật; ``None`` giữ
             đúng JSON và log cũ.
+        event_id : str, optional
+            ``event_id`` đã cấp từ lúc Voting quyết (cờ bật: hàng chờ xác minh
+            khoá theo nó). ``None`` thì tạo mới như trước.
         """
         started = started_at or datetime.now(timezone.utc).astimezone()
-        event_id = str(uuid.uuid4())
+        event_id = event_id or str(uuid.uuid4())
         stem = f"{started:%Y%m%d_%H%M%S}_{event_id[:8]}"
         snapshot_rel = ""
         if image is not None:

@@ -105,7 +105,9 @@ verifier:
   ben_vung: false           # false (hoặc thiếu khối này): hành vi, log, JSON event y hệt trước đây.
                             # true: event có thêm object verifier (status, needs_human_check,
                             # latency_ms, reason); VLM không hạ mức, không gỡ cảnh báo
-  ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s
+  ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s.
+                            # Cờ bật: mỗi lượt gọi VLM có timeout = ngân sách còn lại - 0,5 s,
+                            # không retry (bỏ qua vlm.timeout_s, vlm.retries); < 1 s thì không gọi
   hang_cho_toi_da: 8        # số mục tối đa đang chờ gọi VLM, khoá theo event_id
   cau_dao:
     loi_lien_tiep: 3        # thất bại liên tiếp thì mở cầu dao

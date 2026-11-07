@@ -129,8 +129,9 @@ header và payload là event đầy đủ.
 Thiết kế ở `docs/decisions/2026-11-07-verifier-ben-vung.md`.
 
 **Trạng thái hiện tại.** Có sau cờ `verifier.ben_vung`, mặc định tắt. Đã có trạng thái,
-schema và config (commit `ddadff0`, nhánh `FireWatch-AI`). Hàng chờ, cầu dao, phần
-`/health` và trường `reason: "verifier"` trên WebSocket chưa làm.
+schema và config (commit `ddadff0`, nhánh `FireWatch-AI`), hàng chờ và ngân sách nền
+(`PENDING` ở 2 s, `VLM_TIMEOUT` ở 10 s, độc lập heartbeat). Cầu dao, phần `/health` và
+trường `reason: "verifier"` trên WebSocket chưa làm.
 
 Khi cờ tắt, hoặc config không có khối `verifier`, event giữ đúng schema mục 1 và trường
 `verifier` không xuất hiện.

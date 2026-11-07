@@ -168,9 +168,13 @@ class VLMVerifier(ABC):
 
     @abstractmethod
     def verify(self, frame_jpeg: bytes, crop_jpeg: bytes, context: Context,
-               severity: str, first_jpeg: bytes | None = None) -> VLMResult:
+               severity: str, first_jpeg: bytes | None = None,
+               timeout_s: float | None = None) -> VLMResult:
         """Judge the alert keyframe (+ crop); ``first_jpeg`` is the frame from
-        when the track appeared, to see whether the fire spreads."""
+        when the track appeared, to see whether the fire spreads.
+
+        ``timeout_s`` chỉ được truyền khi cờ ``verifier.ben_vung`` bật: timeout
+        của riêng lượt này, thay timeout cấu hình. ``None`` giữ hành vi cũ."""
 
 
 class MockVerifier(VLMVerifier):
@@ -186,7 +190,12 @@ class MockVerifier(VLMVerifier):
         self.fire_type = fire_type
 
     def verify(self, frame_jpeg: bytes, crop_jpeg: bytes, context: Context,
-               severity: str, first_jpeg: bytes | None = None) -> VLMResult:
+               severity: str, first_jpeg: bytes | None = None,
+               timeout_s: float | None = None) -> VLMResult:
+        """Chờ ``delay_s`` rồi trả lời; ``timeout_s`` ngắn hơn thì hết giờ."""
+        if timeout_s is not None and self.delay_s > timeout_s:
+            time.sleep(timeout_s)
+            raise TimeoutError(f"mock quá {timeout_s:.1f}s")
         time.sleep(self.delay_s)
         what = ("lửa và khói" if self.is_fire and self.is_smoke else
                 "lửa" if self.is_fire else "khói" if self.is_smoke else
@@ -262,14 +271,19 @@ class GeminiVerifier(VLMVerifier):
         return {"contents": [{"role": "user", "parts": parts}],
                 "generationConfig": gen}
 
-    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
-        """HTTP call; separated so tests can inject a fake transport."""
+    def _post(self, body: dict[str, Any],
+              timeout_s: float | None = None) -> dict[str, Any]:
+        """HTTP call; separated so tests can inject a fake transport.
+
+        ``timeout_s`` (cờ ``ben_vung``) thay ``self.timeout_s`` cho lượt này.
+        """
         req = urllib.request.Request(
             self.url, data=json.dumps(body).encode("utf-8"), method="POST",
             headers={"Content-Type": "application/json",
                      "x-goog-api-key": self.api_key})
+        han = self.timeout_s if timeout_s is None else timeout_s
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=han) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8", "replace")
@@ -307,12 +321,15 @@ class GeminiVerifier(VLMVerifier):
         return VLMResult(**data)
 
     def verify(self, frame_jpeg: bytes, crop_jpeg: bytes, context: Context,
-               severity: str, first_jpeg: bytes | None = None) -> VLMResult:
+               severity: str, first_jpeg: bytes | None = None,
+               timeout_s: float | None = None) -> VLMResult:
         body = self.build_request(frame_jpeg, crop_jpeg, context, severity,
                                   first_jpeg)
         t0 = time.perf_counter()
+        # Chỉ truyền khi có, để transport giả trong test cũ (một tham số) vẫn chạy.
+        han = {} if timeout_s is None else {"timeout_s": timeout_s}
         try:
-            response = self._post(body)
+            response = self._post(body, **han)
         except GeminiHTTPError as exc:
             if exc.code != 400 or "thinkingConfig" not in body["generationConfig"]:
                 raise
@@ -321,7 +338,7 @@ class GeminiVerifier(VLMVerifier):
             log.warning("Gemini %s trả HTTP 400 khi có thinkingConfig=%s (%s): "
                         "gửi lại không kèm", self.model, sent,
                         exc.body[:120].replace("\n", " "))
-            response = self._post({**body, "generationConfig": gen})
+            response = self._post({**body, "generationConfig": gen}, **han)
             self.thinking = None    # gửi lại thành công: lỗi do thinkingConfig
             log.warning("Gemini %s: các lần sau không gửi thinkingConfig", self.model)
         self._log_usage(response, time.perf_counter() - t0)
@@ -469,10 +486,8 @@ class VerificationService:
         if fut.exception() is not None:
             log.error("VLM worker lỗi không bắt được: %s", fut.exception())
 
-    def run_sync(self, req: VerifyRequest) -> VerifyOutcome:
-        """Encode images, call the provider with retries, map the answer."""
-        assert self.verifier is not None
-        t0 = time.perf_counter()
+    def _ma_hoa(self, req: VerifyRequest) -> tuple[bytes, bytes, bytes | None]:
+        """JPEG của keyframe, vùng nghi ngờ và khung đầu track (nếu có)."""
         frame_jpeg = encode_jpeg(req.frame, self.cfg.max_image_px,
                                  self.cfg.jpeg_quality)
         crop = crop_with_padding(req.frame, req.box, self.cfg.crop_padding)
@@ -480,6 +495,51 @@ class VerificationService:
         first_jpeg = (encode_jpeg(req.first_frame, self.cfg.max_image_px,
                                   self.cfg.jpeg_quality)
                       if req.first_frame is not None else None)
+        return frame_jpeg, crop_jpeg, first_jpeg
+
+    def goi_mot_lan(self, req: VerifyRequest, timeout_s: float) -> VerifyOutcome:
+        """Một lượt gọi VLM, không retry, timeout cho trước (cờ ``ben_vung``).
+
+        Chạy trên luồng của người gọi. Lỗi không ném ra ngoài mà thành
+        ``UNVERIFIED`` kèm mã ``reason`` ngắn; chuỗi lỗi thô chỉ để log.
+
+        Parameters
+        ----------
+        req : VerifyRequest
+            Keyframe và vùng cần xác minh.
+        timeout_s : float
+            Timeout của lượt gọi (ngân sách còn lại trừ phần dự phòng).
+
+        Returns
+        -------
+        VerifyOutcome
+            ``latency_s`` là thời gian của riêng lượt gọi này.
+        """
+        assert self.verifier is not None
+        t0 = time.perf_counter()
+        try:
+            frame_jpeg, crop_jpeg, first_jpeg = self._ma_hoa(req)
+            result = apply_fire_type_policy(
+                self.verifier.verify(frame_jpeg, crop_jpeg, req.context, req.severity,
+                                     first_jpeg, timeout_s=timeout_s), req.context)
+        except Exception as exc:  # noqa: BLE001 - mọi lỗi đều fail-open
+            latency = time.perf_counter() - t0
+            log.warning("VLM %s lỗi (%.1fs, timeout %.1fs): %s", self.verifier.name,
+                        latency, timeout_s, f"{type(exc).__name__}: {exc}")
+            return VerifyOutcome("UNVERIFIED", None, latency, 1,
+                                 f"{type(exc).__name__}: {exc}", ma_loi(exc))
+        latency = time.perf_counter() - t0
+        log.info("VLM %s trả lời sau %.1fs (timeout %.1fs): fire=%s smoke=%s "
+                 "conf=%.2f type=%s — %s", self.verifier.name, latency, timeout_s,
+                 result.is_fire, result.is_smoke, result.confidence,
+                 result.fire_type, result.description_vi)
+        return VerifyOutcome(verification_from(result), result, latency, 1)
+
+    def run_sync(self, req: VerifyRequest) -> VerifyOutcome:
+        """Encode images, call the provider with retries, map the answer."""
+        assert self.verifier is not None
+        t0 = time.perf_counter()
+        frame_jpeg, crop_jpeg, first_jpeg = self._ma_hoa(req)
         error: str | None = None
         reason: str | None = None
         attempts = 0

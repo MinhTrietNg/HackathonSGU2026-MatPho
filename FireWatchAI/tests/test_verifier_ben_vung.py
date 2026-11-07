@@ -26,7 +26,6 @@ from firewatch.pipeline import Pipeline, RunSummary
 from firewatch.vlm import (GeminiHTTPError, MockVerifier, VerificationService,
                            VerifyOutcome, VerifyRequest, VLMVerifier, ma_loi,
                            trang_thai_verifier)
-from firewatch.voting import Severity
 
 import kich_ban_verifier as kb
 
@@ -153,13 +152,15 @@ def test_kich_ban_1_co_tat_y_het_snapshot(tmp_path):
 # ------------------------------------------------------- kịch bản 2, 9, 10
 def _chay_voi_service(tmp: Path, verifier: VLMVerifier, n: int, *, grace_s: float,
                       notify_suppressed: bool = True, max_workers: int = 2,
-                      han_cho_s: float = 10.0):
-    """Chạy ``n`` cảnh báo thật qua ``VerificationService`` với cờ bật.
+                      han_cho_s: float = 10.0, hang_cho_toi_da: int = 8):
+    """Chạy ``n`` cảnh báo thật qua bộ điều phối nền với cờ bật, đồng hồ thật.
 
-    Gọi ``_flush_pending`` liên tục trên luồng này như vòng heartbeat, cho tới khi
-    hết cảnh báo chờ. Trả (store, danh sách (kind, event) theo thứ tự phát).
+    Không có vòng heartbeat: ``created`` / ``updated`` do luồng hẹn giờ và
+    worker của bộ điều phối phát. Trả (store, danh sách (kind, event) theo thứ
+    tự phát).
     """
-    cfg = kb.cau_hinh(tmp, verifier={"ben_vung": True},
+    cfg = kb.cau_hinh(tmp, verifier={"ben_vung": True,
+                                     "hang_cho_toi_da": hang_cho_toi_da},
                       vlm={"grace_s": grace_s, "provider": "mock",
                            "max_workers": max_workers},
                       alerts={"notify_suppressed": notify_suppressed})
@@ -175,16 +176,14 @@ def _chay_voi_service(tmp: Path, verifier: VLMVerifier, n: int, *, grace_s: floa
     svc = VerificationService(cfg.vlm, verifier)
     p = Pipeline(cfg, "kich_ban")
     s = RunSummary(source="kich_ban", weights="w", out_dir="out")
+    dp = p._tao_dieu_phoi(store, s, svc)
     for i in range(n):
-        fut = svc.submit(VerifyRequest(ANH, HOP, "HAM", "CRITICAL", float(i)))
-        kb.them_canh_bao(p, fut, ts=float(i), track=i, han_s=grace_s,
-                         severity=Severity.CRITICAL)
-    het = time.time() + han_cho_s
-    while p._pending and time.time() < het:
-        p._flush_pending(store, s)
-        time.sleep(0.01)
+        kb.gui_nen(p, VerifyRequest(ANH, HOP, "HAM", "CRITICAL", float(i)),
+                   ts=float(i), track=i)
+    xong = dp.cho_xong(han_cho_s)
+    dp.dong()
     svc.shutdown()
-    assert not p._pending, "còn cảnh báo chờ sau hạn kiểm"
+    assert xong, "còn cảnh báo chưa có trạng thái cuối sau hạn kiểm"
     return store, phat
 
 
@@ -249,8 +248,9 @@ class _TreNgauNhien(VLMVerifier):
 def test_kich_ban_10_khong_co_updated_truoc_created(tmp_path):
     rng = random.Random(0)
     tre = [rng.uniform(0.0, 0.6) for _ in range(16)]
+    # hàng đủ chứa cả 16 mục: kịch bản này kiểm thứ tự, không kiểm hàng đầy
     store, phat = _chay_voi_service(tmp_path, _TreNgauNhien(tre), 16, grace_s=0.25,
-                                    max_workers=4)
+                                    max_workers=4, hang_cho_toi_da=16)
     da_tao: set[str] = set()
     so_updated: dict[str, int] = {}
     for kind, ev in phat:

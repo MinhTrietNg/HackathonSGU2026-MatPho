@@ -93,6 +93,17 @@ def them_canh_bao(p: Pipeline, fut: Future, *, ts: float, track: int,
         started_at=BAT_DAU))
 
 
+def gui_nen(p: Pipeline, req: Any, *, ts: float, track: int,
+            severity: Severity = Severity.CRITICAL) -> str:
+    """Giao một cảnh báo cho bộ điều phối nền như ``_on_track_event`` (cờ bật).
+
+    Trả ``event_id`` đã cấp.
+    """
+    return p._gui_nen(req, _PendingAlert(
+        future=None, deadline_wall=0.0, kind="NEW", track_id=track,
+        severity=severity, ts=ts, detections=[DET], image=None, started_at=BAT_DAU))
+
+
 def chay_kich_ban(tmp: Path, **muc: dict[str, Any]) -> dict[str, Any]:
     """Chạy sáu cảnh báo qua ``_flush_pending`` và trả mọi thứ quan sát được.
 

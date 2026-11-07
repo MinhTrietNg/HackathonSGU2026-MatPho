@@ -1,7 +1,10 @@
+# Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
+# phần đó (ví dụ FireWatchAI/.gitignore).
+
 # AI agent instructions + personal docs (local only, never pushed)
-CLAUDE.md
+/CLAUDE.md
 .claude/
-docs/
+/docs/
 
 # OS / editors
 .DS_Store
@@ -25,6 +28,18 @@ Thumbs.db
 .swiftpm/
 migrate_working_dir/
 bugreport-*.zip
+
+# Python (FireWatchAI)
+.venv/
+__pycache__/
+
+# Trọng số model và gói nén (dữ liệu, model)
+*.pt
+*.onnx
+*.zip
+
+# Kết quả chạy
+runs/
 
 # ---------------------------------------------------------------------------
 # Secrets / per-machine config — public repo, never commit

@@ -11,6 +11,7 @@ class MpSettingsRow extends StatelessWidget {
     required this.iconColor,
     required this.title,
     this.subtitle,
+    this.subtitleColor,
     this.value,
     this.trailing,
     this.onTap,
@@ -21,6 +22,7 @@ class MpSettingsRow extends StatelessWidget {
   final Color iconColor;
   final String title;
   final String? subtitle;
+  final Color? subtitleColor;
   final String? value;
 
   final Widget? trailing;
@@ -69,7 +71,7 @@ class MpSettingsRow extends StatelessWidget {
                     subtitle!,
                     style: t.caption.copyWith(
                       fontWeight: FontWeight.w500,
-                      color: c.textSecondary,
+                      color: subtitleColor ?? c.textSecondary,
                     ),
                   ),
               ],

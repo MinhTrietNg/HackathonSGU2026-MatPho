@@ -16,6 +16,7 @@ import '../../core/widgets/mp_settings_row.dart';
 import '../../core/widgets/mp_toggle.dart';
 import '../../data/models/settings.dart';
 import '../../data/models/user.dart';
+import '../ai_mode/ai_mode_routes.dart';
 import '../auth/auth_session.dart';
 import '../auth/notifications_off_banner.dart';
 import '../auth/permission_controller.dart';
@@ -98,6 +99,13 @@ class SettingsScreen extends ConsumerWidget {
                           title: 'Thử báo cháy',
                           subtitle: 'Xem máy có kêu không',
                           onTap: () => context.push(SettingsRoutes.testAlert),
+                        ),
+                        MpSettingsRow(
+                          icon: MpIcons.ai,
+                          iconColor: c.brandAccent,
+                          title: 'AI nhận diện cháy',
+                          subtitle: 'Bật/tắt theo từng camera',
+                          onTap: () => context.push(AiModeRoutes.cameras),
                         ),
                         MpSettingsRow(
                           icon: MpIcons.sound,

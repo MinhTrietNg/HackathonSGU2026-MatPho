@@ -125,6 +125,7 @@ final class FakeCameraRepository implements CameraRepository {
     WatchArea? watchArea,
     bool? enabled,
     String? rtspUrl,
+    CameraAi? ai,
   }) async {
     await _world.delay();
     final before = _camera(cameraId);
@@ -143,6 +144,7 @@ final class FakeCameraRepository implements CameraRepository {
       signalLostSince: rtspUrl != null ? null : before.signalLostSince,
       liveStreamUrl: before.liveStreamUrl,
       deviceName: before.deviceName,
+      ai: ai ?? before.ai,
     );
     _world.cameras[_world.cameras.indexOf(before)] = after;
     return _seenByMe(after);

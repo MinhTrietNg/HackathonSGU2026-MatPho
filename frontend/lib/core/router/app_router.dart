@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../../features/ai_mode/ai_mode_routes.dart';
 import '../../features/alert/alert_listener.dart';
 import '../../features/alert/alert_routes.dart';
 import '../../features/auth/auth_routes.dart';
@@ -74,7 +75,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: AppRoutes.settings,
                 builder: (context, state) => const SettingsScreen(),
-                routes: [...settingsSubRoutes, ...groupSubRoutes],
+                routes: [
+                  ...settingsSubRoutes,
+                  ...groupSubRoutes,
+                  ...aiModeSubRoutes,
+                ],
               ),
             ],
           ),

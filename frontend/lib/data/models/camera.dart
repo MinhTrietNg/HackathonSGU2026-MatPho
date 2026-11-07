@@ -45,6 +45,63 @@ final class WatchArea {
 
 enum CameraStatus { watching, signalLost }
 
+enum AiMode { alwaysOn, scheduled, off }
+
+final class AiPause {
+  const AiPause({required this.from, required this.to, this.days = everyDay});
+
+  static const everyDay = {1, 2, 3, 4, 5, 6, 7};
+
+  final int from;
+  final int to;
+
+  final Set<int> days;
+
+  AiPause copyWith({int? from, int? to, Set<int>? days}) => AiPause(
+    from: from ?? this.from,
+    to: to ?? this.to,
+    days: days ?? this.days,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is AiPause &&
+      other.from == from &&
+      other.to == to &&
+      other.days.length == days.length &&
+      other.days.containsAll(days);
+
+  @override
+  int get hashCode => Object.hash(from, to, Object.hashAllUnordered(days));
+}
+
+final class CameraAi {
+  const CameraAi({this.mode = AiMode.alwaysOn, this.pauses = const []});
+
+  static const alwaysOn = CameraAi();
+  static const off = CameraAi(mode: AiMode.off);
+
+  final AiMode mode;
+
+  final List<AiPause> pauses;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! CameraAi ||
+        other.mode != mode ||
+        other.pauses.length != pauses.length) {
+      return false;
+    }
+    for (var i = 0; i < pauses.length; i++) {
+      if (other.pauses[i] != pauses[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(mode, Object.hashAll(pauses));
+}
+
 final class Camera {
   const Camera({
     required this.id,
@@ -57,6 +114,7 @@ final class Camera {
     this.signalLostSince,
     this.liveStreamUrl,
     this.deviceName,
+    this.ai = CameraAi.alwaysOn,
   });
 
   final String id;
@@ -77,10 +135,13 @@ final class Camera {
 
   final String? deviceName;
 
+  final CameraAi ai;
+
   Camera copyWith({
     CameraStatus? status,
     DateTime? signalLostSince,
     String? liveStreamUrl,
+    CameraAi? ai,
   }) => Camera(
     id: id,
     groupId: groupId,
@@ -94,6 +155,7 @@ final class Camera {
         : signalLostSince ?? this.signalLostSince,
     liveStreamUrl: liveStreamUrl ?? this.liveStreamUrl,
     deviceName: deviceName,
+    ai: ai ?? this.ai,
   );
 
   @override
@@ -108,7 +170,8 @@ final class Camera {
       other.status == status &&
       other.signalLostSince == signalLostSince &&
       other.liveStreamUrl == liveStreamUrl &&
-      other.deviceName == deviceName;
+      other.deviceName == deviceName &&
+      other.ai == ai;
 
   @override
   int get hashCode => Object.hash(
@@ -122,6 +185,7 @@ final class Camera {
     signalLostSince,
     liveStreamUrl,
     deviceName,
+    ai,
   );
 }
 

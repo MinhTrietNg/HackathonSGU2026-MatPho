@@ -341,6 +341,125 @@ void main() {
     });
   });
 
+  group('AI mode (is_ai_enabled + ai_schedule)', () {
+    test('no AI fields: always on', () async {
+      server.on('GET', '/cameras/cam_charger', _detailJson);
+      final camera = await repo.getCamera('cam_charger');
+      expect(camera.ai, CameraAi.alwaysOn);
+    });
+
+    test('is_ai_enabled false: off, whatever the schedule says', () async {
+      server.on('GET', '/cameras/cam_charger', {
+        ..._detailJson,
+        'is_ai_enabled': false,
+        'ai_schedule': [
+          {
+            'from': '17:00',
+            'to': '19:30',
+            'days': [1, 2],
+          },
+        ],
+      });
+      expect((await repo.getCamera('cam_charger')).ai, CameraAi.off);
+    });
+
+    test('a schedule: paused windows with their weekdays', () async {
+      server.on('GET', '/cameras/cam_charger', {
+        ..._detailJson,
+        'is_ai_enabled': true,
+        'ai_schedule': [
+          {
+            'from': '17:00',
+            'to': '19:30',
+            'days': [1, 2, 3, 4, 5, 6, 7],
+          },
+          {
+            'from': '10:30:00',
+            'to': '12:30:00',
+            'days': [6, 7],
+          },
+        ],
+      });
+      expect(
+        (await repo.getCamera('cam_charger')).ai,
+        const CameraAi(
+          mode: AiMode.scheduled,
+          pauses: [
+            AiPause(from: 17 * 60, to: 19 * 60 + 30),
+            AiPause(from: 10 * 60 + 30, to: 12 * 60 + 30, days: {6, 7}),
+          ],
+        ),
+      );
+    });
+
+    test('an empty schedule is always on', () async {
+      server.on('GET', '/cameras/cam_charger', {
+        ..._detailJson,
+        'is_ai_enabled': true,
+        'ai_schedule': <Object?>[],
+      });
+      expect((await repo.getCamera('cam_charger')).ai, CameraAi.alwaysOn);
+    });
+
+    test('a time that is not HH:mm is a bad response', () async {
+      server.on('GET', '/cameras/cam_charger', {
+        ..._detailJson,
+        'ai_schedule': [
+          {
+            'from': 'tối',
+            'to': '19:30',
+            'days': [1],
+          },
+        ],
+      });
+      await expectLater(
+        repo.getCamera('cam_charger'),
+        throwsA(isA<ServerException>()),
+      );
+    });
+
+    test('scheduled → is_ai_enabled true and the windows', () async {
+      server.on('PATCH', '/cameras/cam_charger', _detailJson);
+      await repo.updateCamera(
+        cameraId: 'cam_charger',
+        ai: const CameraAi(
+          mode: AiMode.scheduled,
+          pauses: [
+            AiPause(from: 17 * 60, to: 19 * 60 + 30, days: {7, 1}),
+          ],
+        ),
+      );
+      expect(server.body('PATCH', '/cameras/cam_charger'), {
+        'is_ai_enabled': true,
+        'ai_schedule': [
+          {
+            'from': '17:00',
+            'to': '19:30',
+            'days': [1, 7],
+          },
+        ],
+      });
+    });
+
+    test('always on → is_ai_enabled true, an empty schedule', () async {
+      server.on('PATCH', '/cameras/cam_charger', _detailJson);
+      await repo.updateCamera(cameraId: 'cam_charger', ai: CameraAi.alwaysOn);
+      expect(server.body('PATCH', '/cameras/cam_charger'), {
+        'is_ai_enabled': true,
+        'ai_schedule': <Object?>[],
+      });
+    });
+
+    test('off → is_ai_enabled false, an empty schedule', () async {
+      server.on('PATCH', '/cameras/cam_charger', _detailJson);
+      await repo.updateCamera(cameraId: 'cam_charger', ai: CameraAi.off);
+      expect(server.body('PATCH', '/cameras/cam_charger'), {
+        'is_ai_enabled': false,
+        'ai_schedule': <Object?>[],
+      });
+    });
+  });
+
   group('trash', () {
     test('delete → DELETE /cameras/{id}', () async {
       server.on('DELETE', '/cameras/cam_charger', {

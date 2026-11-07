@@ -234,8 +234,14 @@ abstract final class FakeData {
       areaId: 'a-office',
       name: 'Cửa sau',
       rtspUrl: 'rtsp://10.0.0.22:554/stream1',
+      ai: cookingPause,
     ),
   ];
+
+  static const cookingPause = CameraAi(
+    mode: AiMode.scheduled,
+    pauses: [AiPause(from: 17 * 60, to: 19 * 60 + 30)],
+  );
 
   static const homeCameras = [
     Camera(
@@ -251,6 +257,7 @@ abstract final class FakeData {
       areaId: 'a-home',
       name: 'Bếp',
       rtspUrl: 'rtsp://192.168.0.22:554/stream1',
+      ai: cookingPause,
     ),
     Camera(
       id: 'cam-front',

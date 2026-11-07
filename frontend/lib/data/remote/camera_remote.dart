@@ -2,6 +2,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../errors.dart';
 import '../models/camera.dart';
 import '../repositories/camera_repository.dart';
 import 'core/api_client.dart';
@@ -95,6 +96,7 @@ final class RemoteCameraRepository implements CameraRepository {
     WatchArea? watchArea,
     bool? enabled,
     String? rtspUrl,
+    CameraAi? ai,
   }) async => parseCamera(
     asJsonMap(
       await _api.patch(
@@ -105,6 +107,13 @@ final class RemoteCameraRepository implements CameraRepository {
           if (watchArea != null) 'watch_area': _watchAreaJson(watchArea),
           'is_active': ?enabled,
           'rtsp_url': ?rtspUrl,
+          if (ai != null) ...{
+            'is_ai_enabled': ai.mode != AiMode.off,
+            'ai_schedule': [
+              if (ai.mode == AiMode.scheduled)
+                for (final p in ai.pauses) _pauseJson(p),
+            ],
+          },
         },
       ),
     ),
@@ -150,10 +159,52 @@ Map<String, Object?> _watchAreaJson(WatchArea area) => {
   'height': area.height,
 };
 
+// `ai_schedule` is not in the backend yet; the shape is proposed by the app.
+Map<String, Object?> _pauseJson(AiPause pause) => {
+  'from': _clock(pause.from),
+  'to': _clock(pause.to),
+  'days': [...pause.days]..sort(),
+};
+
+String _clock(int minute) =>
+    '${(minute ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minute % 60).toString().padLeft(2, '0')}';
+
+int _minute(Map<String, Object?> json, String key) {
+  final text = readString(json, key);
+  final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(text);
+  if (match == null) {
+    throw ServerException(
+      code: badResponse,
+      message: '"$key": expected HH:mm, got "$text"',
+    );
+  }
+  return int.parse(match[1]!) * 60 + int.parse(match[2]!);
+}
+
+CameraAi _ai(Map<String, Object?> json) {
+  if (readBoolOrNull(json, 'is_ai_enabled') == false) return CameraAi.off;
+  final schedule = json['ai_schedule'] is List
+      ? readObjectList(
+          json,
+          'ai_schedule',
+          (p) => AiPause(
+            from: _minute(p, 'from'),
+            to: _minute(p, 'to'),
+            days: {...readList(p, 'days').whereType<int>()},
+          ),
+        )
+      : const <AiPause>[];
+  return schedule.isEmpty
+      ? CameraAi.alwaysOn
+      : CameraAi(mode: AiMode.scheduled, pauses: schedule);
+}
+
 Camera parseCamera(Map<String, Object?> json) {
   final status = _status(readString(json, 'status'));
   final area = readMapOrNull(json, 'watch_area');
   return Camera(
+    ai: _ai(json),
     id: readString(json, 'cam_id'),
     groupId: readString(json, 'group_id'),
     areaId: readStringOrNull(json, 'subgroup_id'),

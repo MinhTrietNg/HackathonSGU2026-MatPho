@@ -33,6 +33,22 @@ void main() {
       expect((await r.getCamera('cam-charger')).name, 'Khu sạc mới');
     });
 
+    test('the AI mode is saved and kept on the next read', () async {
+      final r = FakeCameraRepository(_world());
+      expect((await r.getCamera('cam-living')).ai, CameraAi.alwaysOn);
+      expect((await r.getCamera('cam-kitchen')).ai, FakeData.cookingPause);
+
+      final after = await r.updateCamera(
+        cameraId: 'cam-living',
+        ai: CameraAi.off,
+      );
+      expect(after.ai, CameraAi.off);
+      expect((await r.getCamera('cam-living')).ai, CameraAi.off);
+
+      final renamed = await r.updateCamera(cameraId: 'cam-kitchen', name: 'X');
+      expect(renamed.ai, FakeData.cookingPause);
+    });
+
     test('a member cannot edit, delete or open the trash', () async {
       final r = FakeCameraRepository(_world());
       await expectLater(

@@ -21,6 +21,9 @@ import 'services/phone_dialer.dart';
 
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+// Drawn camera scenes in place of missing pictures: mock app, gallery, tests.
+final demoSceneArtProvider = Provider<bool>((ref) => false);
+
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => ref.watch(remoteAuthRepositoryProvider),
 );

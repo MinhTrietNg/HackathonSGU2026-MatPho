@@ -9,6 +9,7 @@ import '../../core/theme/theme.dart';
 import '../../core/time_format.dart';
 import '../../core/widgets/mp_chip.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_header.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_list_card.dart';
@@ -184,11 +185,13 @@ class _EventRow extends ConsumerWidget {
     );
     final local = still != null
         ? MpStill(still, size: MpListCard.thumbnailSize)
-        : MpIllustration(
+        : ref.watch(demoSceneArtProvider)
+        ? MpIllustration(
             historyFeedAsset(event),
             size: _artSize,
             animated: true,
-          );
+          )
+        : const MpFeedPlaceholder(size: MpListCard.thumbnailSize);
     return MpListCard(
       thumbnail: switch (event.stillUrl) {
         final url? => SizedBox.fromSize(

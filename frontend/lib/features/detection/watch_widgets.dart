@@ -3,16 +3,19 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/mp_overlay_colors.dart';
 import '../../core/theme/theme.dart';
 import '../../core/time_format.dart';
 import '../../core/widgets/mp_ceil_width.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_feed_tag.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_still.dart';
 import '../../data/models/models.dart';
+import '../../data/providers.dart';
 import 'feed_player.dart';
 import 'feed_snapshot.dart';
 
@@ -75,7 +78,7 @@ class WatchFeedArt extends StatelessWidget {
   }
 }
 
-class WatchFeedPicture extends StatelessWidget {
+class WatchFeedPicture extends ConsumerWidget {
   const WatchFeedPicture({
     super.key,
     required this.art,
@@ -92,13 +95,14 @@ class WatchFeedPicture extends StatelessWidget {
   final FeedSnapshotTarget? snapshot;
 
   @override
-  Widget build(BuildContext context) => switch (video) {
+  Widget build(BuildContext context, WidgetRef ref) => switch (video) {
     final source? => FeedVideo(
       source: source,
       still: still,
       snapshot: snapshot,
     ),
-    null => WatchFeedArt(art),
+    null when ref.watch(demoSceneArtProvider) => WatchFeedArt(art),
+    null => const MpFeedPlaceholder(caption: 'Không có hình trực tiếp'),
   };
 }
 

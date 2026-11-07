@@ -4,8 +4,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_still.dart';
 import '../../data/models/models.dart';
+import '../../data/providers.dart';
 import 'feed_snapshot.dart';
 
 final feedPlayerProvider = Provider.autoDispose
@@ -92,6 +94,7 @@ class FeedVideo extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(feedPlayerProvider(source));
+    final demoArt = ref.watch(demoSceneArtProvider);
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: controller,
       builder: (context, value, _) {
@@ -99,12 +102,16 @@ class FeedVideo extends ConsumerWidget {
             value.isInitialized &&
             (value.isPlaying || value.position > Duration.zero);
         if (!started || value.hasError) {
+          final Widget fallback = demoArt
+              ? const SizedBox.expand()
+              : MpFeedPlaceholder(
+                  caption: value.hasError
+                      ? 'Không có hình trực tiếp'
+                      : 'Đang tải hình…',
+                );
           return switch (still) {
-            final still? => MpStill.image(
-              still,
-              fallback: const SizedBox.expand(),
-            ),
-            null => const SizedBox.expand(),
+            final still? => MpStill.image(still, fallback: fallback),
+            null => fallback,
           };
         }
         final video = FittedBox(

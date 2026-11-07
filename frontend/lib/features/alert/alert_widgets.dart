@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/theme.dart';
 import '../../core/widgets/mp_ceil_width.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_feed_tag.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_still.dart';
@@ -50,7 +51,7 @@ class AlertGlow extends StatelessWidget {
 class AlertEvidence extends StatelessWidget {
   const AlertEvidence({
     super.key,
-    required this.asset,
+    this.asset,
     this.height,
     required this.artSize,
     this.tag,
@@ -60,7 +61,8 @@ class AlertEvidence extends StatelessWidget {
     this.video,
   });
 
-  final String asset;
+  // Null: no drawn scene, a neutral placeholder instead.
+  final String? asset;
 
   final double? height;
   final Size artSize;
@@ -79,13 +81,14 @@ class AlertEvidence extends StatelessWidget {
 
   Widget _buildEvidence(BuildContext context) {
     final c = context.mpColors;
-    final local = switch (still) {
-      final still? => MpStill(still),
-      null => OverflowBox(
+    final local = switch ((still, asset)) {
+      (final still?, _) => MpStill(still),
+      (null, final asset?) => OverflowBox(
         maxWidth: double.infinity,
         maxHeight: double.infinity,
         child: MpIllustration(asset, size: artSize, animated: true),
       ),
+      (null, null) => const MpFeedPlaceholder(caption: 'Chưa có ảnh'),
     };
     final box = Container(
       height: height,

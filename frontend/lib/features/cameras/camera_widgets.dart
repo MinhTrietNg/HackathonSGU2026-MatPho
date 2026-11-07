@@ -3,6 +3,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/theme.dart';
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_illustration.dart';
 
 double normalHeight(double fontSize) => (fontSize * 1.265).round() / fontSize;
@@ -80,7 +81,8 @@ class CameraArtBox extends StatelessWidget {
     this.pictureUrl,
   });
 
-  final String art;
+  // Null: no drawn scene, a neutral placeholder instead.
+  final String? art;
   final Size artSize;
   final double height;
   final Widget? overlay;
@@ -98,13 +100,16 @@ class CameraArtBox extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          OverflowBox(
-            minWidth: 0,
-            minHeight: 0,
-            maxWidth: double.infinity,
-            maxHeight: double.infinity,
-            child: MpIllustration(art, size: artSize),
-          ),
+          if (art case final art?)
+            OverflowBox(
+              minWidth: 0,
+              minHeight: 0,
+              maxWidth: double.infinity,
+              maxHeight: double.infinity,
+              child: MpIllustration(art, size: artSize),
+            )
+          else
+            const MpFeedPlaceholder(caption: 'Chưa có ảnh'),
           if (pictureUrl case final url?)
             Image.network(
               url,

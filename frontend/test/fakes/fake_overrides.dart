@@ -42,6 +42,7 @@ List<Override> fakeOverrides([List<Override> overrides = const []]) {
 
 final List<Override> _fakes = [
   clockProvider.overrideWith((ref) => ref.watch(fakeWorldProvider).now),
+  demoSceneArtProvider.overrideWithValue(true),
   authRepositoryProvider.overrideWith(
     (ref) => FakeAuthRepository(ref.watch(fakeWorldProvider)),
   ),

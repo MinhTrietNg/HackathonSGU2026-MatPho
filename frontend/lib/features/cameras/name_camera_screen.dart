@@ -15,6 +15,7 @@ import '../../core/widgets/mp_page.dart';
 import '../../core/widgets/mp_text_field.dart';
 import '../../data/errors.dart';
 import '../../data/models/models.dart';
+import '../../data/providers.dart';
 import '../groups/group_widgets.dart' show showGroupFailureToast;
 import 'camera_state.dart';
 import 'camera_widgets.dart';
@@ -75,7 +76,7 @@ class _NameCameraScreenState extends ConsumerState<NameCameraScreen> {
       gap: 12,
       children: [
         CameraArtBox(
-          art: MpIllustrations.feed,
+          art: ref.watch(demoSceneArtProvider) ? MpIllustrations.feed : null,
           artSize: _pictureArtSize,
           height: _pictureHeight,
           pictureUrl: state.probe?.previewSnapshotUrl,

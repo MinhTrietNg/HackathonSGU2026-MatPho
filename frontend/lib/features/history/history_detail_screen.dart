@@ -91,7 +91,9 @@ class _Details extends ConsumerWidget {
             child: Stack(
               children: [
                 AlertEvidence(
-                  asset: historyFeedAsset(event),
+                  asset: ref.watch(demoSceneArtProvider)
+                      ? historyFeedAsset(event)
+                      : null,
                   artSize: _artSize,
                   tag: tagOnTop ? null : tag,
                   still: still,

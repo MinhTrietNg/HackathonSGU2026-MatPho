@@ -142,16 +142,17 @@ class _AlertBody extends ConsumerWidget {
     final tag =
         '${event.locationName.toUpperCase()} · '
         '${formatFeedTime(event.detectedAt)}';
+    final demoArt = ref.watch(demoSceneArtProvider);
     return _unverified
         ? AlertEvidence(
-            asset: MpIllustrations.feedSmoke,
+            asset: demoArt ? MpIllustrations.feedSmoke : null,
             artSize: const Size(336, 216),
             tag: tag,
             still: still,
             stillUrl: event.stillUrl,
           )
         : AlertEvidence(
-            asset: MpIllustrations.feedFire,
+            asset: demoArt ? MpIllustrations.feedFire : null,
             artSize: const Size(366, 366 * 180 / 280),
             tag: tag,
             still: still,

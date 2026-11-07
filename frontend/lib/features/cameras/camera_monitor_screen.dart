@@ -9,6 +9,7 @@ import '../../core/theme/theme.dart';
 import '../../core/time_format.dart';
 import '../../core/widgets/mp_badge.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
+import '../../core/widgets/mp_feed_placeholder.dart';
 import '../../core/widgets/mp_icon_button.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_list_card.dart';
@@ -267,10 +268,9 @@ class _CameraRow extends ConsumerWidget {
     final lost = camera.status == CameraStatus.signalLost;
     final since = camera.signalLostSince;
     final still = lost ? null : ref.watch(cameraStillProvider(camera));
-    const placeholder = MpIllustration(
-      MpIllustrations.feed,
-      size: _thumbnailArtSize,
-    );
+    final placeholder = ref.watch(demoSceneArtProvider)
+        ? const MpIllustration(MpIllustrations.feed, size: _thumbnailArtSize)
+        : const MpFeedPlaceholder(size: MpListCard.thumbnailSize);
     Widget card(DateTime now) => MpListCard(
       thumbnail: switch (still) {
         final still? => MpStill.image(

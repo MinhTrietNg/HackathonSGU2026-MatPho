@@ -13,6 +13,7 @@ import '../../data/services/push_background.dart' show showPushedFireAlert;
 import '../../data/services/push_inbox.dart';
 import '../../data/services/push_message.dart';
 import '../../data/services/push_token_registrar.dart';
+import '../../data/session/emergency_token_store.dart';
 import '../auth/auth_session.dart';
 import '../auth/permission_controller.dart';
 import '../groups/current_group.dart' show currentGroupIdProvider;
@@ -96,10 +97,12 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
         event.status != EventStatus.unverified) {
       return;
     }
-    if (_inForeground) return;
     _ring(event.id);
     final notifications = ref.read(notificationServiceProvider);
     await notifications.showFireAlert(event, picture: await _picture(event));
+    if (_inForeground) {
+      await _openAlert(event.id, clearNotification: false);
+    }
   }
 
   void _ring(String eventId) => _ringing
@@ -107,16 +110,21 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
     ..add(eventId);
 
   Future<void> _onPush(PushMessage push) async {
-    if (!_signedIn) return;
+    if (push is FireAlertPush && push.emergencyToken != null) {
+      EmergencyTokenStore.instance.save(push.alertId, push.emergencyToken!);
+    }
+    if (!_signedIn && push is! FireAlertPush) return;
     switch (push) {
       case FireAlertPush(:final alertId):
-        if (_inForeground) return;
         _ring(alertId);
         await showPushedFireAlert(
           alertId,
           notifications: ref.read(notificationServiceProvider),
           alerts: ref.read(alertRepositoryProvider),
         );
+        if (_inForeground) {
+          await _openAlert(alertId, clearNotification: false);
+        }
       case FireAlertUpdatedPush(:final alertId):
         await _alertUpdated(alertId);
       case InvitationPush():
@@ -129,7 +137,10 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
   }
 
   void _onBackgroundPush(PushMessage push) {
-    if (!_signedIn) return;
+    if (push is FireAlertPush && push.emergencyToken != null) {
+      EmergencyTokenStore.instance.save(push.alertId, push.emergencyToken!);
+    }
+    if (!_signedIn && push is! FireAlertPush) return;
     switch (push) {
       case FireAlertPush(:final alertId):
         _ring(alertId);
@@ -160,8 +171,12 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
     }
 
     switch (push) {
-      case FireAlertPush(:final alertId) ||
-          FireAlertUpdatedPush(:final alertId):
+      case FireAlertPush(:final alertId, :final emergencyToken):
+        if (emergencyToken != null) {
+          EmergencyTokenStore.instance.save(alertId, emergencyToken);
+        }
+        await _openAlert(alertId);
+      case FireAlertUpdatedPush(:final alertId):
         await _openAlert(alertId);
       case InvitationPush(:final invitationId):
         open(GroupRoutes.invitation(invitationId));
@@ -189,11 +204,13 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
 
   void _onResume() {
     ref.read(notificationPermissionProvider.notifier).refresh();
-    if (_ringing.isNotEmpty) unawaited(_openAlert(_ringing.last));
+    if (_ringing.isNotEmpty) {
+      unawaited(_openAlert(_ringing.last, clearNotification: false));
+    }
   }
 
   Future<void> _onTap(AlertTap tap) async {
-    await _openAlert(tap.eventId);
+    await _openAlert(tap.eventId, clearNotification: true);
     if (!tap.call114 || !mounted) return;
     final host = ref.read(appRouterProvider).routerDelegate.navigatorKey;
     final context = host.currentContext;
@@ -202,9 +219,11 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
     }
   }
 
-  Future<void> _openAlert(String eventId) async {
+  Future<void> _openAlert(String eventId, {bool clearNotification = true}) async {
     _ringing.remove(eventId);
-    unawaited(ref.read(notificationServiceProvider).clearFireAlert(eventId));
+    if (clearNotification) {
+      unawaited(ref.read(notificationServiceProvider).clearFireAlert(eventId));
+    }
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     final router = ref.read(appRouterProvider);

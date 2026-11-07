@@ -10,6 +10,7 @@ import '../models/fire_event.dart';
 import '../providers.dart';
 import '../remote/core/remote_providers.dart';
 import '../repositories/alert_repository.dart';
+import '../session/emergency_token_store.dart';
 import 'local_notification_service.dart';
 import 'notification_service.dart';
 import 'push_message.dart';
@@ -55,8 +56,11 @@ Future<void> handleBackgroundPush(
   switch (message) {
     case null:
       return;
-    case FireAlertPush(:final alertId):
-      if (!await signedIn()) return;
+    case FireAlertPush(:final alertId, :final emergencyToken):
+      if (emergencyToken != null) {
+        EmergencyTokenStore.instance.save(alertId, emergencyToken);
+      }
+      if (!await signedIn() && emergencyToken == null) return;
       await showPushedFireAlert(
         alertId,
         notifications: notifications,

@@ -33,22 +33,33 @@ class FCMService:
 
         # Ensure all values in data are strings for FCM spec compatibility
         sanitized_data = {str(k): str(v) for k, v in data.items()}
-        is_fire = "FIRE" in sanitized_data.get("type", "")
+        if title:
+            sanitized_data["title"] = str(title)
+        if body:
+            sanitized_data["body"] = str(body)
+
+        msg_type = sanitized_data.get("type", "")
+        is_fire = "FIRE" in msg_type
 
         if is_fire:
-            # Android Pure Data Message: Plays loud alarm channel
-            sanitized_data["channel_id"] = "fire_alarms"
-            notification = messaging.Notification(title=title, body=body) if (title and body) else None
-            android_notification = messaging.AndroidNotification(
-                title=title,
-                body=body,
-                sound="default",
-                channel_id="fire_alarms",
-                priority="max",
-            ) if (title and body) else None
+            # Android Pure Data-Only Message (NO top-level/android notification block):
+            # Ensures Flutter's @pragma('vm:entry-point') pushBackgroundHandler is ALWAYS invoked
+            # even when app is in background/locked, allowing LocalNotificationService to render
+            # FLAG_INSISTENT (continuous siren), USAGE_ALARM (bypass silent/vibrate mode),
+            # and the 2 action buttons: [Gọi 114] & [Xem sự cố] with emergency_token saved.
+            sanitized_data["channel_id"] = "fire_alarms_v2"
+            notification = None
+            android_notification = None
             aps_alert = messaging.ApsAlert(title=title, body=body) if (title and body) else None
-            aps_sound = "alarm.caf"
+            aps_sound = messaging.CriticalSound(
+                name="fire_alarm_siren.wav",
+                critical=True,
+                volume=1.0,
+            )
+            aps_category = "FIRE_ALERT_CATEGORY"
+            aps_custom_data = {"interruption-level": "critical"}
         else:
+            sanitized_data["channel_id"] = "matpho_general"
             notification = messaging.Notification(title=title, body=body) if (title and body) else None
             android_notification = messaging.AndroidNotification(
                 title=title,
@@ -58,6 +69,8 @@ class FCMService:
             ) if (title and body) else None
             aps_alert = messaging.ApsAlert(title=title, body=body) if (title and body) else None
             aps_sound = "default"
+            aps_category = None
+            aps_custom_data = None
 
         message = messaging.MulticastMessage(
             data=sanitized_data,
@@ -69,12 +82,18 @@ class FCMService:
                 notification=android_notification,
             ),
             apns=messaging.APNSConfig(
-                headers={"apns-priority": "10"},
+                headers={
+                    "apns-priority": "10",
+                    "apns-push-type": "alert",
+                },
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(
                         alert=aps_alert,
                         sound=aps_sound,
+                        category=aps_category,
                         content_available=True,
+                        mutable_content=True,
+                        custom_data=aps_custom_data,
                     )
                 ),
             ),

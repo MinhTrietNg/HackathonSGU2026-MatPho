@@ -66,26 +66,31 @@ final class ApiConfig {
       return const ApiConfig(baseUrl: prodBase, wsUrl: prodWs);
     }
 
-    try {
-      final baseUri = Uri.parse(localBase);
-      final healthUri = baseUri.replace(path: '/api/v1/health');
-      final client = HttpClient()
-        ..connectionTimeout = const Duration(milliseconds: 1500);
-      final request = await client.getUrl(healthUri);
-      final response = await request.close().timeout(
-        const Duration(milliseconds: 1500),
-      );
-      client.close();
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint(
-          '[ApiConfig] Auto-detected reachable local server: $localBase',
+    final probeUrls = [
+      'http://127.0.0.1:8000/api/v1',
+      localBase,
+    ];
+
+    for (final candidate in probeUrls) {
+      try {
+        final baseUri = Uri.parse(candidate);
+        final healthUri = baseUri.replace(path: '/api/v1/health');
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(milliseconds: 1000);
+        final request = await client.getUrl(healthUri);
+        final response = await request.close().timeout(
+          const Duration(milliseconds: 1000),
         );
-        return const ApiConfig(baseUrl: localBase, wsUrl: localWs);
-      }
-    } catch (e) {
-      debugPrint(
-        '[ApiConfig] Local server probe failed ($e) -> fallback to production: $prodBase',
-      );
+        client.close();
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final wsCandidate =
+              '${candidate.replaceFirst(RegExp(r'^http'), 'ws')}/ws';
+          debugPrint(
+            '[ApiConfig] Auto-detected reachable local server: $candidate',
+          );
+          return ApiConfig(baseUrl: candidate, wsUrl: wsCandidate);
+        }
+      } catch (_) {}
     }
 
     return const ApiConfig(baseUrl: prodBase, wsUrl: prodWs);

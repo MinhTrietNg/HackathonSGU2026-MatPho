@@ -28,6 +28,7 @@ sealed class PushMessage {
         (v) => FireAlertPush(
           alertId: v[0],
           escalationLevel: int.tryParse(field('escalation_level') ?? '') ?? 0,
+          emergencyToken: field('emergency_token'),
         ),
       ),
       fireAlertUpdatedType => need(
@@ -55,22 +56,29 @@ sealed class PushMessage {
 }
 
 final class FireAlertPush extends PushMessage {
-  const FireAlertPush({required this.alertId, this.escalationLevel = 0});
+  const FireAlertPush({
+    required this.alertId,
+    this.escalationLevel = 0,
+    this.emergencyToken,
+  });
 
   final String alertId;
   final int escalationLevel;
+  final String? emergencyToken;
 
   @override
   bool operator ==(Object other) =>
       other is FireAlertPush &&
       other.alertId == alertId &&
-      other.escalationLevel == escalationLevel;
+      other.escalationLevel == escalationLevel &&
+      other.emergencyToken == emergencyToken;
 
   @override
-  int get hashCode => Object.hash(alertId, escalationLevel);
+  int get hashCode => Object.hash(alertId, escalationLevel, emergencyToken);
 
   @override
-  String toString() => 'FireAlertPush($alertId, level $escalationLevel)';
+  String toString() =>
+      'FireAlertPush($alertId, level $escalationLevel, token $emergencyToken)';
 }
 
 final class FireAlertUpdatedPush extends PushMessage {

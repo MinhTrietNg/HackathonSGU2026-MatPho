@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/router/app_router.dart';
 import '../../data/models/user.dart';
+import '../../data/session/emergency_token_store.dart';
 import 'auth_session.dart';
 import 'forgot_password_screen.dart';
 import 'login_screen.dart';
@@ -87,6 +88,21 @@ final authRoutes = <RouteBase>[
 // signed out → A5 unless the path is public; signed in on A5/B1 → tabs.
 String? authRedirect(Ref ref, GoRouterState state) {
   final path = state.matchedLocation;
+
+  // Emergency bypass check (ADR 0011 / Plan B):
+  // When an alert is accessed with a valid emergency token, bypass authentication and splash
+  if (path.startsWith('/alert/')) {
+    final eventId = state.pathParameters['eventId'] ??
+        (state.uri.pathSegments.length > 1 ? state.uri.pathSegments[1] : null);
+    final emgTok = state.uri.queryParameters['emergency_token'];
+    if (eventId != null && emgTok != null && emgTok.isNotEmpty) {
+      EmergencyTokenStore.instance.save(eventId, emgTok);
+    }
+    if (eventId != null && EmergencyTokenStore.instance.get(eventId) != null) {
+      return null;
+    }
+  }
+
   switch (ref.read(authSessionProvider)) {
     case SessionUnknown():
       if (path == AppRoutes.splash) return null;

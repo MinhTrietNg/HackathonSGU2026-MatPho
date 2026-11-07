@@ -39,11 +39,15 @@ abstract final class AppRoutes {
 final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final launchAlertId = ref.read(notificationServiceProvider).launchAlertId;
+  final notifSvc = ref.read(notificationServiceProvider);
+  final launchAlertId = notifSvc.launchAlertId;
+  final launchCall114 = notifSvc.launchCall114;
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: launchAlertId != null
-        ? AppRoutes.alert(launchAlertId)
+        ? (launchCall114
+            ? AlertPaths.dialer(launchAlertId)
+            : AppRoutes.alert(launchAlertId))
         : AppRoutes.monitor,
     redirect: (context, state) => authRedirect(ref, state),
     routes: [

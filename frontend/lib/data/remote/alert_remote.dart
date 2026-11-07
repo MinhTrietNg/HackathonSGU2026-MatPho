@@ -7,6 +7,7 @@ import '../models/fire_event.dart';
 import '../models/group.dart';
 import '../models/incident.dart';
 import '../repositories/alert_repository.dart';
+import '../session/emergency_token_store.dart';
 import 'core/api_client.dart';
 import 'core/json.dart';
 import 'core/remote_providers.dart';
@@ -49,8 +50,15 @@ final class RemoteAlertRepository implements AlertRepository {
       .cast<AlertUpdate>();
 
   @override
-  Future<FireEvent> getAlert(String eventId) async =>
-      parseFireEvent(asJsonMap(await _api.get(_path(eventId))));
+  Future<FireEvent> getAlert(String eventId) async {
+    final token = EmergencyTokenStore.instance.get(eventId);
+    final response = await _api.get(
+      _path(eventId),
+      query: token != null ? {'emergency_token': token} : null,
+      authenticated: token == null,
+    );
+    return parseFireEvent(asJsonMap(response));
+  }
 
   @override
   Future<FireEvent> recordCall114(String eventId) =>
@@ -70,8 +78,13 @@ final class RemoteAlertRepository implements AlertRepository {
 
   @override
   Future<EscalationStatus> escalationStatus(String eventId) async {
+    final token = EmergencyTokenStore.instance.get(eventId);
     final json = asJsonMap(
-      await _api.get('${_path(eventId)}/escalation-status'),
+      await _api.get(
+        '${_path(eventId)}/escalation-status',
+        query: token != null ? {'emergency_token': token} : null,
+        authenticated: token == null,
+      ),
     );
     final remaining = readIntOrNull(json, 'remaining_seconds') ?? 0;
     return EscalationStatus(
@@ -84,7 +97,14 @@ final class RemoteAlertRepository implements AlertRepository {
 
   @override
   Future<DispatchInfo> dispatchInfo(String eventId) async {
-    final json = asJsonMap(await _api.get('${_path(eventId)}/dispatch-info'));
+    final token = EmergencyTokenStore.instance.get(eventId);
+    final json = asJsonMap(
+      await _api.get(
+        '${_path(eventId)}/dispatch-info',
+        query: token != null ? {'emergency_token': token} : null,
+        authenticated: token == null,
+      ),
+    );
     return DispatchInfo(
       eventId: readStringOrNull(json, 'alert_id') ?? eventId,
       facilityName: readStringOrNull(json, 'facility_name') ?? '',
@@ -108,11 +128,20 @@ final class RemoteAlertRepository implements AlertRepository {
   }
 
   @override
-  Future<List<AuditEntry>> auditLog(String eventId) async => readObjectList(
-    asJsonMap(await _api.get('${_path(eventId)}/audit-logs')),
-    'items',
-    parseAuditEntry,
-  );
+  Future<List<AuditEntry>> auditLog(String eventId) async {
+    final token = EmergencyTokenStore.instance.get(eventId);
+    return readObjectList(
+      asJsonMap(
+        await _api.get(
+          '${_path(eventId)}/audit-logs',
+          query: token != null ? {'emergency_token': token} : null,
+          authenticated: token == null,
+        ),
+      ),
+      'items',
+      parseAuditEntry,
+    );
+  }
 
   static EmergencyContact? _contact(Map<String, Object?> json) {
     final GroupRole role;
@@ -139,7 +168,13 @@ final class RemoteAlertRepository implements AlertRepository {
     String action, {
     Object? body,
   }) async {
-    await _api.post('${_path(eventId)}/$action', body: body);
+    final token = EmergencyTokenStore.instance.get(eventId);
+    await _api.post(
+      '${_path(eventId)}/$action',
+      query: token != null ? {'emergency_token': token} : null,
+      body: body,
+      authenticated: token == null,
+    );
     return getAlert(eventId);
   }
 

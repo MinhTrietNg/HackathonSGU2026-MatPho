@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mat_pho/data/errors.dart';
 import '../fakes/fake_camera_repository.dart';
@@ -115,6 +117,23 @@ void main() {
 }
 
 void _getCameraTests() {
+  test('uploadThumbnail: the URL comes back on the camera', () async {
+    final r = repo();
+    final url = await r.uploadThumbnail('cam-charger', Uint8List(4));
+    expect(url, startsWith('https://'));
+    expect((await r.getCamera('cam-charger')).thumbnailUrl, url);
+    final again = await r.uploadThumbnail('cam-charger', Uint8List(4));
+    expect(again, isNot(url));
+  });
+
+  test('uploadThumbnail: "Chỉ báo cháy" gets PERMISSION_DENIED', () async {
+    final r = repo({FakeCase.alertsOnlyRole});
+    await expectLater(
+      r.uploadThumbnail('cam-charger', Uint8List(4)),
+      throwsA(isA<PermissionDeniedException>()),
+    );
+  });
+
   test('getCamera finds a camera by id (E2 / I8)', () async {
     final r = repo();
     final camera = await r.getCamera('cam-down');

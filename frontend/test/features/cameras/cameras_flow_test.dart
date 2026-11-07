@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,10 @@ import 'package:go_router/go_router.dart';
 import 'package:mat_pho/core/router/app_router.dart';
 import 'package:mat_pho/core/theme/theme.dart';
 import 'package:mat_pho/core/widgets/mp_icon_button.dart';
+import 'package:mat_pho/core/widgets/mp_illustration.dart';
+import 'package:mat_pho/core/widgets/mp_list_card.dart';
+import 'package:mat_pho/core/widgets/mp_still.dart';
+import 'package:mat_pho/data/providers.dart';
 import '../../fakes/fake_overrides.dart';
 import '../../fakes/fake_data.dart';
 import '../../fakes/fake_scenario.dart';
@@ -109,6 +115,47 @@ void main() {
     expect(find.text('Kết nối'), findsOneWidget);
     await _tap(tester, find.bySemanticsLabel('Quay lại'));
     expect(find.text('HẦM B1'), findsOneWidget);
+  });
+
+  testWidgets('a frame captured on E2 is the row thumbnail at once', (
+    tester,
+  ) async {
+    await _pumpCameras(tester);
+    expect(find.byType(MpStill), findsNothing);
+
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA'
+      '60e6kgAAAABJRU5ErkJggg==',
+    );
+    ProviderScope.containerOf(
+        tester.element(find.byType(CameraMonitorScreen)),
+      ).read(cameraThumbnailsProvider.notifier)
+      ..capture('cam-charger', png)
+      ..capture('cam-down', png);
+    await _settle(tester);
+
+    final still = find.descendant(
+      of: find.ancestor(
+        of: find.text('Khu sạc xe'),
+        matching: find.byType(MpListCard),
+      ),
+      matching: find.byType(MpStill),
+    );
+    expect(tester.widget<MpStill>(still).image, MemoryImage(png));
+    expect(find.byType(MpStill), findsOneWidget);
+    final lost = find.ancestor(
+      of: find.text('Lối xuống'),
+      matching: find.byType(MpListCard),
+    );
+    expect(
+      find.descendant(
+        of: lost,
+        matching: find.byWidgetPredicate(
+          (w) => w is MpIllustration && w.asset == MpIllustrations.camOffline,
+        ),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('no camera anywhere: "Camera của tôi" with only the card', (

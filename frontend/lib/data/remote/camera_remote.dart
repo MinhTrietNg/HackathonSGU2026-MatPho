@@ -1,5 +1,8 @@
 library;
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../errors.dart';
@@ -150,6 +153,18 @@ final class RemoteCameraRepository implements CameraRepository {
   }) async {
     await _api.delete('/groups/$groupId/subgroups/$areaId');
   }
+
+  @override
+  Future<String> uploadThumbnail(String cameraId, Uint8List png) async =>
+      readString(
+        asJsonMap(
+          await _api.post(
+            '/cameras/$cameraId/thumbnail',
+            body: {'image_base64': base64Encode(png)},
+          ),
+        ),
+        'thumbnail_url',
+      );
 }
 
 Map<String, Object?> _watchAreaJson(WatchArea area) => {
@@ -215,6 +230,7 @@ Camera parseCamera(Map<String, Object?> json) {
         ? _time(json, 'last_seen_at')
         : null,
     liveStreamUrl: readStringOrNull(json, 'live_stream_url'),
+    thumbnailUrl: readStringOrNull(json, 'thumbnail_url'),
     watchArea: area == null
         ? WatchArea.full
         : WatchArea(

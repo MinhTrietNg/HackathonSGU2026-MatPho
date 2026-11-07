@@ -264,19 +264,24 @@ class _CameraRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lost = camera.status == CameraStatus.signalLost;
     final since = camera.signalLostSince;
-    final still = lost ? null : ref.watch(cameraStillProvider(camera.id));
+    final still = lost ? null : ref.watch(cameraStillProvider(camera));
+    const placeholder = MpIllustration(
+      MpIllustrations.feed,
+      size: _thumbnailArtSize,
+    );
     return MpListCard(
       thumbnail: switch (still) {
-        final still? => MpStill(still, size: MpListCard.thumbnailSize),
+        final still? => MpStill.image(
+          still,
+          size: MpListCard.thumbnailSize,
+          fallback: placeholder,
+        ),
         null when lost => const MpIllustration(
           MpIllustrations.camOffline,
           size: _thumbnailArtSize,
           backdrop: false,
         ),
-        null => const MpIllustration(
-          MpIllustrations.feed,
-          size: _thumbnailArtSize,
-        ),
+        null => placeholder,
       },
       title: camera.name,
       subtitle: lost && since != null

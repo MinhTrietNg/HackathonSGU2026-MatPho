@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mat_pho/data/errors.dart';
 import 'package:mat_pho/data/models/models.dart';
@@ -556,6 +559,52 @@ void main() {
         throwsA(isA<PermissionDeniedException>()),
       );
     });
+  });
+
+  group('thumbnail', () {
+    const url =
+        'https://storage.googleapis.com/matpho/cam_charger/thumbnail.jpg?v=2';
+
+    test('thumbnail_url: present, null, missing', () async {
+      server.on('GET', '/cameras', [
+        {...camerasJson.first, 'thumbnail_url': url},
+        {...camerasJson.last, 'thumbnail_url': null},
+        camerasJson.first,
+      ]);
+      final cameras = await repo.listCameras(_gid);
+      expect(cameras.map((c) => c.thumbnailUrl), [url, null, null]);
+    });
+
+    test('POST …/thumbnail sends base64 JSON; the reply is the URL', () async {
+      server.on('POST', '/cameras/cam_charger/thumbnail', {
+        'status': 'ok',
+        'cam_id': 'cam_charger',
+        'thumbnail_url': url,
+        'updated_at': '2026-11-07T10:00:00Z',
+      });
+      final png = Uint8List.fromList([137, 80, 78, 71, 1, 2, 3]);
+      expect(await repo.uploadThumbnail('cam_charger', png), url);
+      expect(server.calls, ['POST /cameras/cam_charger/thumbnail']);
+      expect(server.body('POST', '/cameras/cam_charger/thumbnail'), {
+        'image_base64': base64Encode(png),
+      });
+    });
+
+    test(
+      'a member not on the camera: 403 → PermissionDeniedException',
+      () async {
+        server.fail(
+          'POST',
+          '/cameras/cam_charger/thumbnail',
+          403,
+          'PERMISSION_DENIED',
+        );
+        await expectLater(
+          repo.uploadThumbnail('cam_charger', Uint8List(4)),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+      },
+    );
   });
 
   group('delete area', () {

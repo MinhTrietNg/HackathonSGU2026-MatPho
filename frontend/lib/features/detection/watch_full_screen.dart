@@ -61,7 +61,9 @@ class WatchFullScreen extends ConsumerWidget {
                         video: camera == null
                             ? null
                             : ref.watch(cameraFeedProvider(camera.camera)),
-                        still: ref.watch(cameraStillProvider(cameraId)),
+                        still: camera == null
+                            ? null
+                            : ref.watch(cameraStillProvider(camera.camera)),
                       ),
                     ),
                   ),

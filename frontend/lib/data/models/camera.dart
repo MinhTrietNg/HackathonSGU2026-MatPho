@@ -115,6 +115,7 @@ final class Camera {
     this.liveStreamUrl,
     this.deviceName,
     this.ai = CameraAi.alwaysOn,
+    this.thumbnailUrl,
   });
 
   final String id;
@@ -137,11 +138,14 @@ final class Camera {
 
   final CameraAi ai;
 
+  final String? thumbnailUrl;
+
   Camera copyWith({
     CameraStatus? status,
     DateTime? signalLostSince,
     String? liveStreamUrl,
     CameraAi? ai,
+    String? thumbnailUrl,
   }) => Camera(
     id: id,
     groupId: groupId,
@@ -156,6 +160,7 @@ final class Camera {
     liveStreamUrl: liveStreamUrl ?? this.liveStreamUrl,
     deviceName: deviceName,
     ai: ai ?? this.ai,
+    thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
   );
 
   @override
@@ -171,7 +176,8 @@ final class Camera {
       other.signalLostSince == signalLostSince &&
       other.liveStreamUrl == liveStreamUrl &&
       other.deviceName == deviceName &&
-      other.ai == ai;
+      other.ai == ai &&
+      other.thumbnailUrl == thumbnailUrl;
 
   @override
   int get hashCode => Object.hash(
@@ -186,6 +192,7 @@ final class Camera {
     liveStreamUrl,
     deviceName,
     ai,
+    thumbnailUrl,
   );
 }
 

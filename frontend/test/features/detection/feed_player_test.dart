@@ -144,7 +144,7 @@ void main() {
         const WatchFeedPicture(
           art: art,
           video: _segment,
-          still: 'assets/demo_clips/x_thumb.jpg',
+          still: AssetImage('assets/demo_clips/x_thumb.jpg'),
         ),
       );
       expect(find.byType(MpStill), findsOneWidget);

@@ -1,5 +1,9 @@
 library;
 
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/models.dart';
@@ -58,9 +62,48 @@ final cameraFeedProvider = Provider.family<FeedSource?, Camera>((ref, camera) {
   return url == null ? null : networkFeed(url);
 });
 
-final cameraStillProvider = Provider.family<String?, String>(
-  (ref, cameraId) => null,
-);
+typedef CameraThumbnail = ({Uint8List png, String? url});
+
+// Frames captured on leaving the live view this session: shown at once,
+// uploaded in the background; a failed upload keeps the picture here only.
+class CameraThumbnailsNotifier extends Notifier<Map<String, CameraThumbnail>> {
+  @override
+  Map<String, CameraThumbnail> build() => const {};
+
+  void capture(String cameraId, Uint8List png) {
+    state = {...state, cameraId: (png: png, url: null)};
+    unawaited(_upload(cameraId, png));
+  }
+
+  Future<void> _upload(String cameraId, Uint8List png) async {
+    try {
+      final url = await ref
+          .read(cameraRepositoryProvider)
+          .uploadThumbnail(cameraId, png);
+      if (!ref.mounted || state[cameraId]?.png != png) return;
+      state = {...state, cameraId: (png: png, url: url)};
+    } on Object {
+      // Silent by design.
+    }
+  }
+}
+
+final cameraThumbnailsProvider =
+    NotifierProvider<CameraThumbnailsNotifier, Map<String, CameraThumbnail>>(
+      CameraThumbnailsNotifier.new,
+    );
+
+final cameraStillProvider = Provider.family<ImageProvider?, Camera>((
+  ref,
+  camera,
+) {
+  final png = ref.watch(
+    cameraThumbnailsProvider.select((t) => t[camera.id]?.png),
+  );
+  if (png != null) return MemoryImage(png);
+  final url = camera.thumbnailUrl;
+  return url == null ? null : NetworkImage(url);
+});
 
 final eventStillProvider =
     Provider.family<String?, ({String cameraId, DetectedSign? sign})>(

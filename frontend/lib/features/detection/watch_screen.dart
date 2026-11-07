@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +22,8 @@ import '../alert/alert_actions.dart' show callEmergency;
 import '../cameras/camera_state.dart';
 import 'detection_controller.dart';
 import 'detection_routes.dart';
+import 'feed_player.dart';
+import 'feed_snapshot.dart';
 import 'watch_widgets.dart';
 
 class WatchScreen extends ConsumerStatefulWidget {
@@ -33,6 +37,8 @@ class WatchScreen extends ConsumerStatefulWidget {
 
 class _WatchScreenState extends ConsumerState<WatchScreen> {
   bool _autoStarted = false;
+
+  final _feed = FeedSnapshotTarget();
 
   @override
   void initState() {
@@ -79,14 +85,45 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
     if (context.canPop()) {
       context.pop();
     } else {
+      _snapshot();
       context.go(AppRoutes.monitor);
     }
+  }
+
+  // Leaving with a live frame on screen: it becomes the camera's thumbnail.
+  void _snapshot() {
+    final boundary = _feed.boundary;
+    final camera = ref.read(watchCameraProvider(widget.cameraId)).value?.camera;
+    if (boundary == null || camera == null) return;
+    final source = ref.read(cameraFeedProvider(camera));
+    if (source == null ||
+        !feedShowsFrame(ref.read(feedPlayerProvider(source)).value)) {
+      return;
+    }
+    final thumbnails = ref.read(cameraThumbnailsProvider.notifier);
+    unawaited(() async {
+      try {
+        final png = await snapshotFeed(boundary);
+        if (png != null) thumbnails.capture(camera.id, png);
+      } on Object {
+        // No thumbnail this time; the old one stays.
+      }
+    }());
   }
 
   @override
   Widget build(BuildContext context) {
     final camera = ref.watch(watchCameraProvider(widget.cameraId));
     final state = ref.watch(detectionControllerProvider(widget.cameraId));
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _snapshot();
+      },
+      child: _scaffold(camera, state),
+    );
+  }
+
+  Widget _scaffold(AsyncValue<CameraDetail> camera, DetectionState state) {
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -149,7 +186,8 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
       clock: clock,
       border: border,
       video: video,
-      still: ref.watch(cameraStillProvider(widget.cameraId)),
+      still: ref.watch(cameraStillProvider(camera.camera)),
+      snapshot: _feed,
       onFullScreen: () =>
           context.push(DetectionPaths.fullScreen(widget.cameraId)),
     );

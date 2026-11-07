@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mat_pho/data/errors.dart';
@@ -73,7 +76,57 @@ void main() {
       ),
     );
     expect(live, networkFeed(url));
-    expect(c.read(cameraStillProvider('cam-1')), isNull);
+    expect(c.read(cameraStillProvider(_camera)), isNull);
+  });
+
+  group('camera still', () {
+    const url = 'https://storage.test/cam-charger/thumbnail.jpg?v=1';
+    const camera = Camera(
+      id: FakeData.fireCameraId,
+      name: 'Khu sạc xe',
+      groupId: 'g-sky',
+    );
+    final withUrl = camera.copyWith(thumbnailUrl: url);
+
+    ProviderContainer container([Set<FakeCase> cases = const {}]) =>
+        ProviderContainer.test(
+          overrides: fakeOverrides([
+            fakeScenarioProvider.overrideWithValue(
+              FakeScenario.test(cases: cases),
+            ),
+          ]),
+        );
+
+    test("this session's capture, else the backend thumbnail, else none", () {
+      final c = container();
+      expect(c.read(cameraStillProvider(camera)), isNull);
+      expect(c.read(cameraStillProvider(withUrl)), const NetworkImage(url));
+
+      final png = Uint8List.fromList([1, 2, 3]);
+      c.read(cameraThumbnailsProvider.notifier).capture(camera.id, png);
+      expect(c.read(cameraStillProvider(camera)), MemoryImage(png));
+      expect(c.read(cameraStillProvider(withUrl)), MemoryImage(png));
+    });
+
+    test("the upload's URL is kept next to the capture", () async {
+      final c = container();
+      final png = Uint8List.fromList([1, 2, 3]);
+      c.read(cameraThumbnailsProvider.notifier).capture(camera.id, png);
+      expect(c.read(cameraThumbnailsProvider)[camera.id]?.url, isNull);
+      await pumpEventQueue();
+      final kept = c.read(cameraThumbnailsProvider)[camera.id]!;
+      expect(kept.png, same(png));
+      expect(kept.url, startsWith('https://'));
+    });
+
+    test('a failed upload keeps the capture, silently', () async {
+      final c = container({FakeCase.alertsOnlyRole});
+      final png = Uint8List.fromList([1, 2, 3]);
+      c.read(cameraThumbnailsProvider.notifier).capture(camera.id, png);
+      await pumpEventQueue();
+      expect(c.read(cameraThumbnailsProvider)[camera.id]?.url, isNull);
+      expect(c.read(cameraStillProvider(camera)), MemoryImage(png));
+    });
   });
 
   test('fakeOverrides swaps in the fakes', () {

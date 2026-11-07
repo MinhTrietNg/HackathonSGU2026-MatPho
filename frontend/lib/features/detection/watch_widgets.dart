@@ -14,6 +14,7 @@ import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_still.dart';
 import '../../data/models/models.dart';
 import 'feed_player.dart';
+import 'feed_snapshot.dart';
 
 typedef WatchArt = ({String art, String? overlay, double overlayOpacity});
 
@@ -80,16 +81,23 @@ class WatchFeedPicture extends StatelessWidget {
     required this.art,
     this.video,
     this.still,
+    this.snapshot,
   });
 
   final WatchArt art;
   final FeedSource? video;
 
-  final String? still;
+  final ImageProvider? still;
+
+  final FeedSnapshotTarget? snapshot;
 
   @override
   Widget build(BuildContext context) => switch (video) {
-    final source? => FeedVideo(source: source, still: still),
+    final source? => FeedVideo(
+      source: source,
+      still: still,
+      snapshot: snapshot,
+    ),
     null => WatchFeedArt(art),
   };
 }
@@ -104,6 +112,7 @@ class WatchFeed extends StatelessWidget {
     this.onFullScreen,
     this.video,
     this.still,
+    this.snapshot,
   });
 
   final WatchArt art;
@@ -116,7 +125,9 @@ class WatchFeed extends StatelessWidget {
 
   final FeedSource? video;
 
-  final String? still;
+  final ImageProvider? still;
+
+  final FeedSnapshotTarget? snapshot;
 
   @override
   Widget build(BuildContext context) =>
@@ -150,7 +161,12 @@ class WatchFeed extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          WatchFeedPicture(art: art, video: video, still: still),
+          WatchFeedPicture(
+            art: art,
+            video: video,
+            still: still,
+            snapshot: snapshot,
+          ),
           Positioned(
             left: 10,
             top: 10,

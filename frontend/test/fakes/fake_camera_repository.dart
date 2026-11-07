@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:mat_pho/data/errors.dart';
 import 'package:mat_pho/data/models/camera.dart';
 import 'package:mat_pho/data/models/group.dart';
@@ -145,6 +147,7 @@ final class FakeCameraRepository implements CameraRepository {
       liveStreamUrl: before.liveStreamUrl,
       deviceName: before.deviceName,
       ai: ai ?? before.ai,
+      thumbnailUrl: before.thumbnailUrl,
     );
     _world.cameras[_world.cameras.indexOf(before)] = after;
     return _seenByMe(after);
@@ -219,6 +222,25 @@ final class FakeCameraRepository implements CameraRepository {
       throw const AreaNotEmptyException();
     }
     _world.areas.removeWhere((a) => a.groupId == groupId && a.id == areaId);
+  }
+
+  @override
+  Future<String> uploadThumbnail(String cameraId, Uint8List png) async {
+    await _world.delay();
+    final camera = _camera(cameraId);
+    final me = _world.me(camera.groupId);
+    final ids = me.cameraIds;
+    if (!me.role.canWatch ||
+        (!me.role.canManage && ids != null && !ids.contains(cameraId))) {
+      throw const PermissionDeniedException();
+    }
+    final url =
+        'https://storage.test/cameras/$cameraId/thumbnail.png'
+        '?v=${_world.newId('t')}';
+    _world.cameras[_world.cameras.indexOf(camera)] = camera.copyWith(
+      thumbnailUrl: url,
+    );
+    return url;
   }
 
   ({TrashedCamera entry, Camera camera}) _trashed(String id) =>

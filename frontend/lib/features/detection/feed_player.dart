@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/widgets/mp_still.dart';
 import '../../data/models/models.dart';
+import 'feed_snapshot.dart';
 
 final feedPlayerProvider = Provider.autoDispose
     .family<VideoPlayerController, FeedSource>((ref, source) {
@@ -80,11 +81,13 @@ void loopFeedSegment(
 }
 
 class FeedVideo extends ConsumerWidget {
-  const FeedVideo({super.key, required this.source, this.still});
+  const FeedVideo({super.key, required this.source, this.still, this.snapshot});
 
   final FeedSource source;
 
-  final String? still;
+  final ImageProvider? still;
+
+  final FeedSnapshotTarget? snapshot;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,11 +100,14 @@ class FeedVideo extends ConsumerWidget {
             (value.isPlaying || value.position > Duration.zero);
         if (!started || value.hasError) {
           return switch (still) {
-            final still? => MpStill(still),
+            final still? => MpStill.image(
+              still,
+              fallback: const SizedBox.expand(),
+            ),
             null => const SizedBox.expand(),
           };
         }
-        return FittedBox(
+        final video = FittedBox(
           fit: BoxFit.cover,
           clipBehavior: Clip.hardEdge,
           child: SizedBox.fromSize(
@@ -109,6 +115,10 @@ class FeedVideo extends ConsumerWidget {
             child: VideoPlayer(controller),
           ),
         );
+        return switch (snapshot) {
+          final target? => FeedSnapshotBoundary(target: target, child: video),
+          null => video,
+        };
       },
     );
   }

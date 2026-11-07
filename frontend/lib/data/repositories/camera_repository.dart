@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/camera.dart';
 
 abstract interface class CameraRepository {
@@ -41,4 +43,6 @@ abstract interface class CameraRepository {
   Future<void> deleteCameraForever(String cameraId);
 
   Future<void> deleteArea({required String groupId, required String areaId});
+
+  Future<String> uploadThumbnail(String cameraId, Uint8List png);
 }

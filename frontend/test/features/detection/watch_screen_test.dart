@@ -17,6 +17,7 @@ import 'package:mat_pho/data/repositories/repositories.dart';
 import 'package:mat_pho/features/cameras/camera_state.dart';
 import 'package:mat_pho/features/detection/detection_routes.dart';
 import 'package:mat_pho/features/detection/watch_full_screen.dart';
+import 'package:mat_pho/features/groups/current_group.dart';
 
 class ScriptedDetectionRepository implements DetectionRepository {
   StreamController<DetectionState>? _session;
@@ -78,6 +79,7 @@ void main() {
     DetectionRepository? repository,
     DateTime Function()? clock,
     List<Override> overrides = const [],
+    FakeScenario scenario = const FakeScenario.test(),
   }) async {
     tester.view
       ..physicalSize = const Size(360, 780)
@@ -115,7 +117,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: fakeOverrides([
-          fakeScenarioProvider.overrideWithValue(const FakeScenario.test()),
+          fakeScenarioProvider.overrideWithValue(scenario),
           if (repository != null)
             detectionRepositoryProvider.overrideWithValue(repository),
           clockProvider.overrideWithValue(clock ?? () => FakeData.demoNow),
@@ -416,6 +418,33 @@ void main() {
 
     await tester.pump(const Duration(seconds: 5));
     expect(find.text('Hầm B1 · Khu sạc xe'), findsOneWidget);
+    expect(repo.started, hasLength(1));
+  });
+
+  testWidgets('a reload under the session keeps E2 on screen', (tester) async {
+    final repo = ScriptedDetectionRepository();
+    await open(
+      tester,
+      _fire,
+      repository: repo,
+      scenario: const FakeScenario(freezeClock: true),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    repo.emit(const DetectionWatching());
+    await tester.pumpAndSettle();
+    expect(find.text('Toàn màn hình'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.text('Toàn màn hình')),
+    )..invalidate(groupsProvider);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(cameraDetailProvider(_fire)).isLoading, isTrue);
+    expect(find.text('Toàn màn hình'), findsOneWidget);
+    expect(find.text('AI đang quét'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Toàn màn hình'), findsOneWidget);
     expect(repo.started, hasLength(1));
   });
 

@@ -40,6 +40,7 @@ class MpButton extends StatefulWidget {
     this.icon,
     this.expand = true,
     this.pressed,
+    this.busy = false,
   });
 
   final String label;
@@ -53,6 +54,9 @@ class MpButton extends StatefulWidget {
 
   final bool? pressed;
 
+  // Work in flight: no taps, a spinner in place of the label.
+  final bool busy;
+
   @override
   State<MpButton> createState() => _MpButtonState();
 }
@@ -63,7 +67,7 @@ class _MpButtonState extends State<MpButton> {
 
   bool _down = false;
 
-  bool get _enabled => widget.onPressed != null;
+  bool get _enabled => widget.onPressed != null && !widget.busy;
 
   void _setDown(bool value) {
     if (_down != value && _enabled) setState(() => _down = value);
@@ -108,6 +112,18 @@ class _MpButtonState extends State<MpButton> {
       ],
     );
     if (!raised && pressed) content = Opacity(opacity: 0.6, child: content);
+    if (widget.busy) {
+      content = Stack(
+        alignment: Alignment.center,
+        children: [
+          Visibility.maintain(visible: false, child: content),
+          SizedBox.square(
+            dimension: size.icon,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: fg),
+          ),
+        ],
+      );
+    }
 
     final faceInset = raised
         ? EdgeInsets.only(top: pressed ? _edge : 0, bottom: pressed ? 0 : _edge)
@@ -158,8 +174,11 @@ class _MpButtonState extends State<MpButton> {
         onTapDown: (_) => _setDown(true),
         onTapUp: (_) => _setDown(false),
         onTapCancel: () => _setDown(false),
-        onTap: widget.onPressed,
-        child: Opacity(opacity: _enabled ? 1 : 0.4, child: button),
+        onTap: _enabled ? widget.onPressed : null,
+        child: Opacity(
+          opacity: widget.onPressed != null ? 1 : 0.4,
+          child: button,
+        ),
       ),
     );
   }

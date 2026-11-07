@@ -220,7 +220,9 @@ void showMpAlertBanner(
   entry.insert(Overlay.of(context, rootOverlay: true), duration);
 }
 
-void hideMpAlertBanner() => _current?.dismiss();
+void hideMpAlertBanner() {
+  _current?.dismiss();
+}
 
 _BannerEntry? _current;
 

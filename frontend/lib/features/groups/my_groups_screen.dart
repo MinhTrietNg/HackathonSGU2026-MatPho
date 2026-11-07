@@ -137,8 +137,9 @@ class _MyGroupsScreenState extends ConsumerState<MyGroupsScreen> {
   Widget build(BuildContext context) {
     final c = context.mpColors;
     final t = context.mpText;
+    final allGroups = ref.watch(groupsProvider).value;
     final groups = [
-      for (final g in ref.watch(groupsProvider).value ?? const <Group>[])
+      for (final g in allGroups ?? const <Group>[])
         if (!g.isPersonal) g,
     ];
     final declining = ref.watch(pendingDeclinesProvider);
@@ -184,7 +185,8 @@ class _MyGroupsScreenState extends ConsumerState<MyGroupsScreen> {
               onAccept: () => _accept(invitation),
             ),
         ],
-        MpSectionLabel('NHÓM CỦA BẠN · ${groups.length}'),
+        if (allGroups != null)
+          MpSectionLabel('NHÓM CỦA BẠN · ${groups.length}'),
         for (final g in groups)
           GroupListRow(
             icon: g.id == current?.id ? MpIcons.shield : MpIcons.user,

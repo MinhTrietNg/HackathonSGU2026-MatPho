@@ -140,8 +140,8 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
             ),
             Expanded(
               child: switch (camera) {
-                AsyncData(:final value) => _session(value, state),
-                AsyncError() => const _CameraMissing(),
+                AsyncValue(:final value?) => _session(value, state),
+                AsyncValue(hasError: true) => const _CameraMissing(),
                 _ => const SizedBox.shrink(),
               },
             ),

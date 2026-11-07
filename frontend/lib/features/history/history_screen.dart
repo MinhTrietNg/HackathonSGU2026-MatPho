@@ -30,6 +30,8 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   bool? _active;
+  // Keeps the last list on screen while another filter loads.
+  ({HistoryFilter filter, List<FireEvent> rows})? _shown;
 
   @override
   void didChangeDependencies() {
@@ -47,20 +49,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget build(BuildContext context) {
     final filter = ref.watch(historyFilterProvider);
     final events = ref.watch(historyListProvider(filter));
-    final rows = events.value;
+    if (events.value case final rows?) _shown = (filter: filter, rows: rows);
+    final shown = _shown;
 
     final Widget body;
-    if (rows != null) {
-      body = rows.isEmpty && filter == HistoryFilter.all
-          ? const _EmptyBody()
-          : _ListBody(filter: filter, events: rows);
-    } else if (events.hasError && !events.isLoading) {
+    if (events case AsyncValue(:final error?, hasValue: false)) {
       body = HistoryLoadError(
-        error: events.error!,
+        error: error,
+        busy: events.isLoading,
         onRetry: () => ref.invalidate(historyListProvider(filter)),
       );
+    } else if (shown != null) {
+      body = shown.rows.isEmpty && shown.filter == HistoryFilter.all
+          ? const _EmptyBody()
+          : _ListBody(filter: filter, listed: shown.filter, events: shown.rows);
     } else {
-      body = _ListBody(filter: filter, events: null);
+      body = _ListBody(filter: filter, listed: filter, events: null);
     }
     final isList = body is _ListBody;
 
@@ -83,9 +87,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 }
 
 class _ListBody extends ConsumerWidget {
-  const _ListBody({required this.filter, required this.events});
+  const _ListBody({
+    required this.filter,
+    required this.listed,
+    required this.events,
+  });
 
   final HistoryFilter filter;
+
+  final HistoryFilter listed;
 
   final List<FireEvent>? events;
 
@@ -135,9 +145,9 @@ class _ListBody extends ConsumerWidget {
         ..add(const SizedBox(height: 4))
         ..add(
           Text(
-            filter == HistoryFilter.all
+            listed == HistoryFilter.all
                 ? 'Đã hiện hết · $days ngày gần nhất'
-                : 'Đang lọc “${_label(filter)}” · $days ngày gần nhất',
+                : 'Đang lọc “${_label(listed)}” · $days ngày gần nhất',
             textAlign: TextAlign.center,
             style: context.mpText.caption.copyWith(
               fontWeight: FontWeight.w500,

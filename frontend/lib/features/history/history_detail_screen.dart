@@ -39,12 +39,11 @@ class HistoryDetailScreen extends ConsumerWidget {
             Expanded(
               child: switch (event) {
                 AsyncValue(value: final event?) => _Details(event),
-                AsyncValue(error: final error?, isLoading: false) =>
-                  HistoryLoadError(
-                    error: error,
-                    onRetry: () =>
-                        ref.invalidate(historyDetailProvider(eventId)),
-                  ),
+                AsyncValue(:final error?, :final isLoading) => HistoryLoadError(
+                  error: error,
+                  busy: isLoading,
+                  onRetry: () => ref.invalidate(historyDetailProvider(eventId)),
+                ),
                 _ => const SizedBox.shrink(),
               },
             ),

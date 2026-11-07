@@ -103,6 +103,41 @@ vlm:
   # CHỈ hỏi khi camera.context = NGOAI; HAM/TRET luôn UNCONTROLLED. CONTROLLED KHÔNG đổi
   # verification/severity: event vẫn phát, chỉ người trực được bỏ qua.
 
+# ───────── [4b] Verifier bền vững (docs/decisions/2026-11-07-verifier-ben-vung.md) ─────────
+verifier:
+  ben_vung: false           # false (hoặc thiếu khối này): hành vi, log, JSON event y hệt trước đây.
+                            # true: event có thêm object verifier (status, needs_human_check,
+                            # latency_ms, reason); created PENDING ở vlm.grace_s, updated chậm
+                            # nhất ở ngan_sach_s; /health có thêm khối verifier; WS event_update
+                            # mang reason "verifier". VLM không hạ mức, không gỡ cảnh báo
+  ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s.
+                            # Quá hạn -> updated VLM_TIMEOUT, needs_human_check = true, kết quả
+                            # đến muộn bị bỏ. Cờ bật: mỗi lượt gọi VLM có timeout = ngân sách
+                            # còn lại - 0,5 s, không retry (bỏ qua vlm.timeout_s, vlm.retries);
+                            # còn dưới 1 s thì không gọi (reason qua_han_hang_cho)
+  hang_cho_toi_da: 8        # số mục tối đa đang chờ worker gọi VLM, khoá theo event_id (cùng
+                            # event_id thì thay keyframe). Đầy -> mục cũ nhất VLM_TIMEOUT
+                            # (qua_han_hang_cho). Số worker = vlm.max_workers
+  cau_dao:                  # không gọi dồn khi VLM chết hoặc bị giới hạn (429)
+    loi_lien_tiep: 3        # số yêu cầu đã gọi VLM mà thất bại liên tiếp (lỗi, 429, quá ngân
+                            # sách) thì mở; thành công xoá đếm
+    mo_s: 60                # mở chừng này giây: không gọi VLM, event VLM_OFF (cau_dao_mo).
+                            # Hết giờ thì nửa mở: một lượt gọi thử, thành công đóng, thất bại
+                            # mở lại. Trạng thái xem ở /health -> verifier.breaker
+
+# ───────── [4c] Gom sự cố (docs/decisions/2026-11-07-gom-su-co.md) ─────────
+# CHỈ chạy khi verifier.ben_vung bật. Một đám cháy = một event_id: created một lần, sau đó
+# chỉ updated; event có thêm status (open | ended), last_seen_ts, luot_xac_minh.
+su_co:
+  khoang_cach_s: 120        # quá chừng này giây không thấy cháy -> updated status "ended"; thấy
+                            # lại sau đó là sự cố mới (created mới). Cảnh báo đến khi sự cố
+                            # còn mở thì vào cùng event_id. Tính theo giờ thật, không theo video
+  nhip_cap_nhat_s: 30       # updated thường (còn thấy cháy, nhắc lại của voting) nhiều nhất mỗi
+                            # chừng này giây; mức tăng và verifier.status đổi thì phát ngay
+  vlm_kiem_lai_s: 300       # sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng
+                            # này giây kể từ lượt trước; lượt kiểm lại lỗi không xoá kết luận cũ
+  iou_ghep: 0.3             # track mới chồng box sự cố quá ngưỡng này thì tính là còn thấy cháy
+
 # ───────── [5] Alert sink ─────────
 alerts:
   events_dir: events        # mỗi alert = 1 file .json + 1 ảnh .jpg keyframe đã vẽ box

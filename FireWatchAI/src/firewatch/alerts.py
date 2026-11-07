@@ -25,7 +25,8 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import (BaseModel, Field, field_validator, model_serializer,
+                      model_validator)
 
 from .annotate import draw_detections, write_jpeg
 from .config import AlertsConfig, CameraConfig, Config, Context, env_secret
@@ -35,6 +36,21 @@ log = logging.getLogger(__name__)
 
 SeverityName = Literal["WARNING", "CRITICAL"]
 Verification = Literal["VERIFIED", "UNVERIFIED", "SUPPRESSED"]
+VerifierStatus = Literal["PENDING", "VERIFIED", "REJECTED", "VLM_TIMEOUT",
+                         "VLM_ERROR", "VLM_OFF"]
+"""Trạng thái xác minh tự động khi cờ ``verifier.ben_vung`` bật."""
+
+VERIFICATION_CUA: dict[str, Verification] = {
+    "PENDING": "UNVERIFIED", "VERIFIED": "VERIFIED", "REJECTED": "SUPPRESSED",
+    "VLM_TIMEOUT": "UNVERIFIED", "VLM_ERROR": "UNVERIFIED", "VLM_OFF": "UNVERIFIED"}
+"""Ánh xạ trạng thái verifier sang ``verification`` cũ (Literal không đổi)."""
+
+CAN_NGUOI_XAC_THUC = frozenset({"VLM_TIMEOUT", "VLM_ERROR", "VLM_OFF"})
+"""Trạng thái mà người trực phải tự xác thực."""
+
+LY_DO = frozenset({"cho_vlm", "timeout", "qua_han_hang_cho", "http_429", "http_4xx",
+                   "http_5xx", "loi_mang", "loi_phan_tich", "cau_dao_mo", "vlm_tat"})
+"""Mã ``reason`` hợp lệ; không bao giờ chứa body HTTP hay chuỗi lỗi thô."""
 
 
 class EventBox(BaseModel):
@@ -81,12 +97,61 @@ class VLMResult(BaseModel):
     only the operator can dismiss. Always ``UNCONTROLLED`` for HAM / TRET."""
 
 
+class VerifierInfo(BaseModel):
+    """Trạng thái xác minh tự động của một event (chỉ có khi cờ bật)."""
+
+    status: VerifierStatus
+    needs_human_check: bool
+    latency_ms: int | None = None
+    """Thời gian VLM trả lời; ``None`` nếu không có câu trả lời."""
+    reason: str | None = None
+    """Mã ngắn trong :data:`LY_DO`."""
+
+    @field_validator("reason")
+    @classmethod
+    def _ma_hop_le(cls, v: str | None) -> str | None:
+        if v is not None and v not in LY_DO:
+            raise ValueError(f"reason không thuộc mã đã định: {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _can_nguoi_khop_trang_thai(self) -> "VerifierInfo":
+        if self.needs_human_check != (self.status in CAN_NGUOI_XAC_THUC):
+            raise ValueError("needs_human_check phải đúng khi và chỉ khi status là "
+                             "VLM_TIMEOUT, VLM_ERROR hoặc VLM_OFF")
+        return self
+
+    @classmethod
+    def tao(cls, status: VerifierStatus, *, latency_s: float | None = None,
+            reason: str | None = None) -> "VerifierInfo":
+        """Tạo object với ``needs_human_check`` suy từ ``status``.
+
+        Parameters
+        ----------
+        status : VerifierStatus
+            Trạng thái xác minh.
+        latency_s : float, optional
+            Độ trễ VLM tính bằng giây; ``None`` nếu không có câu trả lời.
+        reason : str, optional
+            Mã trong :data:`LY_DO`.
+        """
+        ms = None if latency_s is None else int(round(latency_s * 1000))
+        return cls(status=status, needs_human_check=status in CAN_NGUOI_XAC_THUC,
+                   latency_ms=ms, reason=reason)
+
+    @property
+    def verification(self) -> Verification:
+        """Giá trị ``verification`` cũ tương ứng."""
+        return VERIFICATION_CUA[self.status]
+
+
 class Event(BaseModel):
     """Alert event — schema chốt với backend, không tự đổi.
 
     Chỉ được thêm trường. ``type`` là loại của lần gửi này; ``snapshot_base64``
     chỉ có trong payload webhook khi ``webhook.gui_anh`` bật, không bao giờ nằm
-    trong JSON trên đĩa, REST hay WebSocket.
+    trong JSON trên đĩa, REST hay WebSocket. ``verifier`` chỉ xuất hiện trong
+    JSON khi có giá trị, tức khi cờ ``verifier.ben_vung`` bật.
     """
 
     event_id: str
@@ -110,13 +175,32 @@ class Event(BaseModel):
     snapshot_base64: str | None = None
     """JPEG base64 của keyframe gốc (không vẽ box), dưới ``webhook.anh_toi_da_kb``;
     chỉ trong payload webhook khi ``webhook.gui_anh`` bật."""
+    verifier: VerifierInfo | None = None
+    status: Literal["open", "ended"] | None = None
+    """Sự cố còn mở hay đã kết thúc (quá ``su_co.khoang_cach_s`` không thấy
+    cháy). Chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
+    last_seen_ts: float | None = None
+    """Giây Unix (UTC) của khung gần nhất còn thấy cháy thuộc sự cố này."""
+    luot_xac_minh: int | None = Field(None, ge=1)
+    """Lượt xác minh hiện tại của sự cố, bắt đầu 1; tăng khi leo thang mức
+    hoặc kiểm lại định kỳ."""
 
     @model_serializer(mode="wrap")
     def _bo_truong_rong(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
-        if self.snapshot_base64 is None:
-            data.pop("snapshot_base64", None)
+        for k in ("snapshot_base64", "verifier", "status", "last_seen_ts",
+                  "luot_xac_minh"):
+            if getattr(self, k) is None:
+                data.pop(k, None)
         return data
+
+    @model_validator(mode="after")
+    def _verification_khop_verifier(self) -> "Event":
+        if (self.verifier is not None
+                and self.verification != self.verifier.verification):
+            raise ValueError(f"verification {self.verification} không khớp "
+                             f"verifier.status {self.verifier.status}")
+        return self
 
 
 def sample_event() -> Event:
@@ -220,8 +304,9 @@ class EventStore:
         self._paths: dict[str, Path] = {}
         self._lock = threading.Lock()
         self._subscribers: list[Callable[[Event, str], None]] = []
-        """Called with ``(event, kind)``; kind is ``"created"``, ``"updated"`` or
-        ``"escalated"`` (CRITICAL left unacknowledged, see acks.py)."""
+        """Called with ``(event, kind)``; kind is ``"created"``, ``"updated"``,
+        ``"escalated"`` (CRITICAL left unacknowledged, see acks.py) or ``"su_co"``
+        (cập nhật sự cố không đổi verifier, chỉ khi cờ ``verifier.ben_vung``)."""
         self.webhook: WebhookSink | None = None
         url = env_secret(cfg.webhook_url_env)
         if url:
@@ -266,7 +351,14 @@ class EventStore:
         self._subscribers.append(fn)
 
     def _notify(self, event: Event, kind: str) -> None:
-        if event.verification == "SUPPRESSED" and not self.notify_suppressed:
+        """Đẩy event tới subscriber và webhook.
+
+        Event mang ``verifier`` (cờ bật) luôn được đẩy, kể cả REJECTED với
+        ``notify_suppressed = false``: VLM không được gỡ cảnh báo, chỉ người trực
+        được bỏ qua.
+        """
+        if (event.verification == "SUPPRESSED" and not self.notify_suppressed
+                and event.verifier is None):
             log.info("event %s SUPPRESSED: chỉ ghi đĩa, không đẩy WS/webhook",
                      event.event_id[:8])
             return
@@ -297,16 +389,28 @@ class EventStore:
     def create(self, *, severity: SeverityName, verification: Verification,
                video_ts: float, detections: list[Detection],
                image: np.ndarray | None, vlm: VLMResult | None = None,
-               started_at: datetime | None = None) -> Event:
+               started_at: datetime | None = None,
+               verifier: VerifierInfo | None = None,
+               event_id: str | None = None,
+               su_co: dict[str, Any] | None = None) -> Event:
         """Persist one alert (JSON + annotated snapshot) and notify listeners.
 
         Parameters
         ----------
         image : ndarray or None
             Keyframe (BGR). ``None`` skips the snapshot (unit tests).
+        verifier : VerifierInfo, optional
+            Trạng thái xác minh khi cờ ``verifier.ben_vung`` bật; ``None`` giữ
+            đúng JSON và log cũ.
+        event_id : str, optional
+            ``event_id`` đã cấp từ lúc Voting quyết (cờ bật: hàng chờ xác minh
+            khoá theo nó). ``None`` thì tạo mới như trước.
+        su_co : dict, optional
+            ``status``, ``last_seen_ts``, ``luot_xac_minh`` của sự cố (cờ bật);
+            ``None`` giữ đúng JSON cũ.
         """
         started = started_at or datetime.now(timezone.utc).astimezone()
-        event_id = str(uuid.uuid4())
+        event_id = event_id or str(uuid.uuid4())
         stem = f"{started:%Y%m%d_%H%M%S}_{event_id[:8]}"
         snapshot_rel = ""
         h, w = image.shape[:2] if image is not None else (0, 0)
@@ -333,8 +437,9 @@ class EventStore:
             video_ts_sec=round(video_ts, 2),
             boxes=[EventBox(**d.to_dict(), xyxyn=chuan_hoa_box(d.xyxy, w, h))
                    for d in detections],
-            vlm=vlm, snapshot_path=snapshot_rel,
+            vlm=vlm, snapshot_path=snapshot_rel, verifier=verifier,
             frame_w=w, frame_h=h, frame_ts=round(started.timestamp(), 3),
+            **(su_co or {}),
         )
         json_path = self.dir / f"{stem}.json"
         json_path.write_text(event.model_dump_json(indent=2), encoding="utf-8")
@@ -343,32 +448,128 @@ class EventStore:
             self._paths[event_id] = json_path
         log.info("ALERT %s %s %s video %.1fs -> %s", severity, verification,
                  event_id[:8], video_ts, snapshot_rel or "(không snapshot)")
+        if verifier is not None:
+            _log_verifier(event_id, verifier)
         self._notify(event, "created")
         return event
 
     def update(self, event_id: str, *, verification: Verification,
-               vlm: VLMResult | None) -> Event | None:
+               vlm: VLMResult | None,
+               verifier: VerifierInfo | None = None) -> Event | None:
         """Patch the VLM verdict onto an event already sent (same ``event_id``).
 
         The JSON on disk is rewritten in place and subscribers get the event
         again with kind ``"updated"`` (WebSocket ``event_update``); the
         webhook is POSTed again with the same ``event_id`` so the backend can
-        upsert.
+        upsert. ``severity`` is never touched: the VLM cannot lower it.
+
+        Parameters
+        ----------
+        verifier : VerifierInfo, optional
+            Trạng thái xác minh mới khi cờ bật; ``None`` giữ đúng hành vi cũ.
+        """
+        if verifier is not None and verifier.verification != verification:
+            raise ValueError(f"verification {verification} không khớp "
+                             f"verifier.status {verifier.status}")
+        moi: dict[str, Any] = {"verification": verification, "vlm": vlm,
+                               "type": "updated"}
+        if verifier is not None:
+            moi["verifier"] = verifier
+        with self._lock:
+            idx = next((i for i, e in enumerate(self._events)
+                        if e.event_id == event_id), None)
+            if idx is None:
+                return None
+            event = self._events[idx].model_copy(update=moi)
+            self._events[idx] = event
+            path = self._paths.get(event_id)
+        if path is not None:
+            path.write_text(event.model_dump_json(indent=2), encoding="utf-8")
+        log.info("ALERT UPDATE %s -> %s", event_id[:8], verification)
+        if verifier is not None:
+            _log_verifier(event_id, verifier)
+        self._notify(event, "updated")
+        return event
+
+    def cap_nhat_su_co(self, event_id: str, thay: dict[str, Any], *,
+                       anh: np.ndarray | None = None,
+                       detections: list[Detection] | None = None,
+                       luc: datetime | None = None,
+                       ly_do: str = "") -> Event | None:
+        """Vá một event đã phát (``updated``, cùng ``event_id``), cờ bật.
+
+        Dùng cho lớp gom sự cố: đổi mức, trạng thái sự cố, ``last_seen_ts``,
+        lượt xác minh, kết quả verifier. Khi có ``anh`` (leo thang mức), keyframe
+        mới được ghi cạnh snapshot cũ và ``boxes``, ``snapshot_path``,
+        ``frame_*`` đổi theo, để box luôn khớp ảnh.
+
+        Parameters
+        ----------
+        thay : dict
+            Trường cần đổi (tên trường của :class:`Event`).
+        anh, detections, luc : optional
+            Keyframe mới (BGR), box trên nó và giờ thật của khung đó.
+        ly_do : str
+            Ghi vào log.
+
+        Returns
+        -------
+        Event or None
+            ``None`` khi không có ``event_id`` này.
         """
         with self._lock:
             idx = next((i for i, e in enumerate(self._events)
                         if e.event_id == event_id), None)
             if idx is None:
                 return None
-            event = self._events[idx].model_copy(
-                update={"verification": verification, "vlm": vlm, "type": "updated"})
-            self._events[idx] = event
+            cu = self._events[idx]
             path = self._paths.get(event_id)
+        moi = dict(thay)
+        if anh is not None:
+            moi.update(self._keyframe_moi(cu, anh, detections or [], path,
+                                          luc or datetime.now(timezone.utc)))
+        moi["type"] = "updated"
+        event = Event.model_validate({**cu.model_dump(), **{
+            k: (v.model_dump() if isinstance(v, BaseModel) else v)
+            for k, v in moi.items()}})
+        with self._lock:
+            self._events[idx] = event
         if path is not None:
             path.write_text(event.model_dump_json(indent=2), encoding="utf-8")
-        log.info("ALERT UPDATE %s -> %s", event_id[:8], verification)
-        self._notify(event, "updated")
+        log.info("SỰ CỐ UPDATE %s %s%s", event_id[:8],
+                 " ".join(f"{k}={moi[k]}" for k in
+                          ("severity", "status", "luot_xac_minh") if k in moi),
+                 f" ({ly_do})" if ly_do else "")
+        doi_xac_minh = event.verifier is not None and "verifier" in moi
+        if doi_xac_minh:
+            _log_verifier(event_id, event.verifier)
+        # "updated": kết quả xác minh (WS reason "verifier"); "su_co": nhịp cập
+        # nhật, mức tăng, kết thúc (WS reason "su_co"). Webhook như nhau.
+        self._notify(event, "updated" if doi_xac_minh else "su_co")
         return event
+
+    def _keyframe_moi(self, cu: Event, anh: np.ndarray, detections: list[Detection],
+                      json_path: Path | None, luc: datetime) -> dict[str, Any]:
+        """Ghi keyframe mới cạnh event và trả các trường đổi theo nó."""
+        h, w = anh.shape[:2]
+        stem = (json_path.stem if json_path is not None else cu.event_id[:8])
+        snap = self.dir / f"{stem}_{luc.astimezone():%H%M%S}.jpg"
+        banner = (f"{cu.severity} {cu.verification} {self.camera.id} "
+                  f"{self.camera.context}")
+        snapshot_rel = cu.snapshot_path
+        if write_jpeg(snap, draw_detections(anh, detections, banner),
+                      self.jpeg_quality):
+            snapshot_rel = _relpath(snap, self.root)
+        if self.save_raw:
+            write_jpeg(raw_keyframe_path(snap), anh, self.jpeg_quality)
+        if self.gui_anh:
+            jpeg = nen_jpeg_duoi(anh, self.anh_toi_da_kb)
+            self._anh_b64[cu.event_id] = base64.b64encode(jpeg).decode("ascii")
+            self._anh_b64.move_to_end(cu.event_id)
+        return {"snapshot_path": snapshot_rel, "frame_w": w, "frame_h": h,
+                "frame_ts": round(luc.timestamp(), 3),
+                "boxes": [EventBox(**d.to_dict(), xyxyn=chuan_hoa_box(d.xyxy, w, h))
+                          for d in detections]}
 
     def renotify(self, event_id: str, kind: str = "escalated") -> Event | None:
         """Push an unchanged event again (escalation): same ``event_id``,
@@ -377,6 +578,13 @@ class EventStore:
         if event is not None:
             self._notify(event, kind)
         return event
+
+
+def _log_verifier(event_id: str, v: VerifierInfo) -> None:
+    """Một dòng log trạng thái verifier (chỉ khi cờ bật)."""
+    log.info("verifier %s: %s%s%s", event_id[:8], v.status,
+             f" ({v.reason})" if v.reason else "",
+             " — cần người xác thực" if v.needs_human_check else "")
 
 
 def raw_keyframe_path(snapshot: Path) -> Path:

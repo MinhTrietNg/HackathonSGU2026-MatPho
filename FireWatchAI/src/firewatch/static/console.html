@@ -50,7 +50,9 @@
   .b.light { background: transparent; color: var(--muted);
              border: 1px solid var(--line); }
   .b.esc { background: #000; }
+  .b.human { background: #8a5a00; }
   .desc { margin: 0; font-size: 15px; }
+  .human { margin: 0; font-size: 14px; font-weight: 600; color: var(--warn); }
   .time { color: var(--muted); font-size: 13px; }
   .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   button { font: inherit; font-size: 14px; padding: 9px 6px; border-radius: 8px;
@@ -109,6 +111,10 @@ function render(id) {
   const item = events.get(id);
   const ev = item.event;
   const vlm = ev.vlm || {};
+  // verifier chỉ có khi cờ verifier.ben_vung bật; needs_human_check = VLM
+  // không khả dụng (timeout, lỗi, tắt): người trực phải tự nhìn ảnh.
+  const ver = ev.verifier || null;
+  const canNguoi = !!(ver && ver.needs_human_check);
   const ack = acks.get(id);
   const card = el("article", {
     class: "card " + (ev.severity === "CRITICAL" ? "crit" : "warn"), id: "ev-" + id });
@@ -118,12 +124,17 @@ function render(id) {
   const badges = el("div", { class: "badges" },
     badge(ev.severity, ev.severity),
     badge(ev.verification, ev.verification),
+    ver ? badge(ver.status, "light") : null,
+    canNguoi ? badge("cần người xác thực", "human") : null,
     badge(CTX[ev.context] || ev.context, "light"),
     vlm.fire_type ? badge(vlm.fire_type, vlm.fire_type) : null,
     badge(item.status === "created" ? "mới" : "cập nhật", "light"),
+    ev.status === "ended" ? badge("đã hết dấu hiệu cháy", "light") : null,
     item.escalations ? badge("nhắc lại ×" + item.escalations, "esc") : null);
   const when = new Date(ev.started_at).toLocaleTimeString("vi-VN");
   const body = el("div", { class: "body" }, badges,
+    canNguoi ? el("p", { class: "human" },
+      "Xác minh tự động không khả dụng, cần người xác thực") : null,
     el("p", { class: "desc" }, vlm.description_vi || "Chưa có mô tả xác minh."),
     el("div", { class: "time" }, `${ev.camera_id} · ${when} · video ` +
        `${ev.video_ts_sec}s · ${ev.event_id.slice(0, 8)}`));

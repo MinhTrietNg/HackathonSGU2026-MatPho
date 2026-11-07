@@ -12,7 +12,7 @@ Việc đã biết nhưng chưa làm, kèm lý do. Xong việc nào thì xoá d�
 | `datafirewatch-v0.4` trong `train` và `finetune` | bộ fine-tune v0.4 không có trong bảng đăng ký của FireWatch-Model; tên mới được đặt theo quy tắc, chưa có dòng đăng ký |
 | Vùng quét `watch_area` (sơ đồ 05/11 có vẽ) | chưa có trong FireWatchAI; khung `ai_service` ở nhánh `backend` đã có hàm che |
 | `.pt` và ONNX cho box lệch nhau khi mỗi backend tự tiền xử lý (lệch IoU tối đa 0,043; `models/README.md`) | chưa quyết có cần thống nhất letterbox hay không. Pipeline chạy ONNX nên hiện không ảnh hưởng vận hành |
-| Verifier bền vững: hàng chờ, ngân sách nền, cầu dao, `/health`, `reason: "verifier"` trên WebSocket | đang làm trên nhánh `FireWatch-AI` theo `docs/decisions/2026-11-07-verifier-ben-vung.md` |
+| Verifier bền vững và gom sự cố: chạy thử cờ bật trên clip với VLM giả (nhanh, chậm, chết) rồi quyết mặc định cờ | mã đã đủ theo `docs/decisions/2026-11-07-verifier-ben-vung.md` trên nhánh `FireWatch-AI`; cờ `verifier.ben_vung` giữ mặc định tắt cho tới khi chủ repo chạy thử và chốt |
 
 ## FireWatch-Model
 

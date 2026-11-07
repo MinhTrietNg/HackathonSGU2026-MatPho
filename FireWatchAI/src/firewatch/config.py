@@ -142,6 +142,49 @@ class VLMConfig(_Strict):
     """Mock answer for ``vlm.fire_type`` (only kept for NGOAI, see vlm.py)."""
 
 
+class CauDaoConfig(_Strict):
+    """Cầu dao của verifier (ADR 2026-11-07-verifier-ben-vung)."""
+
+    loi_lien_tiep: int = Field(3, ge=1)
+    """Số yêu cầu xác minh thất bại liên tiếp thì mở cầu dao."""
+    mo_s: float = Field(60.0, gt=0)
+    """Cầu dao mở chừng này giây, sau đó cho đúng một lượt gọi thử."""
+
+
+class VerifierConfig(_Strict):
+    """Verifier bền vững, sau cờ ``ben_vung`` (mặc định tắt).
+
+    Cờ tắt, hoặc thiếu khối ``verifier`` trong ``config.yaml``: hành vi, log và
+    JSON của event y hệt trước khi có cờ.
+    """
+
+    ben_vung: bool = False
+    ngan_sach_s: float = Field(10.0, gt=0)
+    """Ngân sách nền tính từ lúc Voting quyết; quá hạn thì ``VLM_TIMEOUT``."""
+    hang_cho_toi_da: int = Field(8, ge=1)
+    """Số mục tối đa đang chờ gọi VLM, khoá theo ``event_id``."""
+    cau_dao: CauDaoConfig = CauDaoConfig()
+
+
+class SuCoConfig(_Strict):
+    """Gom sự cố (ADR 2026-11-07-gom-su-co); chỉ chạy khi ``verifier.ben_vung``.
+
+    Một sự cố là một ``event_id``: ``created`` một lần, sau đó chỉ ``updated``.
+    """
+
+    khoang_cach_s: float = Field(120.0, gt=0)
+    """Quá chừng này giây không thấy cháy thì sự cố ``ended``; thấy lại sau đó là
+    sự cố mới. Cảnh báo đến khi sự cố còn mở thì vào cùng ``event_id``."""
+    nhip_cap_nhat_s: float = Field(30.0, gt=0)
+    """``updated`` thường (thấy cháy tiếp, nhắc lại của voting) nhiều nhất mỗi
+    chừng này giây; mức tăng và trạng thái xác minh đổi thì phát ngay."""
+    vlm_kiem_lai_s: float = Field(300.0, gt=0)
+    """Sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng này giây
+    kể từ lượt trước."""
+    iou_ghep: float = Field(0.3, ge=0, le=1)
+    """Track mới chồng box sự cố quá ngưỡng này thì được tính là còn thấy cháy."""
+
+
 class AlertsConfig(_Strict):
     events_dir: Path = Path("events")
     snapshot_jpeg_quality: int = Field(90, ge=1, le=100)
@@ -491,6 +534,8 @@ class Config(_Strict):
     output: OutputConfig = OutputConfig()
     voting: VotingConfig = VotingConfig()
     vlm: VLMConfig = VLMConfig()
+    verifier: VerifierConfig = VerifierConfig()
+    su_co: SuCoConfig = SuCoConfig()
     alerts: AlertsConfig = AlertsConfig()
     webhook: WebhookConfig = WebhookConfig()
     server: ServerConfig = ServerConfig()
@@ -503,6 +548,14 @@ class Config(_Strict):
     audit: AuditConfig = AuditConfig()
     eval: EvalConfig = EvalConfig()
     root: Path = Field(default_factory=Path.cwd, exclude=True)
+
+    @model_validator(mode="after")
+    def _ngan_sach_dai_hon_cua_so(self) -> "Config":
+        if self.verifier.ben_vung and self.verifier.ngan_sach_s <= self.vlm.grace_s:
+            raise ValueError(
+                f"verifier.ngan_sach_s ({self.verifier.ngan_sach_s}) phải lớn hơn "
+                f"vlm.grace_s ({self.vlm.grace_s}) khi verifier.ben_vung bật")
+        return self
 
     def with_profile(self, name: str | None) -> "Config":
         """Copy of the config whose ``finetune`` is dataset profile ``name``.

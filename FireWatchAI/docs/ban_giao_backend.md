@@ -36,8 +36,15 @@ mà file mẫu chưa xuất lại (`python tools/xuat_mau_event.py --source <cli
 | `boxes[].xyxyn` | 4 float [0, 1] | `xyxy` chia cho `frame_w`, `frame_h`; vẽ được trên ảnh bất kỳ cỡ nào (kể cả `snapshot_base64` đã thu nhỏ) bằng cách nhân với cỡ ảnh đó |
 | `type` | `created` \| `updated` | `created` ở lần gửi đầu của `event_id`; `updated` ở mọi lần gửi lại cùng `event_id` (kết quả VLM, nhắc lại, verifier đổi trạng thái) |
 | `frame_w`, `frame_h` | int | cỡ khung gốc, pixel |
-| `frame_ts` | float | giây Unix (UTC) của khung keyframe; cùng thời điểm với `started_at` |
+| `frame_ts` | float | giây Unix (UTC) của khung keyframe. Lúc `created` cùng thời điểm với `started_at`; khi sự cố leo thang mức, keyframe mới thay thế và `frame_ts` đổi theo (mục 6) |
 | `snapshot_base64` | str, tuỳ chọn | keyframe **gốc, không vẽ box**, JPEG base64, dưới `webhook.anh_toi_da_kb` (mặc định 200 KB). Chỉ có trong payload webhook khi `webhook.gui_anh: true`; JSON trên đĩa, REST và WebSocket không có trường này |
+| `verifier` | object, tuỳ chọn | trạng thái xác minh tự động; chỉ có khi cờ `verifier.ben_vung` bật (mục 5) |
+| `status` | `open` \| `ended`, tuỳ chọn | sự cố còn mở hay đã kết thúc; chỉ có khi cờ bật (mục 6) |
+| `last_seen_ts` | float, tuỳ chọn | giây Unix (UTC) của khung gần nhất còn thấy cháy; chỉ có khi cờ bật |
+| `luot_xac_minh` | int ≥ 1, tuỳ chọn | lượt xác minh hiện tại của sự cố; chỉ có khi cờ bật |
+
+`docs/mau_event.json` được xuất với cờ bật nên có đủ mọi trường trên. Khi cờ tắt, bốn
+trường tuỳ chọn cuối không xuất hiện; parser của backend phải coi chúng là không bắt buộc.
 
 - Event ghi trên đĩa trước khi có các trường trên vẫn nạp lại được; khi đó `frame_w`,
   `frame_h`, `frame_ts` là 0 và `xyxyn` toàn 0.
@@ -97,7 +104,7 @@ Message trên `WS /ws`:
 |---|---|---|
 | `hello` | ngay khi nối | `events_so_far` |
 | `event` | alert mới | `event` |
-| `event_update` | cập nhật cùng `event_id` (kết quả VLM, nhắc lại) | `event`; `reason: "escalation"` khi gửi lại CRITICAL chưa ai trả lời |
+| `event_update` | cập nhật cùng `event_id` (kết quả VLM, nhắc lại) | `event`; `reason: "escalation"` khi gửi lại CRITICAL chưa ai trả lời; `reason: "verifier"` khi object `verifier` đổi trạng thái (cờ `verifier.ben_vung` bật, mục 5); `reason: "su_co"` khi sự cố cập nhật: nhịp 30 s, mức tăng, kết thúc (cờ bật, mục 6); không có `reason` khi là cập nhật VLM lúc cờ tắt |
 | `ack` | người trực bấm nút | `ack` |
 
 `GET /health`:
@@ -107,12 +114,14 @@ Message trên `WS /ws`:
   hoặc nguồn live kết thúc).
 - `pipeline` gồm: `heartbeats`, `alerts`, `last_heartbeat_age_s`, `uptime_s`,
   `source_live`, `error`.
+- Cờ `verifier.ben_vung` bật thì có thêm khối `verifier` (mục 5); các trường trên không
+  đổi.
 
 ## 3. Người trực và nhắc lại
 
 - Ack lưu ở `events/acks.json`, tách khỏi event, nên schema event không đổi.
-- `confirm` và `dismiss_controlled` tắt việc nhắc `STILL_BURNING` của track tương ứng.
-  `watch` không tắt gì.
+- `confirm` và `dismiss_controlled` tắt việc nhắc `STILL_BURNING` của track tương ứng
+  (cờ bật: của mọi track thuộc sự cố). `watch` không tắt gì.
 - Leo thang severity, hoặc cháy lại sau khi đã tắt, vẫn được báo. Chỉ con người được bỏ
   qua một cảnh báo.
 - Event CRITICAL chưa ai trả lời sau `alerts.escalation_s` (mặc định 120 s, 0 = tắt)
@@ -138,8 +147,9 @@ Hợp đồng đã chốt với đội backend ngày 2026-11-07.
 Bên gửi:
 - Gửi trên một thread riêng theo hàng FIFO, không chặn pipeline. Backend nhận đúng thứ
   tự phát: `updated` không bao giờ tới trước `created` của cùng `event_id`.
-- Có ba trường hợp gửi lại cùng `event_id`: cập nhật VLM, nhắc lại CRITICAL, và object
-  `verifier` đổi trạng thái (mục 5, khi bật cờ).
+- Các trường hợp gửi lại cùng `event_id`: cập nhật VLM, nhắc lại CRITICAL, object
+  `verifier` đổi trạng thái (mục 5), và cập nhật sự cố: nhịp 30 s, mức tăng, `status:
+  "ended"` (mục 6). Hai mục sau chỉ khi bật cờ.
 - Lỗi 4xx (trừ 408 và 429) không retry, vì gửi lại cũng vậy. Lỗi 5xx và lỗi mạng retry
   theo `alerts.webhook_retries`.
 - Backend nên trả 2xx ngay khi đã nhận, rồi mới xử lý.
@@ -153,12 +163,16 @@ header, payload là event đầy đủ, `type` `created` rồi `updated` cùng `
 
 Thiết kế ở `docs/decisions/2026-11-07-verifier-ben-vung.md`.
 
-**Trạng thái hiện tại.** Có sau cờ `verifier.ben_vung`, mặc định tắt. Đã có trạng thái,
-schema và config (commit `ddadff0`, nhánh `FireWatch-AI`). Hàng chờ, cầu dao, phần
-`/health` và trường `reason: "verifier"` trên WebSocket chưa làm.
+**Trạng thái hiện tại.** Đã làm đủ theo ADR trên nhánh `FireWatch-AI`: trạng thái,
+schema, config; hàng chờ và ngân sách nền (`PENDING` ở 2 s, `VLM_TIMEOUT` ở 10 s, độc
+lập heartbeat); cầu dao; khối `verifier` trên `/health`; `reason: "verifier"` trên
+WebSocket; console người trực. Cờ `verifier.ben_vung` mặc định tắt cho tới khi chủ repo
+chạy thử và chốt.
 
 Khi cờ tắt, hoặc config không có khối `verifier`, event giữ đúng schema mục 1 và trường
 `verifier` không xuất hiện.
+
+### Object `verifier` trong event
 
 Khi cờ bật, event có thêm object:
 
@@ -167,12 +181,81 @@ Khi cờ bật, event có thêm object:
              "needs_human_check": true, "latency_ms": 2100, "reason": "cho_vlm"}
 ```
 
+| Trường | Kiểu | Ý nghĩa |
+|---|---|---|
+| `status` | enum | `PENDING`: đã phát, VLM chưa trả lời. `VERIFIED` / `REJECTED`: VLM thấy / không thấy lửa, khói. `VLM_TIMEOUT`: quá ngân sách 10 s. `VLM_ERROR`: VLM lỗi. `VLM_OFF`: không gọi VLM (tắt, thiếu key, cầu dao mở) |
+| `needs_human_check` | bool | `true` khi và chỉ khi `status` là `VLM_TIMEOUT`, `VLM_ERROR`, `VLM_OFF`: người trực phải tự nhìn ảnh |
+| `latency_ms` | int \| null | thời gian từ lúc Voting quyết tới lúc VLM trả lời; `null` khi không có câu trả lời |
+| `reason` | str \| null | mã ngắn: `cho_vlm`, `timeout`, `qua_han_hang_cho`, `http_429`, `http_4xx`, `http_5xx`, `loi_mang`, `loi_phan_tich`, `cau_dao_mo`, `vlm_tat`. Không bao giờ chứa nội dung lỗi thô hay body HTTP |
+
 - `verification` cũ vẫn được điền theo bảng ánh xạ trong ADR, nên client cũ không phải đổi:
   - `PENDING`, `VLM_TIMEOUT`, `VLM_ERROR`, `VLM_OFF` → `UNVERIFIED`;
   - `REJECTED` → `SUPPRESSED`.
-- `reason` chỉ chứa mã ngắn đã định trong ADR (ví dụ `cho_vlm`, `timeout`, `http_429`,
-  `cau_dao_mo`). Không bao giờ chứa nội dung lỗi thô hay body HTTP.
+- `severity` không bao giờ đổi theo `verifier`; `REJECTED` không gỡ cảnh báo.
+- Mỗi lượt xác minh có đúng một trạng thái cuối; `updated` không bao giờ đến trước
+  `created`. Sau `VLM_TIMEOUT` của một lượt, kết quả VLM đến muộn của lượt đó bị bỏ.
+  Một sự cố có thể có nhiều lượt (`luot_xac_minh`, mục 6).
 - Khi `verifier` đổi trạng thái, event được đẩy lại cùng `event_id` qua WebSocket
-  (`event_update`) và webhook. Việc đẩy này không phụ thuộc `notify_suppressed`
-  (đã làm ở `ddadff0`). Theo ADR, message WebSocket loại này sẽ có thêm
-  `reason: "verifier"`; phần này chưa làm.
+  (`event_update`, `reason: "verifier"`) và webhook. Việc đẩy này không phụ thuộc
+  `notify_suppressed`.
+
+### App hiển thị thế nào
+
+- `needs_human_check = true`: hiện nhãn rõ và dòng "Xác minh tự động không khả dụng,
+  cần người xác thực". Console `/console` làm đúng như vậy; ba nút và leo thang giữ
+  nguyên.
+- `PENDING`: hiện "đang xác minh"; `VERIFIED` / `REJECTED`: hiện kết luận của VLM, nhưng
+  cảnh báo `REJECTED` vẫn phải hiện, vì chỉ người trực được bỏ qua.
+- Dòng thời gian của một sự cố: `created` lúc 2 s (hoặc sớm hơn nếu VLM trả lời kịp),
+  `updated` chậm nhất lúc 10 s. App không cần đặt timeout riêng.
+
+### Khối `verifier` trên `GET /health`
+
+Chỉ có khi cờ bật; các trường cũ của `/health` không đổi.
+
+```json
+"verifier": {"breaker": "closed|open|half_open", "breaker_opens": 0, "queued": 0,
+             "window_s": 600, "requests_in_window": 12,
+             "answered_ratio_in_window": 0.833,
+             "latency_p50_ms": 4100, "latency_p95_ms": 8900, "vlm_off_total": 0}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `breaker`, `breaker_opens` | trạng thái cầu dao và số lần mở từ lúc khởi động. `open`: không gọi VLM, mọi event là `VLM_OFF`; `half_open`: đang cho một lượt gọi thử |
+| `queued` | số cảnh báo đang chờ worker gọi VLM (tối đa `verifier.hang_cho_toi_da`) |
+| `requests_in_window` | số yêu cầu xác minh có trạng thái cuối trong `window_s` giây gần nhất |
+| `answered_ratio_in_window` | phần trong đó VLM trả lời kịp ngân sách (`VERIFIED` / `REJECTED`); `null` khi chưa có yêu cầu. Giảm là dấu hiệu VLM chậm, hàng chờ đầy hoặc cầu dao mở |
+| `latency_p50_ms`, `latency_p95_ms` | độ trễ từ lúc Voting quyết tới lúc VLM trả lời, của các câu trả lời kịp trong cửa sổ; `null` khi không có |
+| `vlm_off_total` | số event đã nhận `VLM_OFF` từ lúc khởi động |
+
+## 6. Sự cố (sau cờ `verifier.ben_vung`)
+
+Thiết kế ở `docs/decisions/2026-11-07-gom-su-co.md`. Chỉ chạy khi cờ bật; cờ tắt thì mỗi
+alert của Voting vẫn là một `event_id` như mục 1.
+
+**Một đám cháy là một `event_id`.** Cảnh báo đầu tiên của camera mở sự cố và phát
+`created`. Cảnh báo sau, khi sự cố còn mở, chỉ sinh `updated` cùng `event_id`:
+
+| Khi nào | `updated` |
+|---|---|
+| còn thấy cháy, Voting nhắc lại | gom lại, nhiều nhất mỗi `su_co.nhip_cap_nhat_s` (30 s); `last_seen_ts` đổi |
+| mức tăng (WARNING lên CRITICAL) | ngay; `severity`, `boxes`, `snapshot_path`, `frame_*` đổi cùng nhau, `luot_xac_minh` tăng |
+| `verifier.status` đổi | ngay |
+| kiểm lại VLM (mỗi 300 s khi còn thấy cháy) | `luot_xac_minh` tăng, đi theo nhịp 30 s; kết quả đổi trạng thái thì ngay |
+| quá `su_co.khoang_cach_s` (120 s) không thấy cháy | ngay, `status: "ended"` |
+
+Sau `status: "ended"`, cháy lại là sự cố mới với `event_id` mới.
+
+**Backend cần làm.**
+- Upsert theo `event_id` như mục 1; coi `status: "ended"` là đám cháy đã hết dấu hiệu
+  trên camera, **không** phải người trực đã xử lý. Sự cố CRITICAL `ended` mà chưa ai ack
+  vẫn được nhắc lại.
+- Nên chỉ tạo thông báo đẩy (push) cho `created` và cho `updated` làm mức tăng, không
+  cho mỗi `updated`.
+- `luot_xac_minh` chỉ để hiển thị và đối chiếu log; không cần xử lý.
+
+**Ngân sách mỗi camera** (có test): `created` ≤ 1 mỗi 120 s; `updated` thường ≤ 2 mỗi
+phút; VLM ≤ 1 + số lượt kiểm lại + số lần mức tăng. Cháy 10 phút giả lập: 1 `created`,
+≤ 20 `updated`, ≤ 3 lượt VLM. `updated` vì mức tăng hay vì `verifier.status` đổi được
+phát ngay, không chờ nhịp.

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mat_pho/core/theme/theme.dart';
 
+import '../fakes/fake_overrides.dart';
 import 'fake_status_bar.dart';
 
 const kFigmaFrameSize = Size(360, 780);
@@ -61,7 +62,7 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overrides,
+      overrides: fakeOverrides(overrides),
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: theme ?? AppTheme.dark(),

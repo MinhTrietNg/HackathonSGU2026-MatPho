@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:mat_pho/core/widgets/mp_tab_bar.dart';
 import 'entries/kit_controls.dart';
 import 'entries/kit_overlays.dart';
+import 'entries/row_e.dart';
+import 'entries/row_f.dart';
+import 'entries/row_g.dart';
 import 'entries/row_h.dart';
 import 'entries/row_i.dart';
 import 'entries/row_j.dart';
@@ -60,6 +63,9 @@ final galleryGroups = <GalleryGroup>[
   GalleryGroup('A · Mở app & đăng nhập', rowAEntries),
   GalleryGroup('B · Đăng ký & quên mật khẩu', rowBEntries),
   GalleryGroup('C · Quyền cần thiết', rowCEntries),
+  GalleryGroup('E · AI quét camera', rowEEntries),
+  GalleryGroup('F · Cảnh báo cháy & gọi 114', rowFEntries),
+  GalleryGroup('G · Lịch sử', rowGEntries),
   GalleryGroup('H · Cài đặt', rowHEntries),
   GalleryGroup('I · Camera RTSP', rowIEntries),
   GalleryGroup('J · Chia sẻ & phân quyền', rowJEntries),

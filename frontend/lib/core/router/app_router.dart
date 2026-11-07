@@ -3,10 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../../features/alert/alert_listener.dart';
+import '../../features/alert/alert_routes.dart';
 import '../../features/auth/auth_routes.dart';
 import '../../features/cameras/camera_monitor_screen.dart';
 import '../../features/cameras/camera_routes.dart';
+import '../../features/detection/detection_routes.dart';
 import '../../features/groups/group_routes.dart';
+import '../../features/history/history_routes.dart';
+import '../../features/history/history_screen.dart';
 import '../../features/settings/settings_routes.dart';
 import '../../features/settings/settings_screen.dart';
 import '../widgets/mp_tab_bar.dart';
@@ -42,6 +47,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) => authRedirect(ref, state),
     routes: [
       ...authRoutes,
+      ...alertRoutes,
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => _TabShell(shell: shell),
         branches: [
@@ -50,7 +56,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: AppRoutes.monitor,
                 builder: (context, state) => const CameraMonitorScreen(),
-                routes: cameraSubRoutes,
+                routes: [...detectionRoutes, ...cameraSubRoutes],
               ),
             ],
           ),
@@ -58,7 +64,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: AppRoutes.history,
-                builder: (context, state) => const SizedBox.shrink(),
+                builder: (context, state) => const HistoryScreen(),
+                routes: historySubRoutes,
               ),
             ],
           ),
@@ -87,7 +94,7 @@ class _TabShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: shell,
+      body: AlertListener(child: shell),
       bottomNavigationBar: MpTabBar(
         currentIndex: shell.currentIndex,
         // Re-tapping the active tab pops its stack back to the root.

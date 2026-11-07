@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/appearance.dart';
 import 'core/theme/theme.dart';
+import 'features/alert/alert_notifications.dart';
 
 class MatPhoApp extends ConsumerWidget {
   const MatPhoApp({super.key});
@@ -31,7 +32,7 @@ class MatPhoApp extends ConsumerWidget {
       routerConfig: ref.watch(appRouterProvider),
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
         value: AppTheme.systemOverlayStyle(Theme.of(context)),
-        child: child!,
+        child: AlertNotifications(child: child!),
       ),
     );
   }

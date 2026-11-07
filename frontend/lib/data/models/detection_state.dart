@@ -42,6 +42,8 @@ final class DismissalReason {
   int get hashCode => explanation.hashCode;
 }
 
+// AI flow on E2: Watching → Verifying (E2a smoke ▸ E2b ▸ E2c fire) →
+// Notified (E2d, then F2) | Dismissed (E4 toast) | Unverified (F4).
 sealed class DetectionState {
   const DetectionState();
 }

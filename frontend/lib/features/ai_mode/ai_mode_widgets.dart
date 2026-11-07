@@ -193,16 +193,17 @@ class AiModePicker extends StatelessWidget {
                                   ),
                                 ),
                         ),
-                      _TextAction(
-                        label: '+ Thêm khung giờ',
-                        color: c.brandAccentFg,
-                        onTap: () => onChanged(
-                          CameraAi(
-                            mode: mode,
-                            pauses: [...value.pauses, extraAiPause],
+                      if (value.pauses.length < maxAiPauses)
+                        _TextAction(
+                          label: '+ Thêm khung giờ',
+                          color: c.brandAccentFg,
+                          onTap: () => onChanged(
+                            CameraAi(
+                              mode: mode,
+                              pauses: [...value.pauses, extraAiPause],
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
           ),

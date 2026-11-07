@@ -259,6 +259,22 @@ void main() {
       expect(_field('Từ, giờ'), findsOneWidget);
     });
 
+    testWidgets('five windows at most: the add action hides, then returns', (
+      tester,
+    ) async {
+      await _pump(tester, initial: AiModeRoutes.camera('cam-kitchen'));
+
+      for (var i = 1; i < maxAiPauses; i++) {
+        await _tap(tester, find.text('+ Thêm khung giờ'));
+      }
+      expect(find.text('KHUNG GIỜ 5'), findsOneWidget);
+      expect(find.text('+ Thêm khung giờ'), findsNothing);
+
+      await _tap(tester, find.bySemanticsLabel('Xoá khung giờ 5'));
+      expect(find.text('KHUNG GIỜ 5'), findsNothing);
+      expect(find.text('+ Thêm khung giờ'), findsOneWidget);
+    });
+
     testWidgets('no day picked: "Lưu" is off', (tester) async {
       await _pump(tester, initial: AiModeRoutes.camera('cam-kitchen'));
       expect(_enabled(tester, 'Lưu'), isTrue);

@@ -92,6 +92,8 @@ const defaultAiPause = AiPause(from: 17 * 60, to: 19 * 60 + 30);
 
 const extraAiPause = AiPause(from: 11 * 60, to: 13 * 60);
 
+const maxAiPauses = 5;
+
 const weekdayLabels = {
   DateTime.monday: 'T2',
   DateTime.tuesday: 'T3',

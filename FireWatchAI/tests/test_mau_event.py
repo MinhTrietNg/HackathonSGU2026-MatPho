@@ -14,14 +14,12 @@ from pathlib import Path
 from firewatch.alerts import Event, EventBox
 
 MAU = Path(__file__).resolve().parents[1] / "docs" / "mau_event.json"
-CHI_KHI_BAT_CO = {"verifier"}
-"""Trường chỉ có trong event khi cờ ``verifier.ben_vung`` bật."""
 
 
 def test_mau_event_co_dung_tap_truong_cua_schema():
     d = json.loads(MAU.read_text(encoding="utf-8"))
-    tat_ca = set(Event.model_fields)
-    assert tat_ca - CHI_KHI_BAT_CO <= set(d) <= tat_ca
+    # mẫu xuất với cờ verifier.ben_vung và webhook.gui_anh bật: đủ mọi trường
+    assert set(d) == set(Event.model_fields)
     for box in d["boxes"]:
         assert set(box) == set(EventBox.model_fields)
     ev = Event.model_validate(d)
@@ -30,7 +28,9 @@ def test_mau_event_co_dung_tap_truong_cua_schema():
 
 def test_mau_event_gia_tri_hop_le():
     ev = Event.model_validate_json(MAU.read_text(encoding="utf-8"))
-    assert ev.type == "created"
+    assert ev.type == "created" and ev.status == "open" and ev.luot_xac_minh == 1
+    assert ev.last_seen_ts >= ev.frame_ts > 0
+    assert ev.verifier is not None and ev.verifier.verification == ev.verification
     assert ev.frame_w > 0 and ev.frame_h > 0 and ev.frame_ts > 0
     assert ev.boxes
     for b in ev.boxes:

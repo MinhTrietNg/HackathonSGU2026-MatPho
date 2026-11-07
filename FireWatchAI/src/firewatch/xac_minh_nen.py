@@ -54,6 +54,9 @@ CUA_SO_THONG_KE_S = 600.0
 """Cửa sổ trượt của thống kê trên ``/health`` (tỉ lệ kịp, p50 / p95)."""
 TRANG_THAI_CAU_DAO_EN = {"dong": "closed", "mo": "open", "nua_mo": "half_open"}
 """Tên trạng thái cầu dao trong ``/health`` (API dùng tiếng Anh như event)."""
+NHO_DA_XONG = 4096
+"""Số khoá (``event_id``, lượt) đã có trạng thái cuối được nhớ để từ chối gửi
+lại; giới hạn để bộ nhớ không tăng mãi khi chạy nhiều ngày."""
 
 
 # ------------------------------------------------------------------ đồng hồ
@@ -151,9 +154,13 @@ def _ms(giay: float | None) -> int | None:
 TrangThaiMuc = Literal["cho", "dang_goi", "xong"]
 
 
+Khoa = tuple[str, int]
+"""(``event_id``, lượt xác minh): mỗi lượt có keyframe và trạng thái cuối riêng."""
+
+
 @dataclass(eq=False)
 class MucXacMinh:
-    """Một cảnh báo đang được xác minh nền."""
+    """Một lượt xác minh nền của một event."""
 
     event_id: str
     req: VerifyRequest
@@ -165,8 +172,19 @@ class MucXacMinh:
     """Hạn duy nhất: ``t_quyet + ngan_sach_s``."""
     trang_thai: TrangThaiMuc = "cho"
     da_tao: bool = False
-    """Đã phát ``created`` chưa."""
+    """Đã phát lần đầu (``phat_tao``) cho lượt này chưa."""
     ve: list[VeHen] = field(default_factory=list)
+    luot: int = 1
+    """Lượt xác minh của event (bắt đầu 1, ADR gom sự cố)."""
+
+    @property
+    def khoa(self) -> Khoa:
+        return (self.event_id, self.luot)
+
+    @property
+    def nhan(self) -> str:
+        """Nhãn ngắn trong log: 8 ký tự đầu của ``event_id`` và lượt."""
+        return f"{self.event_id[:8]}#{self.luot}"
 
 
 PhatFn = Callable[[MucXacMinh, VerifyOutcome, VerifierInfo], None]
@@ -182,9 +200,10 @@ class DieuPhoiXacMinh:
     service : VerificationService
         Gọi VLM (``goi_mot_lan``); không có verifier thì mọi mục là ``VLM_OFF``.
     phat_tao, phat_cap_nhat : callable
-        Phát ``created`` / ``updated`` cho một mục; được gọi khi đang giữ khoá
-        của bộ điều phối, đúng một lần ``phat_tao`` cho mỗi ``event_id`` và
-        ``phat_cap_nhat`` chỉ sau nó.
+        Phát lần đầu / lần sau cho một lượt; được gọi khi đang giữ khoá của bộ
+        điều phối, đúng một lần ``phat_tao`` cho mỗi (``event_id``, lượt) và
+        ``phat_cap_nhat`` chỉ sau nó. Với lượt 1 đó là ``created`` /
+        ``updated``; lượt sau do lớp gom sự cố quyết phát gì.
     dong_ho : DongHo, optional
         Mặc định :class:`DongHoThat` (bộ điều phối tự đóng khi ``dong``).
     """
@@ -202,11 +221,11 @@ class DieuPhoiXacMinh:
         self.cau_dao = CauDao(cfg.verifier.cau_dao.loi_lien_tiep,
                               cfg.verifier.cau_dao.mo_s, self._dong_ho.bay_gio)
         self._cv = threading.Condition()
-        self._muc: dict[str, MucXacMinh] = {}
+        self._muc: dict[Khoa, MucXacMinh] = {}
         """Mục chưa có trạng thái cuối."""
-        self._hang: OrderedDict[str, MucXacMinh] = OrderedDict()
+        self._hang: OrderedDict[Khoa, MucXacMinh] = OrderedDict()
         """Mục chờ worker, cũ nhất trước."""
-        self._da_xong: set[str] = set()
+        self._da_xong: OrderedDict[Khoa, None] = OrderedDict()
         self._ket_qua: deque[tuple[float, float | None]] = deque()
         """(lúc có trạng thái cuối, độ trễ nếu VLM trả lời kịp) để thống kê."""
         self.so_vlm_off = 0
@@ -219,28 +238,32 @@ class DieuPhoiXacMinh:
             t.start()
 
     # ------------------------------------------------------------ bên ngoài
-    def gui(self, event_id: str, req: VerifyRequest, du_lieu: Any) -> None:
-        """Nhận một cảnh báo vừa được Voting quyết. Không bao giờ chặn lâu.
+    def gui(self, event_id: str, req: VerifyRequest, du_lieu: Any,
+            luot: int = 1) -> None:
+        """Nhận một lượt xác minh. Không bao giờ chặn lâu.
 
-        Cùng ``event_id`` còn trong hàng thì chỉ thay keyframe (hạn giữ nguyên);
-        đang gọi hoặc đã có trạng thái cuối thì bỏ qua yêu cầu mới.
+        Khoá là (``event_id``, ``luot``). Cùng khoá còn trong hàng thì chỉ thay
+        keyframe (hạn giữ nguyên); đang gọi hoặc đã có trạng thái cuối thì bỏ
+        qua yêu cầu mới. Lượt mới của cùng ``event_id`` là một mục riêng.
         """
+        khoa = (event_id, luot)
         with self._cv:
-            if event_id in self._da_xong:
-                log.info("verifier %s: đã có trạng thái cuối, không xác minh lại",
-                         event_id[:8])
+            if khoa in self._da_xong:
+                log.info("verifier %s#%d: đã có trạng thái cuối, không xác minh lại",
+                         event_id[:8], luot)
                 return
-            cu = self._muc.get(event_id)
+            cu = self._muc.get(khoa)
             if cu is not None:
                 if cu.trang_thai == "cho":
                     cu.req = req
-                    log.info("verifier %s: thay keyframe trong hàng chờ", event_id[:8])
+                    log.info("verifier %s: thay keyframe trong hàng chờ", cu.nhan)
                 else:
-                    log.info("verifier %s: đang gọi VLM, bỏ yêu cầu mới", event_id[:8])
+                    log.info("verifier %s: đang gọi VLM, bỏ yêu cầu mới", cu.nhan)
                 return
             now = self._dong_ho.bay_gio()
-            m = MucXacMinh(event_id, req, du_lieu, now, now + self._ngan_sach)
-            self._muc[event_id] = m
+            m = MucXacMinh(event_id, req, du_lieu, now, now + self._ngan_sach,
+                           luot=luot)
+            self._muc[khoa] = m
             if not self._service.enabled:
                 self._vlm_off(m, "vlm_tat", "vlm disabled")
                 return
@@ -250,9 +273,9 @@ class DieuPhoiXacMinh:
             if len(self._hang) >= self._toi_da:
                 cu_nhat = next(iter(self._hang.values()))
                 log.warning("hàng chờ verifier đầy (%d): bỏ %s", self._toi_da,
-                            cu_nhat.event_id[:8])
+                            cu_nhat.nhan)
                 self._het_han(cu_nhat, "qua_han_hang_cho")
-            self._hang[event_id] = m
+            self._hang[khoa] = m
             m.ve = [self._dong_ho.hen(now + self._grace, lambda: self._het_cua_so(m)),
                     self._dong_ho.hen(m.han, lambda: self._het_ngan_sach(m))]
             self._cv.notify_all()
@@ -348,7 +371,7 @@ class DieuPhoiXacMinh:
                 if m.trang_thai == "xong":
                     # Đã VLM_TIMEOUT (và đã tính thất bại cho cầu dao).
                     log.info("verifier %s: kết quả VLM đến sau ngân sách, bỏ",
-                             m.event_id[:8])
+                             m.nhan)
                     continue
                 if outcome.result is not None:
                     self.cau_dao.thanh_cong()
@@ -361,7 +384,7 @@ class DieuPhoiXacMinh:
     def _het_han(self, m: MucXacMinh, ly_do: str) -> None:
         """``VLM_TIMEOUT``: ``qua_han_hang_cho`` nếu chưa gọi, ``timeout`` nếu
         đã gọi (tính là một thất bại cho cầu dao)."""
-        self._hang.pop(m.event_id, None)
+        self._hang.pop(m.khoa, None)
         tre = self._dong_ho.bay_gio() - m.t_quyet
         da_goi = m.trang_thai == "dang_goi"
         if da_goi:
@@ -372,7 +395,7 @@ class DieuPhoiXacMinh:
 
     def _vlm_off(self, m: MucXacMinh, ly_do: str, loi: str) -> None:
         """``VLM_OFF`` ngay, không gọi VLM: VLM tắt hoặc cầu dao mở."""
-        self._hang.pop(m.event_id, None)
+        self._hang.pop(m.khoa, None)
         self.so_vlm_off += 1
         self._ket_thuc(m, VerifyOutcome("UNVERIFIED", None, 0.0, 0, loi, ly_do),
                        VerifierInfo.tao("VLM_OFF", reason=ly_do))
@@ -383,11 +406,15 @@ class DieuPhoiXacMinh:
         m.trang_thai = "xong"
         for ve in m.ve:
             ve.huy()
-        self._muc.pop(m.event_id, None)
-        self._da_xong.add(m.event_id)
-        self._ket_qua.append((self._dong_ho.bay_gio(),
-                              outcome.latency_s if outcome.result is not None
+        self._muc.pop(m.khoa, None)
+        self._da_xong[m.khoa] = None
+        while len(self._da_xong) > NHO_DA_XONG:
+            self._da_xong.popitem(last=False)
+        now = self._dong_ho.bay_gio()
+        self._ket_qua.append((now, outcome.latency_s if outcome.result is not None
                               else None))
+        while self._ket_qua and now - self._ket_qua[0][0] > CUA_SO_THONG_KE_S:
+            self._ket_qua.popleft()
         phat = self._phat_cap_nhat if m.da_tao else self._phat_tao
         m.da_tao = True
         self._goi(phat, m, outcome, info)
@@ -399,4 +426,4 @@ class DieuPhoiXacMinh:
         try:
             phat(m, outcome, info)
         except Exception:  # noqa: BLE001 - lỗi phát không được làm kẹt verifier
-            log.exception("phát event %s lỗi", m.event_id[:8])
+            log.exception("phát event %s lỗi", m.nhan)

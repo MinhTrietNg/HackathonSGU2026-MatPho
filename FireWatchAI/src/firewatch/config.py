@@ -162,6 +162,25 @@ class VerifierConfig(_Strict):
     cau_dao: CauDaoConfig = CauDaoConfig()
 
 
+class SuCoConfig(_Strict):
+    """Gom sự cố (ADR 2026-11-07-gom-su-co); chỉ chạy khi ``verifier.ben_vung``.
+
+    Một sự cố là một ``event_id``: ``created`` một lần, sau đó chỉ ``updated``.
+    """
+
+    khoang_cach_s: float = Field(120.0, gt=0)
+    """Quá chừng này giây không thấy cháy thì sự cố ``ended``; thấy lại sau đó là
+    sự cố mới. Cảnh báo đến khi sự cố còn mở thì vào cùng ``event_id``."""
+    nhip_cap_nhat_s: float = Field(30.0, gt=0)
+    """``updated`` thường (thấy cháy tiếp, nhắc lại của voting) nhiều nhất mỗi
+    chừng này giây; mức tăng và trạng thái xác minh đổi thì phát ngay."""
+    vlm_kiem_lai_s: float = Field(300.0, gt=0)
+    """Sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng này giây
+    kể từ lượt trước."""
+    iou_ghep: float = Field(0.3, ge=0, le=1)
+    """Track mới chồng box sự cố quá ngưỡng này thì được tính là còn thấy cháy."""
+
+
 class AlertsConfig(_Strict):
     events_dir: Path = Path("events")
     snapshot_jpeg_quality: int = Field(90, ge=1, le=100)
@@ -512,6 +531,7 @@ class Config(_Strict):
     voting: VotingConfig = VotingConfig()
     vlm: VLMConfig = VLMConfig()
     verifier: VerifierConfig = VerifierConfig()
+    su_co: SuCoConfig = SuCoConfig()
     alerts: AlertsConfig = AlertsConfig()
     webhook: WebhookConfig = WebhookConfig()
     server: ServerConfig = ServerConfig()

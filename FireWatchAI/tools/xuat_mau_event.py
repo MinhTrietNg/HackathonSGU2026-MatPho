@@ -1,8 +1,9 @@
 """Xuất ``docs/mau_event.json`` từ payload webhook của một lần chạy thật.
 
 Dựng một máy nhận webhook trên localhost, chạy pipeline trên ``--source`` với
-VLM giả (``vlm.provider=mock``, không gọi mạng) và ``webhook.gui_anh`` bật, rồi
-ghi payload ``created`` đầu tiên nhận được. Ảnh được nén dưới
+VLM giả (``vlm.provider=mock``, không gọi mạng), ``webhook.gui_anh`` bật và cờ
+``verifier.ben_vung`` bật (để mẫu có đủ mọi trường, kể cả ``verifier`` và
+trường sự cố), rồi ghi payload ``created`` đầu tiên nhận được. Ảnh được nén dưới
 ``--anh-kb`` KB để file mẫu nhỏ; ngoài cỡ ảnh, payload đúng như backend nhận.
 
 Chạy trong thư mục ``FireWatchAI/``::
@@ -57,7 +58,7 @@ def main() -> int:
     os.environ["FIREWATCH_MAU_URL"] = f"http://127.0.0.1:{server.server_port}/hook"
     os.environ["FIREWATCH_MAU_TOKEN"] = "token-mau"
     cfg = load_config(GOC / "config.yaml", overrides=[
-        "vlm.provider=mock", "webhook.gui_anh=true",
+        "vlm.provider=mock", "webhook.gui_anh=true", "verifier.ben_vung=true",
         f"webhook.anh_toi_da_kb={args.anh_kb}",
         "alerts.webhook_url_env=FIREWATCH_MAU_URL",
         "alerts.webhook_token_env=FIREWATCH_MAU_TOKEN",

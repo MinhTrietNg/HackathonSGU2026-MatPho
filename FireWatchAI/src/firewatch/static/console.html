@@ -129,6 +129,7 @@ function render(id) {
     badge(CTX[ev.context] || ev.context, "light"),
     vlm.fire_type ? badge(vlm.fire_type, vlm.fire_type) : null,
     badge(item.status === "created" ? "mới" : "cập nhật", "light"),
+    ev.status === "ended" ? badge("đã hết dấu hiệu cháy", "light") : null,
     item.escalations ? badge("nhắc lại ×" + item.escalations, "esc") : null);
   const when = new Date(ev.started_at).toLocaleTimeString("vi-VN");
   const body = el("div", { class: "body" }, badges,

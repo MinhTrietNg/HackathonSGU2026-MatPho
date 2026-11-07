@@ -164,7 +164,11 @@ class EscalationWatcher:
         store.subscribe(self._on_event)
 
     def _on_event(self, event: Event, kind: str) -> None:
-        if kind == "created" and event.severity == "CRITICAL":
+        # ``updated`` cũng tính: với gom sự cố (cờ verifier.ben_vung) một sự cố
+        # mở ở WARNING lên CRITICAL qua updated cùng event_id. Cờ tắt thì
+        # updated không đổi mức, nên hành vi cũ giữ nguyên.
+        if (kind in ("created", "updated", "su_co")
+                and event.severity == "CRITICAL"):
             with self._lock:
                 self._created.setdefault(event.event_id, self.clock())
 

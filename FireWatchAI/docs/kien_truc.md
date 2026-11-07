@@ -50,6 +50,12 @@ Cờ bật thì cảnh báo được giao cho `DieuPhoiXacMinh`: hàng chờ gi�
 dù nguồn video treo. `CauDao` mở sau `loi_lien_tiep` thất bại liên tiếp, khi mở thì event
 nhận `VLM_OFF`. Thống kê cửa sổ 10 phút đi vào `/health` qua `PipelineHealth`.
 
+**Gom sự cố (`su_co.py`), cũng sau cờ `verifier.ben_vung`.** `GomSuCo` bọc ngoài Voting và
+sở hữu bộ điều phối: một đám cháy trên một camera là một `event_id`. Cảnh báo đầu mở sự
+cố (`created`); cảnh báo sau gom vào `updated` mỗi 30 s, mức tăng phát ngay và mở lượt
+xác minh mới, quá 120 s không thấy cháy thì `status: "ended"`. Bộ điều phối khoá theo
+(`event_id`, lượt). Thiết kế ở `docs/decisions/2026-11-07-gom-su-co.md`.
+
 **Event và phát (`alerts.py`, `server.py`).** `EventStore` ghi JSON và ảnh keyframe, rồi
 đẩy event tới các bên đăng ký: WebSocket (`Broadcaster`), webhook (`WebhookSink`, thread
 riêng), và cập nhật cùng `event_id`. `server.py` là ứng dụng FastAPI: REST, `WS /ws`,

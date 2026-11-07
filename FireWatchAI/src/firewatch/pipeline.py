@@ -41,6 +41,7 @@ from .detector import DetectResult, Detector, Detection
 from .sources import Heartbeat, HeartbeatSampler, open_source
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest, build_verifier
 from .voting import Severity, TrackEvent, VotingEngine, union
+from .su_co import GomSuCo
 from .xac_minh_nen import DieuPhoiXacMinh, DongHo
 
 log = logging.getLogger(__name__)
@@ -179,6 +180,8 @@ class Pipeline:
         self._event_track: dict[str, int] = {}
         """event_id -> track_id of events created by this run (for acks)."""
         self._dieu_phoi: DieuPhoiXacMinh | None = None
+        self._gom: GomSuCo | None = None
+        """Lớp gom sự cố; chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
         """Chỉ có khi cờ ``verifier.ben_vung`` bật."""
         if weights:
             cfg.detector.weights = Path(weights)
@@ -213,7 +216,7 @@ class Pipeline:
         summary = RunSummary(source=self.source_spec, weights=str(detector.weights),
                              out_dir=str(out_dir))
         if cfg.verifier.ben_vung:
-            self._tao_dieu_phoi(store, summary, verifier)
+            self._tao_gom(store, summary, verifier)
         log.info("bắt đầu: nguồn=%s T=%.2fs imgsz=%d conf=%.2f k=%d/%d lưu=%s",
                  self.source_spec, cfg.heartbeat.interval_s, cfg.detector.imgsz,
                  cfg.detector.conf_threshold, cfg.voting.k_enter, cfg.voting.window_m,
@@ -237,6 +240,9 @@ class Pipeline:
                                            result.detections, frame=hb.frame)
                     for ev in events:
                         self._on_track_event(ev, summary, verifier)
+                    if self._gom is not None:
+                        self._gom.thay_chay(_track_co_phieu(voting, hb.seq),
+                                            hb.frame.wall_time, hb.frame.image)
                     self._flush_pending(store, summary)
                     self._record(summary, hb, result, voting, out_dir)
                     if self.health:
@@ -263,7 +269,10 @@ class Pipeline:
                 han = cfg.verifier.ngan_sach_s + 1
                 if not self._dieu_phoi.cho_xong(han):
                     log.warning("verifier nền chưa xong sau %.0fs", han)
-                self._dieu_phoi.dong()
+                if self._gom is not None:
+                    self._gom.dong()
+                else:
+                    self._dieu_phoi.dong()
             budget = cfg.vlm.timeout_s * (cfg.vlm.retries + 1) + 2
             left = verifier.drain(timeout_s=budget)
             if left:
@@ -320,6 +329,12 @@ class Pipeline:
                      and first.frame is not None else None)
         req = VerifyRequest(vote.frame.image, box, self.cfg.camera.context,
                             ev.severity.value, ev.ts, first_img)
+        if self._gom is not None:
+            self._gom.canh_bao(
+                kind=ev.kind, track_id=ev.track.track_id, severity=ev.severity,
+                ts=ev.ts, detections=list(vote.detections), image=vote.frame.image,
+                wall_time=vote.frame.wall_time, box=box, req=req)
+            return
         if self._dieu_phoi is not None:
             self._gui_nen(req, _PendingAlert(
                 future=None, deadline_wall=0.0, kind=ev.kind,
@@ -335,6 +350,22 @@ class Pipeline:
             started_at=datetime.fromtimestamp(vote.frame.wall_time).astimezone()))
 
     # ------------------------------------------------- verifier bền vững
+    def _tao_gom(self, store: EventStore, summary: RunSummary,
+                 service: VerificationService,
+                 dong_ho: DongHo | None = None) -> GomSuCo:
+        """Lớp gom sự cố cùng bộ điều phối của nó (cờ ``verifier.ben_vung``).
+
+        Đây là đường chạy thật khi cờ bật. ``_tao_dieu_phoi`` / ``_gui_nen`` chỉ
+        còn là lớp lượt xác minh trần, mỗi cảnh báo một event, để test bộ điều
+        phối riêng.
+        """
+        self._gom = GomSuCo(self.cfg, store, service, summary=summary,
+                            health=self.health, dong_ho=dong_ho)
+        self._dieu_phoi = self._gom.dieu_phoi
+        if self.health is not None:
+            self.health.verifier_stats = self._dieu_phoi.thong_ke
+        return self._gom
+
     def _tao_dieu_phoi(self, store: EventStore, summary: RunSummary,
                        service: VerificationService,
                        dong_ho: DongHo | None = None) -> DieuPhoiXacMinh:
@@ -442,13 +473,19 @@ class Pipeline:
                 ack = self._ack_queue.get_nowait()
             except queue.Empty:
                 return
-            track_id = self._event_track.get(ack.event_id)
-            if ack.action not in MUTING_ACTIONS or track_id is None:
+            if ack.action not in MUTING_ACTIONS:
                 continue
-            if voting.mute(track_id):
-                log.info("track#%d: người trực trả lời event %s (%s) -> tắt nhắc "
-                         "STILL_BURNING; leo thang vẫn báo", track_id,
-                         ack.event_id[:8], ack.action)
+            if self._gom is not None:
+                # Cờ bật: ack áp lên cả sự cố, mọi track của nó.
+                tracks = sorted(self._gom.track_cua(ack.event_id))
+            else:
+                track_id = self._event_track.get(ack.event_id)
+                tracks = [] if track_id is None else [track_id]
+            for track_id in tracks:
+                if voting.mute(track_id):
+                    log.info("track#%d: người trực trả lời event %s (%s) -> tắt "
+                             "nhắc STILL_BURNING; leo thang vẫn báo", track_id,
+                             ack.event_id[:8], ack.action)
 
     # ---------------------------------------------------------------- helpers
     def _record(self, summary: RunSummary, hb: Heartbeat, result: DetectResult,
@@ -486,6 +523,16 @@ class Pipeline:
         """Display the annotated heartbeat; return False when the user quits."""
         cv2.imshow("FireWatch v3 (q=thoat)", self._annotated(hb, result, voting))
         return (cv2.waitKey(1) & 0xFF) != ord("q")
+
+
+def _track_co_phieu(voting: VotingEngine, seq: int) -> list[tuple[int, tuple]]:
+    """``(track_id, box)`` của các track vừa có phiếu ở heartbeat ``seq``."""
+    out = []
+    for t in voting.tracks:
+        v = t.latest_vote
+        if v is not None and v.seq == seq:
+            out.append((t.track_id, t.box))
+    return out
 
 
 def _prune_runs(root: Path, keep: int) -> int:

@@ -46,9 +46,10 @@ def ws_payload(event: Event, kind: str) -> dict[str, Any]:
 
     ``created`` → ``type: event``; còn lại → ``type: event_update`` với
     ``reason: "escalation"`` khi gửi lại CRITICAL chưa ai trả lời, và
-    ``reason: "verifier"`` khi object ``verifier`` đổi trạng thái (cờ
-    ``verifier.ben_vung`` bật). Cập nhật VLM khi cờ tắt không có ``reason``,
-    như trước.
+    ``reason: "verifier"`` khi object ``verifier`` đổi trạng thái và
+    ``reason: "su_co"`` khi sự cố cập nhật (nhịp, mức tăng, kết thúc), cả hai
+    chỉ khi cờ ``verifier.ben_vung`` bật. Cập nhật VLM khi cờ tắt không có
+    ``reason``, như trước.
     """
     msg_type = "event" if kind == "created" else "event_update"
     payload: dict[str, Any] = {"type": msg_type, "event": event_to_dict(event)}
@@ -56,6 +57,8 @@ def ws_payload(event: Event, kind: str) -> dict[str, Any]:
         payload["reason"] = "escalation"
     elif kind == "updated" and event.verifier is not None:
         payload["reason"] = "verifier"
+    elif kind == "su_co":
+        payload["reason"] = "su_co"
     return payload
 
 

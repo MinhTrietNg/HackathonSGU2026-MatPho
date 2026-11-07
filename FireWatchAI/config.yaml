@@ -122,6 +122,19 @@ verifier:
                             # Hết giờ thì nửa mở: một lượt gọi thử, thành công đóng, thất bại
                             # mở lại. Trạng thái xem ở /health -> verifier.breaker
 
+# ───────── [4c] Gom sự cố (docs/decisions/2026-11-07-gom-su-co.md) ─────────
+# CHỈ chạy khi verifier.ben_vung bật. Một đám cháy = một event_id: created một lần, sau đó
+# chỉ updated; event có thêm status (open | ended), last_seen_ts, luot_xac_minh.
+su_co:
+  khoang_cach_s: 120        # quá chừng này giây không thấy cháy -> updated status "ended"; thấy
+                            # lại sau đó là sự cố mới (created mới). Cảnh báo đến khi sự cố
+                            # còn mở thì vào cùng event_id. Tính theo giờ thật, không theo video
+  nhip_cap_nhat_s: 30       # updated thường (còn thấy cháy, nhắc lại của voting) nhiều nhất mỗi
+                            # chừng này giây; mức tăng và verifier.status đổi thì phát ngay
+  vlm_kiem_lai_s: 300       # sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng
+                            # này giây kể từ lượt trước; lượt kiểm lại lỗi không xoá kết luận cũ
+  iou_ghep: 0.3             # track mới chồng box sự cố quá ngưỡng này thì tính là còn thấy cháy
+
 # ───────── [5] Alert sink ─────────
 alerts:
   events_dir: events        # mỗi alert = 1 file .json + 1 ảnh .jpg keyframe đã vẽ box

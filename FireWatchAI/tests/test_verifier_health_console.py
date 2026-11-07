@@ -151,6 +151,8 @@ def test_ws_payload_reason_verifier_chi_khi_updated_co_object_verifier():
     assert "reason" not in ws_payload(co, "created")
     assert ws_payload(co, "escalated")["reason"] == "escalation"
     assert ws_payload(co, "created")["event"]["verifier"]["status"] == "PENDING"
+    assert ws_payload(co, "su_co")["reason"] == "su_co"
+    assert ws_payload(co, "su_co")["type"] == "event_update"
 
 
 # ------------------------------------------------------------- console

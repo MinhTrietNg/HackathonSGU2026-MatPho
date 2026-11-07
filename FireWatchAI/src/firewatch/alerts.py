@@ -176,11 +176,20 @@ class Event(BaseModel):
     """JPEG base64 của keyframe gốc (không vẽ box), dưới ``webhook.anh_toi_da_kb``;
     chỉ trong payload webhook khi ``webhook.gui_anh`` bật."""
     verifier: VerifierInfo | None = None
+    status: Literal["open", "ended"] | None = None
+    """Sự cố còn mở hay đã kết thúc (quá ``su_co.khoang_cach_s`` không thấy
+    cháy). Chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
+    last_seen_ts: float | None = None
+    """Giây Unix (UTC) của khung gần nhất còn thấy cháy thuộc sự cố này."""
+    luot_xac_minh: int | None = Field(None, ge=1)
+    """Lượt xác minh hiện tại của sự cố, bắt đầu 1; tăng khi leo thang mức
+    hoặc kiểm lại định kỳ."""
 
     @model_serializer(mode="wrap")
     def _bo_truong_rong(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
-        for k in ("snapshot_base64", "verifier"):
+        for k in ("snapshot_base64", "verifier", "status", "last_seen_ts",
+                  "luot_xac_minh"):
             if getattr(self, k) is None:
                 data.pop(k, None)
         return data
@@ -295,8 +304,9 @@ class EventStore:
         self._paths: dict[str, Path] = {}
         self._lock = threading.Lock()
         self._subscribers: list[Callable[[Event, str], None]] = []
-        """Called with ``(event, kind)``; kind is ``"created"``, ``"updated"`` or
-        ``"escalated"`` (CRITICAL left unacknowledged, see acks.py)."""
+        """Called with ``(event, kind)``; kind is ``"created"``, ``"updated"``,
+        ``"escalated"`` (CRITICAL left unacknowledged, see acks.py) or ``"su_co"``
+        (cập nhật sự cố không đổi verifier, chỉ khi cờ ``verifier.ben_vung``)."""
         self.webhook: WebhookSink | None = None
         url = env_secret(cfg.webhook_url_env)
         if url:
@@ -381,7 +391,8 @@ class EventStore:
                image: np.ndarray | None, vlm: VLMResult | None = None,
                started_at: datetime | None = None,
                verifier: VerifierInfo | None = None,
-               event_id: str | None = None) -> Event:
+               event_id: str | None = None,
+               su_co: dict[str, Any] | None = None) -> Event:
         """Persist one alert (JSON + annotated snapshot) and notify listeners.
 
         Parameters
@@ -394,6 +405,9 @@ class EventStore:
         event_id : str, optional
             ``event_id`` đã cấp từ lúc Voting quyết (cờ bật: hàng chờ xác minh
             khoá theo nó). ``None`` thì tạo mới như trước.
+        su_co : dict, optional
+            ``status``, ``last_seen_ts``, ``luot_xac_minh`` của sự cố (cờ bật);
+            ``None`` giữ đúng JSON cũ.
         """
         started = started_at or datetime.now(timezone.utc).astimezone()
         event_id = event_id or str(uuid.uuid4())
@@ -425,6 +439,7 @@ class EventStore:
                    for d in detections],
             vlm=vlm, snapshot_path=snapshot_rel, verifier=verifier,
             frame_w=w, frame_h=h, frame_ts=round(started.timestamp(), 3),
+            **(su_co or {}),
         )
         json_path = self.dir / f"{stem}.json"
         json_path.write_text(event.model_dump_json(indent=2), encoding="utf-8")
@@ -475,6 +490,86 @@ class EventStore:
             _log_verifier(event_id, verifier)
         self._notify(event, "updated")
         return event
+
+    def cap_nhat_su_co(self, event_id: str, thay: dict[str, Any], *,
+                       anh: np.ndarray | None = None,
+                       detections: list[Detection] | None = None,
+                       luc: datetime | None = None,
+                       ly_do: str = "") -> Event | None:
+        """Vá một event đã phát (``updated``, cùng ``event_id``), cờ bật.
+
+        Dùng cho lớp gom sự cố: đổi mức, trạng thái sự cố, ``last_seen_ts``,
+        lượt xác minh, kết quả verifier. Khi có ``anh`` (leo thang mức), keyframe
+        mới được ghi cạnh snapshot cũ và ``boxes``, ``snapshot_path``,
+        ``frame_*`` đổi theo, để box luôn khớp ảnh.
+
+        Parameters
+        ----------
+        thay : dict
+            Trường cần đổi (tên trường của :class:`Event`).
+        anh, detections, luc : optional
+            Keyframe mới (BGR), box trên nó và giờ thật của khung đó.
+        ly_do : str
+            Ghi vào log.
+
+        Returns
+        -------
+        Event or None
+            ``None`` khi không có ``event_id`` này.
+        """
+        with self._lock:
+            idx = next((i for i, e in enumerate(self._events)
+                        if e.event_id == event_id), None)
+            if idx is None:
+                return None
+            cu = self._events[idx]
+            path = self._paths.get(event_id)
+        moi = dict(thay)
+        if anh is not None:
+            moi.update(self._keyframe_moi(cu, anh, detections or [], path,
+                                          luc or datetime.now(timezone.utc)))
+        moi["type"] = "updated"
+        event = Event.model_validate({**cu.model_dump(), **{
+            k: (v.model_dump() if isinstance(v, BaseModel) else v)
+            for k, v in moi.items()}})
+        with self._lock:
+            self._events[idx] = event
+        if path is not None:
+            path.write_text(event.model_dump_json(indent=2), encoding="utf-8")
+        log.info("SỰ CỐ UPDATE %s %s%s", event_id[:8],
+                 " ".join(f"{k}={moi[k]}" for k in
+                          ("severity", "status", "luot_xac_minh") if k in moi),
+                 f" ({ly_do})" if ly_do else "")
+        doi_xac_minh = event.verifier is not None and "verifier" in moi
+        if doi_xac_minh:
+            _log_verifier(event_id, event.verifier)
+        # "updated": kết quả xác minh (WS reason "verifier"); "su_co": nhịp cập
+        # nhật, mức tăng, kết thúc (WS reason "su_co"). Webhook như nhau.
+        self._notify(event, "updated" if doi_xac_minh else "su_co")
+        return event
+
+    def _keyframe_moi(self, cu: Event, anh: np.ndarray, detections: list[Detection],
+                      json_path: Path | None, luc: datetime) -> dict[str, Any]:
+        """Ghi keyframe mới cạnh event và trả các trường đổi theo nó."""
+        h, w = anh.shape[:2]
+        stem = (json_path.stem if json_path is not None else cu.event_id[:8])
+        snap = self.dir / f"{stem}_{luc.astimezone():%H%M%S}.jpg"
+        banner = (f"{cu.severity} {cu.verification} {self.camera.id} "
+                  f"{self.camera.context}")
+        snapshot_rel = cu.snapshot_path
+        if write_jpeg(snap, draw_detections(anh, detections, banner),
+                      self.jpeg_quality):
+            snapshot_rel = _relpath(snap, self.root)
+        if self.save_raw:
+            write_jpeg(raw_keyframe_path(snap), anh, self.jpeg_quality)
+        if self.gui_anh:
+            jpeg = nen_jpeg_duoi(anh, self.anh_toi_da_kb)
+            self._anh_b64[cu.event_id] = base64.b64encode(jpeg).decode("ascii")
+            self._anh_b64.move_to_end(cu.event_id)
+        return {"snapshot_path": snapshot_rel, "frame_w": w, "frame_h": h,
+                "frame_ts": round(luc.timestamp(), 3),
+                "boxes": [EventBox(**d.to_dict(), xyxyn=chuan_hoa_box(d.xyxy, w, h))
+                          for d in detections]}
 
     def renotify(self, event_id: str, kind: str = "escalated") -> Event | None:
         """Push an unchanged event again (escalation): same ``event_id``,

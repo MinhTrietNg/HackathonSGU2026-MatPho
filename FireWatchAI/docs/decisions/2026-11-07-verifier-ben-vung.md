@@ -148,6 +148,8 @@ kịp ghi trước mốc ngân sách. Cờ tắt thì `vlm.timeout_s` và `vlm.r
 - Không đổi tên, kiểu hay ý nghĩa của trường cũ; không thêm giá trị mới vào `verification`.
 - Không tăng timeout mỗi lượt gọi; không thêm nhà cung cấp VLM dự phòng.
 - Không gộp xác minh theo track, không xác minh lại sau khi đã có trạng thái cuối.
+  ADR `2026-11-07-gom-su-co.md` giữ quy tắc này ở mức lượt xác minh và thêm mức sự cố:
+  sự cố còn mở được mở lượt mới trên cùng `event_id`.
 - Không phát `created` ở 0 s (ngay khi Voting quyết) thay vì cuối cửa sổ đồng bộ 2 s. Đây là
   lựa chọn tương lai, cần backend đồng ý vì nó đổi thời điểm phát so với hợp đồng hiện tại.
 - Không bật cờ mặc định; bật sau khi chủ repo chạy thử demo.

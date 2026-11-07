@@ -1,18 +1,207 @@
 # Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
 # phần đó (ví dụ FireWatchAI/.gitignore).
 
-# Môi trường
-.venv/
-__pycache__/
-*.pyc
-
-# Bí mật
+# ---------------------------------------------------------------------------
+# 1. Secrets / credentials / per-machine config — public repo, never commit
+# ---------------------------------------------------------------------------
 .env
+.env.*
+*.env
+!.env.example
+!**/.env.example
 
-# Trọng số model và gói nén (dữ liệu, model)
+# Firebase client config: shared privately, not through the public repo
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Docker local overrides
+docker-compose.override.yml
+**/docker-compose.override.yml
+*.override.yml
+
+# Service account JSON & private keys
+firebase-service-account*.json
+*service-account*.json
+*service_account*.json
+*service*account*.json
+**/credentials/*.json
+credentials/*.json
+!**/credentials/.gitkeep
+!credentials/.gitkeep
+!**/credentials/firebase_client/**
+!credentials/firebase_client/**
+
+# Tokens & secret config files
+token.json
+tokens/
+*secret*.json
+*secrets*.json
+*secret*.yaml
+*secret*.yml
+private*.json
+
+# Certificates, keys, keystores (Android / iOS)
+**/local.properties
+**/key.properties
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# ---------------------------------------------------------------------------
+# 2. Local databases & runtime state
+# ---------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.rdb
+redis_data/
+*.ipc
+
+# ---------------------------------------------------------------------------
+# 3. AI agents, local tools & personal docs (local only, never pushed)
+# ---------------------------------------------------------------------------
+/CLAUDE.md
+CLAUDE.local.md
+.claude/
+.agents/
+skills-lock.json
+/docs/
+.ua/
+.understand-anything/
+
+# Local Windows scripts
+*.bat
+*.ps1
+
+# Internal RTSP / FCM test tools, Postman
+tool_test_rtsp/
+**/tool_test_rtsp/
+tool_test_fcm/
+**/tool_test_fcm/
+postman/
+**/postman/
+
+# ---------------------------------------------------------------------------
+# 4. Python (FireWatchAI, backend, EdgeAI)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# Model weights and archives
 *.pt
 *.onnx
 *.zip
 
-# Kết quả chạy
+# Run outputs
 runs/
+
+# ---------------------------------------------------------------------------
+# 5. Logs & temporary media
+# ---------------------------------------------------------------------------
+*.log
+logs/
+static/snapshots/temp_*
+static/temp/
+**/static/snapshots/temp_*
+temp_*
+*.tmp
+
+# ---------------------------------------------------------------------------
+# 6. frontend/ (Flutter)
+# ---------------------------------------------------------------------------
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/frontend/build/
+/frontend/coverage/
+# Golden-test diff images written on failure
+**/failures/
+
+# Symbolication / obfuscation
+app.*.symbols
+app.*.map.json
+
+# Demo CCTV clips + stills: research/hackathon license, never redistribute.
+/frontend/assets/demo_clips/*
+!/frontend/assets/demo_clips/.gitkeep
+
+# Android Studio build artifacts
+/frontend/android/build/
+/frontend/android/app/debug
+/frontend/android/app/profile
+/frontend/android/app/release
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# 7. OS & editors
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.swp
+*.swo
+*~
+.history/
+
+# Misc build leftovers
+*.class
+.atom/
+.build/
+.buildlog/
+.svn/
+.swiftpm/
+migrate_working_dir/
+bugreport-*.zip

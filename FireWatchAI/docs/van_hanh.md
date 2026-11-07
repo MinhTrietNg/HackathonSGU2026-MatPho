@@ -295,3 +295,39 @@ Video là bản đăng lại, có chữ và logo chèn.
 **Hệ quả.** Một ngọn lửa nhỏ cháy khoảng 45 s trong hầm xe không được báo. Phiên này không
 đổi ngưỡng và không đổi k-of-M. Việc chọn ngưỡng vận hành phải xét clip này, ghi ở
 `docs/ton_dong.md`.
+
+## 10. Kiểm chấp nhận (2026-11-08)
+
+Mục đích: xác nhận `serve` chạy liền 30 phút không lỗi, không phình bộ nhớ, `/health`
+luôn trả lời, với cờ `verifier.ben_vung` bật (cấu hình ghi đè, trước khi đổi mặc định).
+
+**Cách chạy.** `main` @ `ceb0d60`, `./run.sh` (kiểm SHA-256 trọng số: cả hai `OK`) rồi
+`serve --realtime --exit-on-pipeline-stop` trên clip âm `te-vn-ham-bt-031_d1.mp4` (50 s)
+với `source.loop=true`, tức khoảng 36 vòng clip. Ghi đè: `verifier.ben_vung=true`,
+`vlm.provider=mock`, `vlm.mock_delay_s=5`, webhook rỗng, `output.save_frames=false`.
+Máy Windows 11, CPU 16 luồng, FireWatch-v2.0 ONNX 640 trên CPU. Một script ngoài repo
+hỏi `/health` mỗi 10 s và đo working set lớn nhất trong các tiến trình Python con. Kết
+quả thô ở `E:\Hackathon\_tam_gd1\chap_nhan_3e\lan1_30phut\`, ngoài repo.
+
+| Tiêu chí | Ngưỡng đạt | Kết quả |
+|---|---|---|
+| Dòng ERROR hoặc Traceback trong log | 0 | 0 |
+| RAM phút 30 so với phút 1 | tăng ≤ 20 % | 532,8 MB → 518,7 MB (−2,6 %); dao động 510,9–535,4 MB |
+| `/health` không trả lời | 0 | 0 trên 167 lần hỏi, lần nào cũng 200 và `status: ok` |
+| Tiến trình tự thoát giữa chừng | không | không |
+
+**Kết luận: đạt ở lần chạy đầu.**
+
+Số khác:
+- 1793 heartbeat trong 1799 s chạy, tức pipeline theo kịp thời gian thực suốt 30 phút;
+  `last_heartbeat_age_s` cuối là 0,2 s.
+- 0 cảnh báo, đúng với clip âm.
+- WARNING duy nhất là dòng báo VLM giả lập lúc khởi động.
+- Khối `verifier` cuối: cầu dao `closed`, 0 lần mở, hàng chờ 0, `vlm_off_total` 0.
+
+Giới hạn của lần đo:
+- Clip âm không sinh cảnh báo nên hàng chờ xác minh, cầu dao và gom sự cố không có việc
+  để làm (`requests_in_window` 0). Lần đo này kiểm độ bền của vòng heartbeat, server và
+  bộ nhớ khi cờ bật; đường có cảnh báo đã chạy thử ở mục 8.
+- Khoảng phút 2–5 có một lệnh tìm kiếm khác chạy trên một luồng CPU. `/health` vẫn trả
+  200 và heartbeat không bị trễ trong lúc đó.

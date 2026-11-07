@@ -57,7 +57,8 @@ def test_verifier_info_tu_choi_ma_la_va_co_can_nguoi_sai():
 
 def test_event_khong_co_verifier_thi_json_giu_dung_khoa_cu():
     keys = {"event_id", "camera_id", "context", "severity", "verification",
-            "started_at", "video_ts_sec", "boxes", "vlm", "snapshot_path"}
+            "started_at", "video_ts_sec", "boxes", "vlm", "snapshot_path",
+            "type", "frame_w", "frame_h", "frame_ts"}
     ev = sample_event()
     assert set(ev.model_dump()) == keys
     assert set(json.loads(ev.model_dump_json())) == keys

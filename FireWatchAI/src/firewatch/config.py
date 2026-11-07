@@ -185,6 +185,17 @@ class AlertsConfig(_Strict):
     event_id, WebSocket + webhook) every this many seconds; 0 = off."""
 
 
+class WebhookConfig(_Strict):
+    """Nội dung payload webhook; URL và token đọc từ ``.env`` theo
+    ``alerts.webhook_url_env`` / ``alerts.webhook_token_env``."""
+
+    gui_anh: bool = False
+    """Gửi kèm ``snapshot_base64``: keyframe gốc (không vẽ box) JPEG base64, chỉ
+    trong payload webhook, không ghi file, không qua WebSocket."""
+    anh_toi_da_kb: int = Field(200, ge=10)
+    """Cỡ JPEG tối đa (KB): hạ chất lượng rồi thu nhỏ cho tới khi đủ nhỏ."""
+
+
 class ServerConfig(_Strict):
     host: str = "0.0.0.0"
     port: int = Field(8000, ge=1, le=65535)
@@ -502,6 +513,7 @@ class Config(_Strict):
     vlm: VLMConfig = VLMConfig()
     verifier: VerifierConfig = VerifierConfig()
     alerts: AlertsConfig = AlertsConfig()
+    webhook: WebhookConfig = WebhookConfig()
     server: ServerConfig = ServerConfig()
     data: DataConfig = DataConfig()
     train: TrainConfig = TrainConfig()

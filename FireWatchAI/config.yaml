@@ -129,7 +129,9 @@ alerts:
   keep_days: 0              # xoá event (json + jpg) cũ hơn N ngày lúc khởi động; 0 = giữ hết
   notify_suppressed: true   # false: event SUPPRESSED chỉ ghi đĩa (để eval), không đẩy WS/webhook
   webhook_url_env: FIREWATCH_WEBHOOK_URL     # đặt trong .env thì mỗi event được POST tới đó
-  webhook_token_env: FIREWATCH_WEBHOOK_TOKEN # gửi kèm Authorization: Bearer <token> nếu có
+  webhook_token_env: FIREWATCH_WEBHOOK_TOKEN # có token thì gửi cả Authorization: Bearer <token>
+                                             # và X-Internal-Secret: <token>
+                                             # (docs/ban_giao_backend.md mục 4)
   webhook_timeout_s: 5
   webhook_retries: 1
   save_raw_keyframe: true   # lưu thêm keyframe sạch <stem>_goc.jpg (không box/banner) cạnh
@@ -138,6 +140,13 @@ alerts:
   escalation_s: 120         # serve: CRITICAL chưa ai bấm nút trên console sau chừng này giây
                             # -> gửi lại (cùng event_id, WebSocket + webhook) mỗi chu kỳ; 0 = tắt.
                             # Demo nhanh: --set alerts.escalation_s=30
+
+# Nội dung payload webhook (URL, token, timeout ở alerts.webhook_* phía trên)
+webhook:
+  gui_anh: false            # true: payload webhook có thêm snapshot_base64 = keyframe gốc (không
+                            # vẽ box) dạng JPEG base64. Chỉ trong webhook; JSON trên đĩa, REST
+                            # và WebSocket không có trường này
+  anh_toi_da_kb: 200        # JPEG gửi đi không quá chừng này KB: hạ chất lượng rồi thu nhỏ
 
 server:
   host: 0.0.0.0

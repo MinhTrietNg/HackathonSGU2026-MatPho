@@ -20,6 +20,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -30,7 +36,11 @@
       "description_vi": "Lửa và khói bốc lên từ yên xe.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -52,11 +62,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -78,6 +98,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -88,7 +114,11 @@
       "description_vi": "Lửa và khói bốc lên từ yên xe.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "updated",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -110,6 +140,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -120,7 +156,11 @@
       "description_vi": "Không thấy lửa hay khói.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -142,11 +182,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -168,11 +218,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -194,6 +254,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -204,7 +270,11 @@
       "description_vi": "Không thấy lửa hay khói.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "updated",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -226,11 +296,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ]
   ],
@@ -309,12 +389,12 @@
    }
   ],
   "dia": [
-   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}"
+   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"updated\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"updated\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}"
   ],
   "log": [
    "firewatch.alerts INFO ALERT CRITICAL VERIFIED E1 video 10.0s -> (không snapshot)",
@@ -348,6 +428,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -358,7 +444,11 @@
       "description_vi": "Lửa và khói bốc lên từ yên xe.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -380,11 +470,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -406,6 +506,12 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
@@ -416,7 +522,11 @@
       "description_vi": "Lửa và khói bốc lên từ yên xe.",
       "fire_type": "UNCONTROLLED"
      },
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "updated",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -438,11 +548,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -464,11 +584,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ],
    [
@@ -490,11 +620,21 @@
         20.0,
         60.0,
         80.0
+       ],
+       "xyxyn": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
        ]
       }
      ],
      "vlm": null,
-     "snapshot_path": ""
+     "snapshot_path": "",
+     "type": "created",
+     "frame_w": 0,
+     "frame_h": 0,
+     "frame_ts": 1794027600.0
     }
    ]
   ],
@@ -573,12 +713,12 @@
    }
   ],
   "dia": [
-   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
-   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}"
+   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"updated\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\",\n  \"type\": \"updated\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}",
+   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ],\n      \"xyxyn\": [\n        0.0,\n        0.0,\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\",\n  \"type\": \"created\",\n  \"frame_w\": 0,\n  \"frame_h\": 0,\n  \"frame_ts\": 1794027600.0\n}"
   ],
   "log": [
    "firewatch.alerts INFO ALERT CRITICAL VERIFIED E1 video 10.0s -> (không snapshot)",

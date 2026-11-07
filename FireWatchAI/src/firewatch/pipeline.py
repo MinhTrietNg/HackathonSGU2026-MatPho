@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import queue
 import shutil
 import statistics
@@ -175,7 +176,8 @@ class Pipeline:
         _prune_runs(runs_root, cfg.output.keep_runs)
         out_dir = runs_root / f"{source.name}_{stamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
-        file_log = _attach_file_log(out_dir / "run.log")
+        file_log = _attach_file_log(out_dir / "run.log",
+                                    cfg.output.log_toi_da_mb, cfg.output.log_so_ban)
         if self.health:
             self.health.source_live = source.is_live
             self.health.heartbeat_interval_s = cfg.heartbeat.interval_s
@@ -430,9 +432,17 @@ def _prune_runs(root: Path, keep: int) -> int:
     return n
 
 
-def _attach_file_log(path: Path) -> logging.FileHandler:
-    """Mirror the root logger to ``path`` for the duration of one run."""
-    fh = logging.FileHandler(path, encoding="utf-8")
+def _attach_file_log(path: Path, toi_da_mb: float = 20.0,
+                     so_ban: int = 5) -> logging.Handler:
+    """Mirror the root logger to ``path`` for the duration of one run.
+
+    File xoay vòng theo kích thước: đầy ``toi_da_mb`` MB thì đổi thành
+    ``run.log.1`` (cũ hơn thành ``.2``...), giữ ``so_ban`` bản cũ, nên một lần
+    ``serve`` chạy nhiều ngày không làm đầy đĩa. ``toi_da_mb = 0`` thì không xoay.
+    """
+    fh = logging.handlers.RotatingFileHandler(
+        path, maxBytes=int(toi_da_mb * 1024 * 1024), backupCount=so_ban,
+        encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(fh)
     return fh

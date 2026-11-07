@@ -46,6 +46,9 @@ output:
   show: false               # mở cửa sổ OpenCV (flag --show ghi đè)
   log_every_heartbeat: true # in cả heartbeat không có detection
   keep_runs: 30             # chỉ giữ N thư mục runs/ mới nhất (xoá cũ lúc bắt đầu chạy); 0 = giữ hết
+  log_toi_da_mb: 20         # run.log đầy chừng này MB thì xoay thành run.log.1, .2...; 0 = không
+                            # xoay. Một lần serve chạy nhiều ngày dùng tối đa
+  log_so_ban: 5             # (log_so_ban + 1) × log_toi_da_mb cho log của nó
 
 # ───────── [3] Voting persistence ─────────
 voting:

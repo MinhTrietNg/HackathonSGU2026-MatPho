@@ -48,7 +48,7 @@ class HeartbeatConfig(_Strict):
 
 
 class DetectorConfig(_Strict):
-    weights: Path = Path("models/best.pt")
+    weights: Path = Path("models/firewatch-v2.0.pt")
     fallback_weights: Path = Path("models/yolo26n.pt")
     backend: Literal["pt", "onnx"] = "pt"
     device: str = "cpu"
@@ -187,8 +187,8 @@ class DataConfig(_Strict):
 
 
 class TrainConfig(_Strict):
-    base_weights: Path = Path("models/best.pt")
-    data_yaml: Path = Path("data/processed/matpho_fire/data.yaml")
+    base_weights: Path = Path("models/firewatch-v1.0.pt")
+    data_yaml: Path = Path("data/processed/datafirewatch/data.yaml")
     epochs: int = Field(50, ge=1)
     batch: int = Field(16, ge=1)
     imgsz: int = Field(640, ge=32)
@@ -373,7 +373,7 @@ class TrainListConfig(_Strict):
 
 
 class FinetuneConfig(_Strict):
-    out_dir: Path = Path("data/processed/matpho_fire")
+    out_dir: Path = Path("data/processed/datafirewatch")
     audit_dir: Path | None = None
     """When set, exclusions.csv and groups.csv from audit_data.py are applied."""
     frame_exclusions: list[Path] = Field(default_factory=list)
@@ -404,7 +404,8 @@ class FinetuneConfig(_Strict):
     general_detector: bool = False
     """Datasheet wording: a general fire / smoke detector trained from COCO
     for public benchmarks (v2.0) instead of the tier-1 fine-tune of
-    ``models/best.pt`` for the parking-lot context (v0.x / v1.x)."""
+    FireWatch-v1.0 (``models/firewatch-v1.0.pt``) for the parking-lot context
+    (v0.x / v1.x)."""
     heldout_skip: list[str] = Field(default_factory=list)
     """Names in ``audit.heldout`` this profile does NOT hold out, e.g. a
     public benchmark's test split when its official train split is used in

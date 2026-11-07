@@ -22,8 +22,9 @@ heartbeat:
 
 # ───────── [2] Detector YOLO26n ─────────
 detector:
-  weights: models/best_full_v121.pt  # YOLO26n từ COCO trên MatPho-Fire-Full v1.2.1 (Kaggle, epoch 45)
-  fallback_weights: models/yolo26n.pt   # không có best.pt thì dùng weights gốc (tự tải)
+  weights: models/firewatch-v2.0.pt  # FireWatch-v2.0, SHA-256 58def3d0…; lấy file và kiểm
+                                     # theo models/README.md
+  fallback_weights: models/yolo26n.pt   # thiếu file weights thì dùng weights gốc COCO (tự tải)
   backend: onnx             # pt | onnx. Chọn theo scripts/benchmark_cpu.py (reports/benchmark_cpu.md):
                             # ở imgsz 640 onnx nhanh hơn pt; ở 960/1280 thì pt nhanh hơn -> đổi
                             # lại pt nếu tăng imgsz. Lần đầu chạy onnx sẽ export models/<ten>_<imgsz>.onnx
@@ -132,10 +133,10 @@ data:
   seed: 42
   max_frames_per_clip: 0    # 0 = không giới hạn
 
-# ───────── Train (scripts/train.py — chạy ở máy khác/Colab, pipeline chỉ cần best.pt) ─────────
+# ───────── Train (scripts/train.py — chạy ở máy khác/Colab, pipeline chỉ cần detector.weights) ─────────
 train:
-  base_weights: models/best.pt      # fine-tune TIẾP từ model hiện tại, không train lại từ COCO
-  data_yaml: data/processed/matpho_fire_v0.4/data.yaml  # từ build_finetune_set.py
+  base_weights: models/firewatch-v1.0.pt  # fine-tune TIẾP từ model có sẵn, không train lại từ COCO
+  data_yaml: data/processed/datafirewatch-v0.4/data.yaml  # từ build_finetune_set.py
   epochs: 50
   batch: 16
   imgsz: 640
@@ -155,9 +156,9 @@ train:
 #   hard_neg : chỉ lấy ảnh KHÔNG còn box fire/smoke (vd lớp `other` của DFS)
 #   base     : dữ liệu tổng quát để model không quên kiến thức cũ
 finetune:
-  dataset_name: MatPho-Fire # bộ dữ liệu riêng của dự án; mỗi lần đổi nguồn/quy tắc thì tăng version
+  dataset_name: DataFireWatch # bộ dữ liệu riêng của dự án; mỗi lần đổi nguồn/quy tắc thì tăng version
   dataset_version: "0.4"
-  out_dir: data/processed/matpho_fire_v0.4
+  out_dir: data/processed/datafirewatch-v0.4
   audit_dir: data/interim/audit   # áp exclusions.csv + groups.csv của scripts/audit_data.py
   review_queue: data/interim/labels_curated_v2/human_queue.csv  # khung chờ người vẽ box
   catalog: data/catalog/clips.csv  # scripts/build_catalog.py: mã clip chuẩn + metadata
@@ -245,7 +246,7 @@ finetune:
       # không nhóm: val của base chỉ để theo dõi; thước đo chính là eval trên clip VN
       prefix: dfire
       license: trích dẫn Venâncio et al. 2022; ảnh PublicDataset* theo điều khoản HPWREN/FESB/FireNet
-    - name: fasdd_cv        # FASDD_CV, nhãn YOLO_CV gốc (0 = fire, 1 = smoke); best.pt train trên bộ này
+    - name: fasdd_cv        # FASDD_CV, nhãn YOLO_CV gốc (0 = fire, 1 = smoke); FireWatch-v1.0 train trên bộ này
       role: base            # -> trộn lại một phần để fine-tune không quên kiến thức cũ
       images: data/external/fasdd_cv/images
       labels: data/external/fasdd_cv/labels
@@ -254,7 +255,7 @@ finetune:
       prefix: fasdd
       license: FASDD (Wang et al. 2022); chỉ nghiên cứu, trích dẫn bài báo
 
-# ───────── Bộ dữ liệu tổng quát để train YOLO26n mới từ COCO (không từ best.pt) ─────────
+# ───────── Bộ dữ liệu tổng quát để train YOLO26n mới từ COCO (không từ FireWatch-v1.0) ─────────
 # python scripts/audit_data.py --profile full
 # python scripts/build_finetune_set.py --profile full
 # Cùng quy ước lớp, cùng loại trừ khung và kiểm rò rỉ như `finetune`, nhưng: giữ MỌI ảnh
@@ -262,10 +263,10 @@ finetune:
 # ảnh có thêm một bản trắng đen giả lập camera đêm (firewatch/irsim.py).
 datasets:
   full:
-    dataset_name: MatPho-Fire-Full
-    dataset_version: "1.2.1"  # v1.2 + clip tin tức hầm/trệt lặp ≤ 2x (chỉ đổi list;
+    dataset_name: DataFireWatch
+    dataset_version: "1.5"    # bản v1.2 cũ + clip tin tức hầm/trệt lặp ≤ 2x (chỉ đổi list;
                               # scripts/relist_dataset.py từ v1.2)
-    out_dir: data/processed/matpho_fire_full_v1.2.1
+    out_dir: data/processed/datafirewatch-v1.5
     audit_dir: data/interim/audit_full   # kiểm riêng vì tập con FASDD lớn hơn
     review_queue: data/interim/labels_curated_v2/human_queue.csv
     catalog: data/catalog/clips.csv
@@ -313,17 +314,17 @@ datasets:
                             # không đủ sau khi loại trùng + rò rỉ (kiểm định 03/11)
         prefix: fasdd
         license: FASDD (Wang et al. 2022), CC BY-SA 4.0; trích dẫn bài báo
-  # ───── v2.0-base: detector lửa/khói CHUNG từ dữ liệu công khai (docs/ke_hoach_dataset_v2.md)
-  # python scripts/audit_data.py --profile v2_base
-  # python scripts/build_finetune_set.py --profile v2_base
+  # ───── DataFireWatch-v2.0: detector lửa/khói CHUNG từ dữ liệu công khai (docs/ke_hoach_dataset_v2.md)
+  # python scripts/audit_data.py --profile datafirewatch-v2.0
+  # python scripts/build_finetune_set.py --profile datafirewatch-v2.0
   # Khác `full`: D-Fire train dùng ĐỦ theo split chính thức (không giữ riêng D-Fire test,
   # không bỏ ảnh có box lửa nhỏ, không bỏ ảnh nhỏ), FASDD lấy pool lớn hơn, không sinh
   # biến thể _xam/_cam, nền không bị chặn bởi target_total. Vẫn giữ riêng T1, T2, clip mẫu.
-  v2_base:
-    dataset_name: MatPho-Fire
-    dataset_version: "2.0-base"
-    out_dir: data/processed/matpho_fire_v2_base
-    audit_dir: data/interim/audit_v2_base
+  datafirewatch-v2.0:
+    dataset_name: DataFireWatch
+    dataset_version: "2.0"
+    out_dir: data/processed/datafirewatch-v2.0
+    audit_dir: data/interim/audit_datafirewatch-v2.0
     review_queue: data/interim/labels_curated_v2/human_queue.csv
     catalog: data/catalog/clips.csv
     frame_exclusions: *frame_exclusions
@@ -368,7 +369,7 @@ datasets:
                          neitherFireNorSmoke_: 15000}
         prefix: fasdd
         license: FASDD (Wang et al. 2022), CC BY-SA 4.0; trích dẫn bài báo
-  # Chỉ để đo thiên vị: toàn bộ FASDD_CV (best.pt train trên bộ này) và D-Fire train
+  # Chỉ để đo thiên vị: toàn bộ FASDD_CV (FireWatch-v1.0 train trên bộ này) và D-Fire train
   # so với mọi tập test (python scripts/audit_data.py --profile kiem_ro_ri). Không dựng.
   kiem_ro_ri:
     dataset_name: kiem-ro-ri
@@ -433,21 +434,16 @@ eval:
     - name: yolo26n_coco
       weights: models/yolo26n.pt
       source: https://github.com/ultralytics/assets/releases (COCO, chưa fine-tune)
-    - name: team_yolo26n_fasdd
-      weights: models/best.pt
-      source: YOLO26n fine-tune FASDD của team (models/best_train_args.yaml)
-    - name: team_yolo26n_full_v12
-      weights: models/best_full_v12.pt
-      source: YOLO26n train từ COCO (yolo26n.pt) trên MatPho-Fire-Full v1.2, Kaggle/Colab
-    - name: team_yolo26n_v2_base
-      weights: models/best_v2_base.pt
-      source: YOLO26n train từ COCO trên MatPho-Fire v2.0-base (D-Fire đủ + FASDD cân lại), chọn checkpoint theo mAP50 val
-    - name: team_yolo26n_full_v121
-      weights: models/best_full_v121.pt
-      source: YOLO26n train từ COCO (yolo26n.pt) trên MatPho-Fire-Full v1.2.1, Kaggle 2×T4, checkpoint epoch45 chọn theo AP50 fire
-    - name: team_yolo26n_v04_640
-      weights: models/best_v04_640.pt
-      source: YOLO26n fine-tune tiếp best.pt trên MatPho-Fire v0.4, imgsz 640
+    # Tên và SHA-256 theo bảng đăng ký của FireWatch-Model (models/README.md ở đây).
+    - name: firewatch-v1.0
+      weights: models/firewatch-v1.0.pt
+      source: YOLO26n từ COCO (yolo26n.pt) trên DataFireWatch-v1.0 (FASDD_CV)
+    - name: firewatch-v2.0
+      weights: models/firewatch-v2.0.pt
+      source: YOLO26n train từ COCO trên DataFireWatch-v2.0 (D-Fire đủ + FASDD cân lại), chọn checkpoint theo mAP50 val
+    - name: firewatch-v1.5
+      weights: models/firewatch-v1.5.pt
+      source: YOLO26n train từ COCO (yolo26n.pt) trên DataFireWatch-v1.5, Kaggle 2×T4, checkpoint epoch45 chọn theo AP50 fire
     - name: hf_rabahdev_yolov8n
       weights: models/hf/rabahdev_fire-smoke-yolov8n.pt
       source: https://huggingface.co/rabahdev/fire-smoke-yolov8n (YOLOv8n train trên D-Fire, AGPL-3.0)

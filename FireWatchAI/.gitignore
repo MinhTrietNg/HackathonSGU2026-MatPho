@@ -26,12 +26,6 @@ models/*.onnx
 *.pt
 *.onnx
 
-# Báo cáo sinh tự động giữ lại, nhưng không giữ cache hình tạm
-reports/_tmp/
-reports/**/matpho_fire_*/samples_*.jpg
-# Ảnh ghép batch train/val của Ultralytics chứa khung clip có bản quyền
-reports/train_*/*_batch*.jpg
-
 # Model tải về để khảo sát: chỉ giữ tài liệu (README, KET_QUA.md, nguon.json),
 # không commit trọng số / file gốc (có model cấm phân phối lại)
 scout/*/goc/

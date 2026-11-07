@@ -186,7 +186,8 @@ class Pipeline:
             raise SystemExit(
                 f"weights {detector.weights.name} không có class "
                 f"{cfg.detector.classes}: từ chối chạy live/serve vì sẽ không bao "
-                "giờ báo cháy. Đặt models/best.pt hoặc --weights đúng file.")
+                "giờ báo cháy. Đặt models/firewatch-v2.0.pt (xem models/README.md) "
+                "hoặc --weights đúng file.")
         sampler = HeartbeatSampler(cfg.heartbeat.interval_s, cfg.heartbeat.ring_buffer)
         voting = VotingEngine(cfg.voting)
         store = self._event_store()

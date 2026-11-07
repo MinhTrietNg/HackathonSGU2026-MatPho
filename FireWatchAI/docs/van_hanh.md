@@ -210,7 +210,7 @@ Kết quả thô (event, `run.log`, `ket_qua.json` mỗi trường hợp) ở
 - Leo thang: `te-cn-ngoai-chay-134_d1.mp4` (67 s, WARNING ở 18 s rồi CRITICAL ở 24 s), chỉ
   chạy cờ tắt và nhanh.
 - Clip dương chọn ban đầu, `te-vn-ham-chay-023_d1.mp4`, không sinh cảnh báo nào với
-  FireWatch-v2.0 ở cả bốn chế độ, nên được thay.
+  FireWatch-v2.0 ở cả bốn chế độ, nên được thay. Phân tích bỏ sót này ở mục 9.
 
 ### Kết quả
 
@@ -246,3 +246,52 @@ Kết quả thô (event, `run.log`, `ket_qua.json` mỗi trường hợp) ở
   nguồn lặp; đã có test với đồng hồ giả (`tests/test_su_co.py`).
 - Cầu dao mở trên pipeline thật: cần ít nhất 3 lượt gọi lỗi liên tiếp, tức 3 sự cố trong
   thời gian ngắn; đã có test (`tests/test_verifier_cau_dao.py`).
+
+## 9. Bỏ sót đã biết
+
+### `te-vn-ham-chay-023_d1.mp4` (đo 2026-11-08)
+
+Camera hầm xe, 98 s, 1280×720, 30 fps; clip thuộc `vn_test` và T1 dev của
+`Model-Mat-Pho-`. Nhãn tự động (`tu_dong_v1.0`) ghi cháy từ 0 đến 52 s. Nhìn các khung
+ở 5, 20 và 35 s thấy một ngọn lửa nhỏ giữa hàng xe máy; khoảng 45 s có người phun bình
+chữa cháy. Pipeline với FireWatch-v2.0 không sinh cảnh báo nào (mục 8).
+
+**Cách đo.** Một script ngoài repo gọi đúng lớp `Detector` và `HeartbeatSampler` của
+pipeline: ONNX 640, CPU, `detector.conf_threshold` 0,10, không voting. Chạy trên mọi
+khung (2940) và trên khung heartbeat (98, mỗi 1 s video). Sau đó cho `VotingEngine` với
+cấu hình hiện hành (6/10, `iou_match` 0,3) chạy lại trên phát hiện của heartbeat, ở
+ngưỡng vận hành 0,25 và ở 0,10. Hai lần chạy cho kết quả giống hệt. So sánh với
+FireWatch-v1.5 (`firewatch-v1.5_640.onnx` của FireWatch-Model, `.pt` SHA-256
+`3e5e527e…`).
+
+| Đại lượng | FireWatch-v2.0 | FireWatch-v1.5 |
+|---|---|---|
+| Khung có box lửa/khói ≥ 0,10 (trên 2940) | 114 | 68 |
+| trong đó trước 40 s | 3 | 0 |
+| Khung có box ≥ 0,25 | 61, đều trong 45–50 s | 37, đều trong 40–50 s |
+| conf lớn nhất, lửa | 0,47 (46,5 s) | 0,70 (46,4 s) |
+| conf lớn nhất, khói | 0,44 (48,9 s) | 0,47 (44,9 s) |
+| Heartbeat có box ≥ 0,10 (trên 98) | 5 (45–49 s) | 3 (45–47 s) |
+| Heartbeat có box ≥ 0,25 | 2 (46 s, 49 s) | 1 (45 s) |
+| Phiếu nhiều nhất của một track, ngưỡng 0,25 | 2/10 | 1/10 |
+| Phiếu nhiều nhất của một track, ngưỡng 0,10 | 4/10 | 2/10 |
+
+**Vì sao voting không đủ 6/10.** Đã xác nhận từ số liệu trên:
+- Trong 40 s đầu, detector gần như im lặng ở cả hai model dù lửa có trong khung:
+  FireWatch-v2.0 có 3 khung trên 1200 có box ≥ 0,10, FireWatch-v1.5 không có khung nào.
+- Phát hiện chỉ dồn vào 45–50 s, lúc bình chữa cháy phun và lửa bùng lên. Lấy mẫu 1 s chỉ
+  gặp 2 heartbeat có box ≥ 0,25, nên mỗi cửa sổ 10 heartbeat có tối đa 2 phiếu, cần 6.
+- Hạ ngưỡng xuống 0,10 cũng không đủ. FireWatch-v2.0 có 5 heartbeat liền nhau có box,
+  nhưng box nhảy chỗ: khói ở x 483–701 px lúc 45 s, lửa ở x 776–850 px từ 46 s. Voting
+  tách thành 3 track, track nhiều nhất 4 phiếu. Kể cả không tách track, 5 vẫn nhỏ hơn 6.
+- Bỏ sót không phải hồi quy riêng của FireWatch-v2.0: FireWatch-v1.5 cũng không báo, dù
+  conf lửa lớn nhất của nó cao hơn.
+
+Giả thuyết, chưa kiểm: lửa quá nhỏ so với khung khi về 640 px, bị cột và xe che một phần,
+ánh sáng yếu. Box lửa FireWatch-v2.0 bắt được ở 45–50 s có trung vị 69×28 px trên khung
+1280×720, tức khoảng 34×14 px ở đầu vào 640; ngọn lửa trước đó nhìn bằng mắt còn nhỏ hơn.
+Video là bản đăng lại, có chữ và logo chèn.
+
+**Hệ quả.** Một ngọn lửa nhỏ cháy khoảng 45 s trong hầm xe không được báo. Phiên này không
+đổi ngưỡng và không đổi k-of-M. Việc chọn ngưỡng vận hành phải xét clip này, ghi ở
+`docs/ton_dong.md`.

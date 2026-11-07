@@ -1,3 +1,192 @@
+HEAD
+# ==============================================================================
+# HACKATHON SGU 2026 - MATPHO REPOSITORY GITIGNORE (ROOT LEVEL)
+# Bảo vệ thông tin bí mật (Secrets), dọn sạch cache, và tối ưu dung lượng Git
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. BẢO MẬT & CHÌA KHÓA DỊCH VỤ (SECRETS, CREDENTIALS & KEYS)
+# ------------------------------------------------------------------------------
+# Chặn các file môi trường ở TẤT CẢ mọi cấp thư mục
+.env
+.env.*
+*.env
+!.env.example
+!**/.env.example
+
+# Docker local overrides
+docker-compose.override.yml
+**/docker-compose.override.yml
+*.override.yml
+
+# Chặn Service Account JSON & Private Keys ở TẤT CẢ mọi thư mục
+firebase-service-account*.json
+*service-account*.json
+*service_account*.json
+*service*account*.json
+**/credentials/*.json
+credentials/*.json
+!**/credentials/.gitkeep
+!credentials/.gitkeep
+!**/credentials/firebase_client/**
+!credentials/firebase_client/**
+
+# Chặn tokens & các file cấu hình bí mật JSON / YAML
+token.json
+tokens/
+*secret*.json
+*secrets*.json
+*secret*.yaml
+*secret*.yml
+private*.json
+
+# Chặn chứng chỉ số, private keys, keystore (Android / iOS)
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# ------------------------------------------------------------------------------
+# 2. CƠ SỞ DỮ LIỆU NỘI BỘ & RUNTIME STATE
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.rdb
+redis_data/
+data/
+*.ipc
+
+# ------------------------------------------------------------------------------
+# 3. AI AGENTS, LOCAL RULES, DOCS & MARKDOWN FILES (LOCAL ONLY - NEVER PUSHED)
+# ------------------------------------------------------------------------------
+# Chặn toàn bộ tất cả các file Markdown (.md) trên toàn bộ repository
+*.md
+
+# Chặn script thực thi cục bộ Windows (.bat, .ps1)
+*.bat
+*.ps1
+
+# Chặn công cụ test RTSP nội bộ
+tool_test_rtsp/
+**/tool_test_rtsp/
+
+# Chặn công cụ test FCM nội bộ
+tool_test_fcm/
+**/tool_test_fcm/
+
+# Chặn toàn bộ thư mục kỹ năng và cấu hình AI cục bộ
+.agents/
+skills-lock.json
+
+# Chặn kho tài liệu kiến thức (giữ nội bộ máy phát triển)
+docs/
+
+# Chặn Postman collections & environments cục bộ
+postman/
+**/postman/
+
+# Chặn cache và cơ sở dữ liệu đồ thị phân tích Understand-Anything
+.ua/
+.understand-anything/
+
+# Chặn cache cục bộ khác của Claude / AI agent
+.claude/
+CLAUDE.local.md
+
+# ------------------------------------------------------------------------------
+# 4. PYTHON VIRTUAL ENVIRONMENT & BUILD CACHES
+# ------------------------------------------------------------------------------
+# Bytecode & compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Môi trường ảo Python
+.venv/
+venv/
+env/
+ENV/
+
+# Build & packaging artifacts
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing, Coverage & Linters
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 5. LOGS & TEMPORARY MEDIA
+# ------------------------------------------------------------------------------
+*.log
+logs/
+
+# Temporary media & snapshots
+static/snapshots/temp_*
+static/temp/
+**/static/snapshots/temp_*
+temp_*
+*.tmp
+
+# ------------------------------------------------------------------------------
+# 6. NODE & FRONTEND / MOBILE (NẾU CÓ SUB-MODULE TRONG TƯƠNG LAI)
+# ------------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# ------------------------------------------------------------------------------
+# 7. HỆ ĐIỀU HÀNH & TRÌNH SOẠN THẢO (OS & IDEs)
+# ------------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.swp
+*.swo
+*~
+.history/
+
 # Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
 # phần đó (ví dụ FireWatchAI/.gitignore).
 
@@ -16,3 +205,4 @@ __pycache__/
 
 # Kết quả chạy
 runs/
+origin/main

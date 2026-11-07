@@ -1,0 +1,83 @@
+# ==============================================================================
+# Mắt Phố - Backend .gitignore
+# ==============================================================================
+
+# Chặn toàn bộ file Markdown (.md)
+*.md
+
+# Chặn scripts cục bộ (.bat, .ps1)
+*.bat
+*.ps1
+
+# Environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Firebase credentials (MUST NOT be committed)
+credentials/*.json
+**/credentials/*.json
+*service*account*.json
+*service-account*.json
+*service_account*.json
+!credentials/.gitkeep
+!credentials/firebase_client/**
+
+# Secrets & Keys
+*secret*.json
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Local Database & Cache
+*.db
+*.sqlite
+*.sqlite3
+redis_data/
+data/
+
+# Python Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing, Coverage & Lint
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Postman
+postman/
+
+# Logs
+*.log
+logs/

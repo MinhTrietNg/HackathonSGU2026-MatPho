@@ -1,0 +1,51 @@
+###############################################
+# MediaMTX Configuration - Edge Stream Gateway
+# Standardized Stream Path: live/{cam_id}
+# - Input RTSP : Pushed by edge-backend (from LAN IP Camera or mock/cam_test)
+# - Output HLS : http://<edge>:8888/live/{cam_id}/index.m3u8 (for Mobile/Web App)
+# - Output RTSP: rtsp://mediamtx:8554/live/{cam_id} (for AI Service Input)
+###############################################
+
+logLevel: info
+logDestinations: [stdout]
+
+api: yes
+apiAddress: :9997
+
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp, udp]
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: '*'
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+hlsAlwaysRemux: no
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  - url: stun:stun.cloudflare.com:3478
+
+paths:
+  # 1. Mock Camera Source (pushed by scripts/mock_camera.py)
+  mock/cam_test:
+    source: publisher
+
+  # 2. Standalone Direct Alias (optional zero-copy test without edge-backend)
+  live/cam_mock:
+    source: rtsp://localhost:8554/mock/cam_test
+    sourceOnDemand: no
+
+  # 3. Dynamic On-Demand fallback for all camera sources (LAN/virtual fallback to mock stream)
+  ~^source/(.*)$:
+    source: rtsp://localhost:8554/mock/cam_test
+    sourceOnDemand: yes
+
+  # 4. All active live & output streams published by edge-backend or tool_test_rtsp
+  all_others:
+    source: publisher

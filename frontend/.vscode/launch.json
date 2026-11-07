@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mắt Phố (Tự động nhận diện - Auto Detect)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define-from-file=.env"
+      ]
+    },
+    {
+      "name": "Mắt Phố (Ép buộc Local - Máy tính Dev)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=ENV=local",
+        "--dart-define-from-file=.env"
+      ]
+    },
+    {
+      "name": "Mắt Phố (Ép buộc Production - Google Cloud)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=ENV=prod",
+        "--dart-define-from-file=.env"
+      ]
+    },
+    {
+      "name": "Mắt Phố (Mock - backend giả, không cần mạng)",
+      "request": "launch",
+      "type": "dart",
+      "program": "test/mock/main.dart"
+    }
+  ]
+}

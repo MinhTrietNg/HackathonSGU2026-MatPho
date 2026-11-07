@@ -104,5 +104,5 @@ xem model bằng mắt, không đi qua voting hay alert.
 | Sơ đồ ghi | Thực tế |
 |---|---|
 | "chỉ quét vùng `watch_area`" | FireWatchAI chưa có vùng quét: detector xử lý cả khung. Hàm che `watch_area` hiện chỉ có trong khung `ai_service` ở nhánh `backend` |
-| Container, "1 tiến trình mỗi camera", MediaMTX cấp RTSP :8554 | FireWatchAI không có Dockerfile hay cấu hình MediaMTX; mỗi lần chạy `python -m firewatch` là một nguồn. Docker và MediaMTX nằm ở `EdgeAI-MatPho/` của nhánh `backend`. FireWatch nhận URL RTSP bất kỳ, nên đọc được luồng MediaMTX |
+| MediaMTX cấp RTSP :8554 | FireWatchAI không có cấu hình MediaMTX; MediaMTX nằm ở `EdgeAI-MatPho/` của nhánh `backend`. FireWatch nhận URL RTSP bất kỳ, nên đọc được luồng MediaMTX. Container của FireWatch (một tiến trình một camera) đã có: `Dockerfile`, xem `docs/van_hanh.md` mục 7 |
 | Gemini "p50 ≈ 2 s" | số từ một lần đo trên 50 khung val của bộ dữ liệu cũ (README nguồn); chưa đo lại với model và prompt hiện tại |

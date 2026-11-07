@@ -1,0 +1,15 @@
+# Không đưa vào image: môi trường, bí mật, trọng số (mount lúc chạy), kết quả chạy.
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.env
+models/*
+!models/README.md
+events/
+runs/
+data/
+tests/
+docs/
+Dockerfile
+.dockerignore

@@ -75,6 +75,10 @@ class OutputConfig(_Strict):
     log_every_heartbeat: bool = True
     keep_runs: int = Field(30, ge=0)
     """Keep only the newest N run folders under ``dir``; 0 keeps everything."""
+    log_toi_da_mb: float = Field(20.0, ge=0)
+    """``run.log`` xoay vòng khi đạt chừng này MB; 0 = không xoay."""
+    log_so_ban: int = Field(5, ge=1)
+    """Số bản ``run.log.N`` cũ được giữ khi xoay vòng."""
 
 
 class VotingConfig(_Strict):

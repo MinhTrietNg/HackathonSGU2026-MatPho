@@ -41,6 +41,9 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="file: phát lại đúng tốc độ thật (nên bật khi demo)")
     serve.add_argument("--host", default=None, help="ghi đè server.host")
     serve.add_argument("--port", type=int, default=None, help="ghi đè server.port")
+    serve.add_argument("--exit-on-pipeline-stop", action="store_true",
+                       help="pipeline lỗi hay nguồn live kết thúc thì dừng serve với "
+                            "mã 1, để supervisor khởi động lại (dùng trong container)")
     return p
 
 
@@ -63,9 +66,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "serve":
         from .server import serve
 
-        serve(cfg, source=args.source, realtime=args.realtime, host=args.host,
-              port=args.port)
-        return 0
+        return serve(cfg, source=args.source, realtime=args.realtime,
+                     host=args.host, port=args.port,
+                     exit_on_pipeline_stop=args.exit_on_pipeline_stop)
     return 1
 
 

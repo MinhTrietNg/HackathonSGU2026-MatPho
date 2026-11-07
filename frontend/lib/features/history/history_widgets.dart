@@ -35,10 +35,12 @@ class HistoryLoadError extends StatelessWidget {
     super.key,
     required this.error,
     required this.onRetry,
+    this.busy = false,
   });
 
   final Object error;
   final VoidCallback onRetry;
+  final bool busy;
 
   static const _artSize = Size(260, 260 * 180 / 280);
 
@@ -83,7 +85,7 @@ class HistoryLoadError extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          MpButton(label: 'Thử lại', onPressed: onRetry),
+          MpButton(label: 'Thử lại', onPressed: onRetry, busy: busy),
         ],
       ),
     );

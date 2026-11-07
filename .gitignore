@@ -56,9 +56,9 @@ private*.json
 *.keystore
 *.jks
 
-# ------------------------------------------------------------------------------
-# 2. CƠ SỞ DỮ LIỆU NỘI BỘ & RUNTIME STATE
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 2. Local databases & runtime state
+# ---------------------------------------------------------------------------
 *.db
 *.sqlite
 *.sqlite3
@@ -66,7 +66,6 @@ private*.json
 *.db-wal
 *.rdb
 redis_data/
-data/
 *.ipc
 
 # ------------------------------------------------------------------------------
@@ -80,7 +79,7 @@ data/
 !readme.md
 !**/readme.md
 
-# Chặn script thực thi cục bộ Windows (.bat, .ps1)
+# Local Windows scripts
 *.bat
 *.ps1
 
@@ -90,8 +89,6 @@ data/
 # Chặn công cụ test RTSP nội bộ
 tool_test_rtsp/
 **/tool_test_rtsp/
-
-# Chặn công cụ test FCM nội bộ
 tool_test_fcm/
 **/tool_test_fcm/
 
@@ -121,22 +118,16 @@ __pycache__/
 *$py.class
 *.so
 .Python
-
-# Môi trường ảo Python
 .venv/
 venv/
 env/
 ENV/
-
-# Build & packaging artifacts
 build/
 develop-eggs/
 dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -144,8 +135,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Testing, Coverage & Linters
 .pytest_cache/
 .coverage
 .coverage.*
@@ -168,8 +157,6 @@ runs/
 # ------------------------------------------------------------------------------
 *.log
 logs/
-
-# Temporary media & snapshots
 static/snapshots/temp_*
 static/temp/
 **/static/snapshots/temp_*
@@ -211,15 +198,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ------------------------------------------------------------------------------
-# 7. HỆ ĐIỀU HÀNH & TRÌNH SOẠN THẢO (OS & IDEs)
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 7. OS & editors
+# ---------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
 ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
-
 .idea/
 *.iml
 *.ipr

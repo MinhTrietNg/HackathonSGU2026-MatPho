@@ -59,7 +59,11 @@ class MembersScreen extends ConsumerWidget {
     WidgetRef ref,
     Group group,
   ) async {
-    if (!await confirmDissolveGroup(context) || !context.mounted) return;
+    if (!await confirmDissolveGroup(context) ||
+        !context.mounted ||
+        !isSelectedGroup(ref, group.id)) {
+      return;
+    }
     final done = await runGroupAction(
       context,
       () => ref.read(groupActionsProvider).dissolveGroup(group.id),
@@ -69,7 +73,8 @@ class MembersScreen extends ConsumerWidget {
 
   Future<void> _leave(BuildContext context, WidgetRef ref, Group group) async {
     if (!await confirmLeaveGroup(context, groupDisplayName(group)) ||
-        !context.mounted) {
+        !context.mounted ||
+        !isSelectedGroup(ref, group.id)) {
       return;
     }
     final done = await runGroupAction(
@@ -83,7 +88,7 @@ class MembersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.mpColors;
     final t = context.mpText;
-    final view = ref.watch(currentGroupViewProvider).value;
+    final view = ref.watch(selectedGroupViewProvider);
     final group = view?.group;
     final header = MpHeader.back(
       title: group == null ? 'Thành viên' : groupDisplayName(group),
@@ -97,7 +102,7 @@ class MembersScreen extends ConsumerWidget {
         children: const [],
       );
     }
-    final (group: _, :members, :cameras, :areas) = view;
+    final (selectedId: _, group: _, :members, :cameras, :areas) = view;
     final now = ref.watch(clockProvider)();
     final canManage = group.myRole.canManage;
     final isOwner = group.myRole == GroupRole.owner;

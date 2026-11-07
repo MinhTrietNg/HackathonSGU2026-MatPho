@@ -3,7 +3,8 @@
 # Services:
 #   1. mediamtx     : RTSP (:8554), Low-Latency HLS (:8888/live/{cam_id}/index.m3u8), WebRTC (:8889)
 #   2. edge-backend : RTSP Input -> H.264 -> HLS Publisher + LAN Probe + SQLite WAL + Cloud WS
-#   3. firewatch-ai : Clean AI Skeleton (1 RTSP Input + 1 Webhook Output) for AI Team
+#   3. firewatch-ai : FireWatchAI - mọi camera trong AI_CAMERA_STREAMS (rtsp://mediamtx:8554/live/{cam_id}),
+#                     theo lịch quét của edge-backend, event -> edge-backend /api/v1/edge/ai-events
 #   4. mock-camera  : (Tùy chọn --profile mock) Giả lập camera OSD bơm vào rtsp://mediamtx:8554/mock/cam_test
 # ==============================================================================
 
@@ -70,11 +71,12 @@ services:
       - edge-net
 
   # ----------------------------------------------------------------------------
-  # 3. FireWatch AI Service: Clean Plug-and-Play Skeleton (1 Input RTSP + 1 Output Webhook)
+  # 3. FireWatchAI: phát hiện cháy/khói (YOLO26n, voting, xác minh VLM) cho mọi camera.
+  #    Cách chạy, biến môi trường dùng và bỏ qua: FireWatchAI/docs/van_hanh.md mục 11.
   # ----------------------------------------------------------------------------
   firewatch-ai:
     build:
-      context: ./ai_service
+      context: ./FireWatchAI
       dockerfile: Dockerfile
     container_name: matpho_edge_firewatch_ai
     restart: unless-stopped
@@ -91,7 +93,9 @@ services:
       - AI_TARGET_FPS=${AI_TARGET_FPS:-3.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./ai_service/weights:/app/weights:ro
+      # Trọng số theo FireWatchAI/models/README.md; run.sh chép sang /app/models rồi
+      # kiểm SHA-256, sai hoặc thiếu thì container dừng.
+      - ./FireWatchAI/models:/app/weights:ro
     depends_on:
       mediamtx:
         condition: service_started

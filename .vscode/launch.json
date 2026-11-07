@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mắt Phố (Tự động nhận diện - Auto Detect)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main.dart",
+      "args": [
+        "--dart-define-from-file=${workspaceFolder}/frontend/.env"
+      ]
+    },
+    {
+      "name": "Mắt Phố (Ép buộc Local - Máy tính Dev)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main.dart",
+      "args": [
+        "--dart-define=ENV=local",
+        "--dart-define-from-file=${workspaceFolder}/frontend/.env"
+      ]
+    },
+    {
+      "name": "Mắt Phố (Ép buộc Production - Google Cloud)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main.dart",
+      "args": [
+        "--dart-define=ENV=prod",
+        "--dart-define-from-file=${workspaceFolder}/frontend/.env"
+      ]
+    }
+  ]
+}

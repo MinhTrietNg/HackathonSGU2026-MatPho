@@ -1,0 +1,2 @@
+# A hung test fails after this long instead of stalling the whole run.
+timeout: 90s

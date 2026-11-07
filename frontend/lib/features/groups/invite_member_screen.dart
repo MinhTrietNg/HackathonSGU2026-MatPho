@@ -69,7 +69,7 @@ class _InviteMemberScreenState extends ConsumerState<InviteMemberScreen> {
   }
 
   Future<void> _send(CurrentGroupView view) async {
-    final (:group, members: _, :cameras, :areas) = view;
+    final (selectedId: _, :group, members: _, :cameras, :areas) = view;
     final chosen = _chosen(areas);
     final phone = _phone.text.replaceAll(' ', '');
     if (!isValidVnPhone(phone)) {
@@ -114,7 +114,7 @@ class _InviteMemberScreenState extends ConsumerState<InviteMemberScreen> {
   Widget build(BuildContext context) {
     final c = context.mpColors;
     final t = context.mpText;
-    final view = ref.watch(currentGroupViewProvider).value;
+    final view = ref.watch(selectedGroupViewProvider);
     final group = view?.group;
     final areas = view?.areas ?? const <Area>[];
     final label = t.label.copyWith(color: c.textSecondary);

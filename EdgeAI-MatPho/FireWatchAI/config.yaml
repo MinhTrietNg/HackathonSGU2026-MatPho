@@ -1,0 +1,512 @@
+# FireWatch v3 — file cấu hình DUY NHẤT. Mọi tham số nằm ở đây, không hardcode.
+# Đường dẫn tương đối được tính từ thư mục chứa file này.
+# Năm tham số hay chỉnh nhất tại chỗ thi: heartbeat.interval_s, detector.conf_threshold,
+# detector.imgsz, voting.k_enter, voting.cooldown_s.
+
+camera:
+  id: cam01
+  context: HAM              # HAM | TRET | NGOAI — gắn vào mọi event
+
+# ───────── [1] Nguồn video + heartbeat ─────────
+source:
+  kind: auto                # auto | file | webcam | rtsp (auto: suy từ --source)
+  realtime: false           # file: phát lại đúng tốc độ thật (flag --realtime ghi đè)
+  loop: false               # file: chạy lặp lại khi hết video (demo liên tục)
+  reconnect_s: 2.0          # webcam/rtsp: chờ trước khi mở lại khi mất khung (nhân đôi tới 30 s)
+  max_reconnects: 0         # 0 = thử lại mãi (nguồn live không được tự dừng); >0 = bỏ cuộc sau N lần
+  read_timeout_s: 10        # rtsp/http: timeout mở và đọc, tránh treo vô hạn khi đứt mạng
+
+heartbeat:
+  interval_s: 1.0           # T: lấy mẫu 1 frame mỗi T giây THEO TIMESTAMP VIDEO
+  ring_buffer: 5            # số frame gần nhất giữ quanh mỗi heartbeat (tầng 4 lấy keyframe)
+
+# ───────── [2] Detector YOLO26n ─────────
+detector:
+  weights: models/firewatch-v2.0.pt  # FireWatch-v2.0, SHA-256 58def3d0…; lấy file và kiểm
+                                     # theo models/README.md
+  fallback_weights: models/yolo26n.pt   # thiếu file weights thì dùng weights gốc COCO (tự tải)
+  backend: onnx             # pt | onnx. Chọn theo scripts/benchmark_cpu.py (reports/benchmark_cpu.md):
+                            # ở imgsz 640 onnx nhanh hơn pt; ở 960/1280 thì pt nhanh hơn -> đổi
+                            # lại pt nếu tăng imgsz. Lần đầu chạy onnx sẽ export models/<ten>_<imgsz>.onnx
+  device: cpu
+  imgsz: 640
+  conf_threshold: 0.25
+  conf_by_class: {}         # ghi đè theo class, ví dụ {fire: 0.35, smoke: 0.20}
+  iou_nms: 0.5
+  classes: [fire, smoke]    # chỉ giữ class này; weights gốc COCO không có -> giữ mọi class
+  max_det: 50
+  warmup: true              # 1 lần predict giả lúc khởi động để frame đầu không chậm
+  require_classes: false    # true: weights thiếu class fire/smoke là dừng ngay (file).
+                            # Với webcam/rtsp và `serve` luôn bắt buộc, không phụ thuộc cờ này.
+
+# ───────── Kết quả khi chạy `run` ─────────
+output:
+  dir: runs                 # mỗi lần chạy tạo runs/<tên nguồn>_<thời gian>/
+  save_frames: true         # lưu ảnh heartbeat đã vẽ box (chỉ frame có detection)
+  show: false               # mở cửa sổ OpenCV (flag --show ghi đè)
+  log_every_heartbeat: true # in cả heartbeat không có detection
+  keep_runs: 30             # chỉ giữ N thư mục runs/ mới nhất (xoá cũ lúc bắt đầu chạy); 0 = giữ hết
+  log_toi_da_mb: 20         # run.log đầy chừng này MB thì xoay thành run.log.1, .2...; 0 = không
+                            # xoay. Một lần serve chạy nhiều ngày dùng tối đa
+  log_so_ban: 5             # (log_so_ban + 1) × log_toi_da_mb cho log của nó
+
+# ───────── [3] Voting persistence ─────────
+voting:
+  window_m: 10              # cửa sổ trượt M heartbeat
+  k_enter: 6                # CANDIDATE -> CONFIRMED khi đủ k phiếu trong M
+  k_exit: 2                 # thoát CONFIRMED khi phiếu trong cửa sổ < k_exit (hysteresis)
+  k_fire: 2                 # CRITICAL chỉ khi >= k_fire heartbeat trong cửa sổ có box LỬA;
+                            # một box lửa nhiễu đơn lẻ không leo thang được. Ràng buộc:
+                            # 1 <= k_exit <= k_enter <= window_m, k_fire <= k_enter
+  iou_match: 0.3            # IoU tối thiểu để gán detection vào track đang có
+  max_misses: 10            # track bị xoá sau N heartbeat liên tiếp không có phiếu
+  cooldown_s: 60            # không bắn lại alert cho cùng track trong khoảng này
+  scene_cooldown_s: 60      # sau 1 alert, track KHÁC cùng camera cũng im lặng chừng này
+                            # (một đám cháy lớn tách thành nhiều hộp -> vẫn 1 alert);
+                            # track bị chặn sẽ được báo ngay khi hết cooldown (DEFERRED);
+                            # leo thang WARNING -> CRITICAL luôn được báo; 0 = tắt
+  realert_s: 60             # còn CONFIRMED thì nhắc lại mỗi chừng này giây (STILL_BURNING); 0 = tắt
+
+# ───────── [4] VLM verify ─────────
+vlm:
+  enabled: true             # false: bỏ qua tầng 4, mọi event là UNVERIFIED
+  provider: gemini          # gemini | mock. Gemini cần GEMINI_API_KEY trong .env (thiếu key -> VLM
+                            # tự tắt, event UNVERIFIED). MOCK = xác minh GIẢ LẬP để demo offline
+                            # (--set vlm.provider=mock): event VERIFIED với tiền tố "[mock]".
+  model: gemini-3.5-flash-lite  # bản flash-lite; gemini-2.5-flash đã đóng cho key mới
+  api_url: https://generativelanguage.googleapis.com/v1beta
+  api_key_env: GEMINI_API_KEY   # tên biến trong .env; thiếu key -> VLM tự tắt, báo lỗi rõ
+  timeout_s: 15             # quá hạn -> retry; hết retry -> giữ UNVERIFIED (fail-open). Alert
+                            # KHÔNG chờ timeout này mà chỉ chờ grace_s; kết quả về sau được vá
+                            # vào event. Đo 03/11/2026 (50 khung MatPho, gemini-3.5-flash-lite):
+                            # p50 6,1 s, p95 8,9 s -> 10 s quá sát, để 15 s.
+  retries: 1
+  thinking_level: minimal   # Gemini 3: thinkingConfig.thinkingLevel (minimal | low | ...); null = không gửi
+  thinking_budget: null     # Gemini 2.5: thinkingBudget (0 = tắt suy nghĩ). Đo 03/11/2026:
+                            # gemini-3.5-flash-lite trả HTTP 400 "invalid argument" cho
+                            # thinkingBudget 0 nên dùng thinking_level. HTTP 400 khi có
+                            # thinkingConfig -> tự gửi lại không kèm (WARNING); log
+                            # thoughtsTokenCount mỗi lần, > 0 là cấu hình không được tôn trọng
+  max_output_tokens: 200    # JSON 4 trường + 1 câu mô tả
+  grace_s: 2                # chờ VLM tối đa chừng này (giờ thật) rồi phát alert UNVERIFIED ngay;
+                            # kết quả VLM về sau được cập nhật vào cùng event (WebSocket event_update)
+  crop_padding: 0.25        # nới crop quanh bbox theo tỷ lệ cạnh
+  max_image_px: 640         # thu nhỏ ảnh gửi đi (cạnh dài) để nhẹ và nhanh
+  jpeg_quality: 70          # chất lượng JPEG ảnh gửi đi
+  max_workers: 2            # số xác minh chạy song song; vòng heartbeat không bị chặn
+  mock_delay_s: 0.5         # mock: giả lập độ trễ API
+  mock_is_fire: true        # mock: đổi false cả hai để demo nhánh SUPPRESSED
+  mock_is_smoke: true
+  mock_confidence: 0.9
+  mock_fire_type: UNCONTROLLED  # mock: UNCONTROLLED | CONTROLLED | UNKNOWN (chỉ giữ khi NGOAI)
+  # vlm.fire_type (trong object vlm của event): lửa có kiểm soát (lò than, nấu ăn) hay sự cố.
+  # CHỈ hỏi khi camera.context = NGOAI; HAM/TRET luôn UNCONTROLLED. CONTROLLED KHÔNG đổi
+  # verification/severity: event vẫn phát, chỉ người trực được bỏ qua.
+
+# ───────── [4b] Verifier bền vững (docs/decisions/2026-11-07-verifier-ben-vung.md) ─────────
+verifier:
+  ben_vung: true            # bật từ 2026-11-08 (docs/van_hanh.md mục 8 và 10). false, hoặc
+                            # thiếu khối này: hành vi, log, JSON event y hệt trước khi có cờ.
+                            # true: event có thêm object verifier (status, needs_human_check,
+                            # latency_ms, reason); created PENDING ở vlm.grace_s, updated chậm
+                            # nhất ở ngan_sach_s; /health có thêm khối verifier; WS event_update
+                            # mang reason "verifier". VLM không hạ mức, không gỡ cảnh báo
+  ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s.
+                            # Quá hạn -> updated VLM_TIMEOUT, needs_human_check = true, kết quả
+                            # đến muộn bị bỏ. Cờ bật: mỗi lượt gọi VLM có timeout = ngân sách
+                            # còn lại - 0,5 s, không retry (bỏ qua vlm.timeout_s, vlm.retries);
+                            # còn dưới 1 s thì không gọi (reason qua_han_hang_cho)
+  hang_cho_toi_da: 8        # số mục tối đa đang chờ worker gọi VLM, khoá theo event_id (cùng
+                            # event_id thì thay keyframe). Đầy -> mục cũ nhất VLM_TIMEOUT
+                            # (qua_han_hang_cho). Số worker = vlm.max_workers
+  cau_dao:                  # không gọi dồn khi VLM chết hoặc bị giới hạn (429)
+    loi_lien_tiep: 3        # số yêu cầu đã gọi VLM mà thất bại liên tiếp (lỗi, 429, quá ngân
+                            # sách) thì mở; thành công xoá đếm
+    mo_s: 60                # mở chừng này giây: không gọi VLM, event VLM_OFF (cau_dao_mo).
+                            # Hết giờ thì nửa mở: một lượt gọi thử, thành công đóng, thất bại
+                            # mở lại. Trạng thái xem ở /health -> verifier.breaker
+
+# ───────── [4c] Gom sự cố (docs/decisions/2026-11-07-gom-su-co.md) ─────────
+# CHỈ chạy khi verifier.ben_vung bật. Một đám cháy = một event_id: created một lần, sau đó
+# chỉ updated; event có thêm status (open | ended), last_seen_ts, luot_xac_minh.
+su_co:
+  khoang_cach_s: 120        # quá chừng này giây không thấy cháy -> updated status "ended"; thấy
+                            # lại sau đó là sự cố mới (created mới). Cảnh báo đến khi sự cố
+                            # còn mở thì vào cùng event_id. Tính theo giờ thật, không theo video
+  nhip_cap_nhat_s: 30       # updated thường (còn thấy cháy, nhắc lại của voting) nhiều nhất mỗi
+                            # chừng này giây; mức tăng và verifier.status đổi thì phát ngay
+  vlm_kiem_lai_s: 300       # sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng
+                            # này giây kể từ lượt trước; lượt kiểm lại lỗi không xoá kết luận cũ
+  iou_ghep: 0.3             # track mới chồng box sự cố quá ngưỡng này thì tính là còn thấy cháy
+
+# ───────── [5] Alert sink ─────────
+alerts:
+  events_dir: events        # mỗi alert = 1 file .json + 1 ảnh .jpg keyframe đã vẽ box
+  snapshot_jpeg_quality: 90
+  keep_days: 0              # xoá event (json + jpg) cũ hơn N ngày lúc khởi động; 0 = giữ hết
+  notify_suppressed: true   # false: event SUPPRESSED chỉ ghi đĩa (để eval), không đẩy WS/webhook
+  webhook_url_env: FIREWATCH_WEBHOOK_URL     # đặt trong .env thì mỗi event được POST tới đó
+  webhook_token_env: FIREWATCH_WEBHOOK_TOKEN # có token thì gửi cả Authorization: Bearer <token>
+                                             # và X-Internal-Secret: <token>
+                                             # (docs/ban_giao_backend.md mục 4)
+  webhook_timeout_s: 5
+  webhook_retries: 1
+  save_raw_keyframe: true   # lưu thêm keyframe sạch <stem>_goc.jpg (không box/banner) cạnh
+                            # snapshot, để cảnh báo bị bỏ qua dùng lại được làm hard negative
+  hitl_negatives_dir: data/hitl_negatives   # "Bỏ qua — lửa có kiểm soát" xuất ảnh + JSON vào đây
+  escalation_s: 120         # serve: CRITICAL chưa ai bấm nút trên console sau chừng này giây
+                            # -> gửi lại (cùng event_id, WebSocket + webhook) mỗi chu kỳ; 0 = tắt.
+                            # Demo nhanh: --set alerts.escalation_s=30
+
+# Nội dung payload webhook (URL, token, timeout ở alerts.webhook_* phía trên)
+webhook:
+  gui_anh: false            # true: payload webhook có thêm snapshot_base64 = keyframe gốc (không
+                            # vẽ box) dạng JPEG base64. Chỉ trong webhook; JSON trên đĩa, REST
+                            # và WebSocket không có trường này
+  anh_toi_da_kb: 200        # JPEG gửi đi không quá chừng này KB: hạ chất lượng rồi thu nhỏ
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins: ["*"]       # origin được gọi REST từ trình duyệt (dashboard React); thu hẹp khi public
+
+# ───────── Data (scripts/prepare_data.py) ─────────
+data:
+  # Clip MỚI team quay/gom sau này, trước khi vào catalog (docs/quy_uoc_du_lieu.md):
+  clips_dir: data/raw/clips/moi   # <HAM|TRET|NGOAI>/<pos|neg>/<clip>.mp4 (+ <clip>.json mốc cháy)
+  labels_dir: data/raw/clips/moi/labels   # nhãn YOLO theo tên khung <clip>_<giây>.txt
+  frames_dir: data/interim/frames_moi   # images/, labels/, train|val|test.txt, frames_manifest.csv
+  extract_fps: 1.0          # số khung trích mỗi giây video
+  split: [0.70, 0.15, 0.15] # train/val/test THEO CLIP, stratify theo bối cảnh × dương/âm
+  seed: 42
+  max_frames_per_clip: 0    # 0 = không giới hạn
+
+# ───────── Train (scripts/train.py — chạy ở máy khác/Colab, pipeline chỉ cần detector.weights) ─────────
+train:
+  base_weights: models/firewatch-v1.0.pt  # fine-tune TIẾP từ model có sẵn, không train lại từ COCO
+  data_yaml: data/processed/datafirewatch-v0.4/data.yaml  # từ build_finetune_set.py
+  epochs: 50
+  batch: 16
+  imgsz: 640
+  device: "0"               # GPU đầu tiên; máy không có GPU: --device cpu
+  patience: 20
+  workers: 8                # luồng nạp ảnh; Windows chậm khi quá nhiều, 4–6 là vừa
+  cache: "false"            # false | ram | disk; ram nhanh hơn khi đủ bộ nhớ
+  seed: 42
+  project: runs/train
+  name: fire_smoke          # mỗi run --name riêng -> models/best_<name>.pt
+
+# ───────── Bộ fine-tune trộn nhiều nguồn (scripts/build_finetune_set.py) ─────────
+# Mọi nguồn được đổi về 0 = fire, 1 = smoke; class map nhận id (YOLO) hoặc tên (VOC)
+# -> fire | smoke | drop. Nguồn chưa có thư mục sẽ được bỏ qua và ghi trong báo cáo,
+# nên chạy lại được mỗi khi thêm dữ liệu. Vai trò:
+#   domain   : dữ liệu đúng bối cảnh dự án; ảnh có box = dương, rỗng = âm dễ nhầm
+#   hard_neg : chỉ lấy ảnh KHÔNG còn box fire/smoke (vd lớp `other` của DFS)
+#   base     : dữ liệu tổng quát để model không quên kiến thức cũ
+finetune:
+  dataset_name: DataFireWatch # bộ dữ liệu riêng của dự án; mỗi lần đổi nguồn/quy tắc thì tăng version
+  dataset_version: "0.4"
+  out_dir: data/processed/datafirewatch-v0.4
+  audit_dir: data/interim/audit   # áp exclusions.csv + groups.csv của scripts/audit_data.py
+  review_queue: data/interim/labels_curated_v2/human_queue.csv  # khung chờ người vẽ box
+  catalog: data/catalog/clips.csv  # scripts/build_catalog.py: mã clip chuẩn + metadata
+  frame_exclusions: &frame_exclusions  # khung không bao giờ dùng để train
+    - data/interim/clips_sach/khung_rac.csv   # nằm sâu trong đoạn rác (scripts/clean_clips.py)
+    - curation/khung_loai_tay.csv             # loại thủ công sau kiểm mắt
+  val_ratio: 0.15           # val tách theo NHÓM (clip/camera), không theo ảnh
+  seed: 42
+  target_total: 0           # 0 = giữ hết ảnh dương đúng miền, các nhóm khác theo tỷ lệ
+  ratios: {pos_domain: 0.35, neg_domain: 0.35, base: 0.30}
+  link: true                # hard-link ảnh thay vì copy (cùng ổ thì không tốn chỗ)
+  sources:
+    # ── Khung CCTV cháy xe của dự án (khung_tu_clip trong Data-hackathon.rar). Nhãn:
+    #    curate_domain_frames.py gán sẵn box (pseudo), rồi apply_review.py áp quyết định
+    #    duyệt từng khung (curation/review_v0.2.csv) -> labels_curated_v2. Khung thiếu box
+    #    hoặc hai lượt duyệt không cùng kết luận nằm trong human_queue.csv, không dùng.
+    #    Khung của clip có vai_tro khác train trong catalog (vd `loai`) bị bỏ.
+    - &src_khung_chay
+      name: khung_chay
+      role: domain
+      images: data/raw/frames/chay
+      labels: data/interim/labels_curated_v2/chay/labels
+      status_csv: data/interim/labels_curated_v2/chay/status.csv
+      classes: {0: fire, 1: smoke}
+      group_regex: '^(.*)_\d+$'   # <clip>_<số khung> -> nhóm theo clip
+      group_namespace: clip       # cùng clip với truoc_chay -> luôn cùng split
+      license: clip công khai YouTube/Bilibili/báo; chỉ nghiên cứu/hackathon, không phát hành lại ảnh
+    - &src_khung_truoc_chay
+      name: khung_truoc_chay
+      role: domain
+      images: data/raw/frames/truoc_chay
+      labels: data/interim/labels_curated_v2/truoc_chay/labels
+      status_csv: data/interim/labels_curated_v2/truoc_chay/status.csv
+      classes: {0: fire, 1: smoke}
+      group_regex: '^(.*)_\d+$'
+      group_namespace: clip
+      license: clip công khai YouTube/Bilibili/báo; chỉ nghiên cứu/hackathon, không phát hành lại ảnh
+    - &src_khung_khong_chay
+      name: khung_khong_chay
+      role: domain
+      images: data/raw/frames/khong_chay
+      labels: data/interim/labels_curated_v2/khong_chay/labels
+      status_csv: data/interim/labels_curated_v2/khong_chay/status.csv
+      classes: {0: fire, 1: smoke}
+      group_regex: '^(.*)_\d+$'
+      group_namespace: clip
+      license: clip công khai YouTube/Bilibili; chỉ nghiên cứu/hackathon, không phát hành lại ảnh
+    - name: team_frames     # khung trích từ clip MỚI của team (prepare_data.py) + clip âm tự quay
+      role: domain
+      images: data/interim/frames_moi/images
+      labels: data/interim/frames_moi/labels
+      manifest: data/interim/frames_moi/frames_manifest.csv   # chỉ lấy khung labeled=1
+      classes: {0: fire, 1: smoke}
+      enabled: false        # bật khi data/raw/clips/moi có clip mới đã gán nhãn
+    - name: dfs_other       # DFS (Wu 2022): ảnh chỉ có vật giống lửa -> âm dễ nhầm
+      role: hard_neg        # tải tay từ OneDrive trong README của repo DFS, giải nén vào đây
+      format: voc
+      images: data/external/dfs/JPEGImages
+      labels: data/external/dfs/Annotations
+      classes: {fire: fire, smoke: smoke, other: drop}
+    - name: roboflow_vehicle_fire   # ảnh xe cháy export YOLOv8 từ Roboflow (tải tay, cần tài khoản)
+      role: domain          # gộp bằng import_roboflow_export.py, rồi sửa `classes` theo kiểm mắt
+      images: data/external/roboflow_vehicle_fire/images
+      labels: data/external/roboflow_vehicle_fire/labels
+      classes: {0: fire, 1: smoke}
+      group_regex: '^(.*)\.rf\.[0-9a-f]+$'
+      enabled: false        # bật sau khi đã kiểm class map
+    - &src_indoor
+      name: indoor_fire_smoke       # Zenodo 15826133 (bản export Roboflow), CC BY 4.0
+      role: base            # gộp bằng scripts/import_roboflow_export.py
+      images: data/external/indoor_fire_smoke/images
+      labels: data/external/indoor_fire_smoke/labels
+      # Kiểm bằng mắt 03/11: 0 = lửa (≈26/30 mẫu đúng), 1 = "khói" nhưng ≈11/30 mẫu là
+      # máy tạo ẩm, máy phun sương, bình chữa cháy, ánh sáng cửa sổ -> bỏ CẢ ẢNH có lớp 1
+      classes: {0: fire, 1: skip}
+      group_regex: '^(.*)\.rf\.[0-9a-f]+$'   # gom bản tăng cường của cùng ảnh gốc
+      prefix: indoor
+      license: CC BY 4.0 (Arya Krisna Putra, Zenodo 10.5281/zenodo.15826133)
+    - &src_dfire_train
+      name: dfire_train     # D-Fire train (đã đổi về 0 = fire); test giữ riêng để eval
+      role: base
+      images: data/external/dfire/train/images
+      labels: data/external/dfire/train/labels
+      classes: {0: fire, 1: smoke}
+      # không nhóm: val của base chỉ để theo dõi; thước đo chính là eval trên clip VN
+      prefix: dfire
+      license: trích dẫn Venâncio et al. 2022; ảnh PublicDataset* theo điều khoản HPWREN/FESB/FireNet
+    - name: fasdd_cv        # FASDD_CV, nhãn YOLO_CV gốc (0 = fire, 1 = smoke); FireWatch-v1.0 train trên bộ này
+      role: base            # -> trộn lại một phần để fine-tune không quên kiến thức cũ
+      images: data/external/fasdd_cv/images
+      labels: data/external/fasdd_cv/labels
+      classes: {0: fire, 1: smoke}
+      pool: 3000            # 95.314 ảnh: kiểm định + chọn trên tập con cố định 3.000 ảnh
+      prefix: fasdd
+      license: FASDD (Wang et al. 2022); chỉ nghiên cứu, trích dẫn bài báo
+
+# ───────── Bộ dữ liệu tổng quát để train YOLO26n mới từ COCO (không từ FireWatch-v1.0) ─────────
+# python scripts/audit_data.py --profile full
+# python scripts/build_finetune_set.py --profile full
+# Cùng quy ước lớp, cùng loại trừ khung và kiểm rò rỉ như `finetune`, nhưng: giữ MỌI ảnh
+# đúng miền, phần còn lại của tổng lấy từ nguồn nền (D-Fire train, indoor, FASDD), và mỗi
+# ảnh có thêm một bản trắng đen giả lập camera đêm (firewatch/irsim.py).
+datasets:
+  full:
+    dataset_name: DataFireWatch
+    dataset_version: "1.5"    # bản v1.2 cũ + clip tin tức hầm/trệt lặp ≤ 2x (chỉ đổi list;
+                              # scripts/relist_dataset.py từ v1.2)
+    out_dir: data/processed/datafirewatch-v1.5
+    audit_dir: data/interim/audit_full   # kiểm riêng vì tập con FASDD lớn hơn
+    review_queue: data/interim/labels_curated_v2/human_queue.csv
+    catalog: data/catalog/clips.csv
+    frame_exclusions: *frame_exclusions
+    val_ratio: 0.15
+    seed: 42
+    target_total: 30000     # ảnh gốc
+    keep_domain: true       # giữ hết khung đúng miền, nền lấp phần còn lại
+    base_min_fire_px: 8     # ảnh nền có box lửa < 8 px ở cạnh 640 -> bỏ cả ảnh
+                            # (D-Fire 4,8 % box; 1/5 box < 16 px đặt lên vật không cháy)
+    base_min_long_side: 320 # ảnh nền cạnh dài < 320 bị phóng > 2x khi train
+    regroup: {enabled: true, corr_any: 0.98, corr_seq: 0.90, seq_window: 20}
+    gray_variant:           # giả lập IR cho 30 % ảnh gốc nền + mọi ảnh đúng miền
+      enabled: true
+      mode: ir
+      fraction: 0.3
+      max_bright_outside: 0.10
+    camera_variant:         # 1 hiệu ứng xử lý camera (firewatch/camsim.py), 30 % ảnh nền
+      enabled: true
+      fraction: 0.3
+      weights: {dem_mau: 1, nen_thap: 1, loa_sang: 0, ong_kinh: 1, mo: 1, osd: 0.5}
+      osd_prob: 0.3         # chữ giờ + tên camera đè thêm lên hiệu ứng khác
+      small_fire_px: 8      # loa_sang bỏ: gần trùng tăng sáng HSV mặc định
+    lists:                  # train.txt / val.txt (firewatch/trainlists.py)
+      enabled: true
+      clip_target: 20
+      caps: {cctv: 4, ham: 4, tret: 4, quay_tay: 2}
+      camera_max: {tin_tuc: 2}  # tin tức: hầm/trệt hiếm nên vẫn lặp, nhưng ≤ 2x
+      default_cap: 1        # clip tin tức ngoài trời không lặp (logo, caption)
+      neg_domain_repeat: 2
+    link: true
+    sources:
+      - *src_khung_chay
+      - *src_khung_truoc_chay
+      - *src_khung_khong_chay
+      # indoor_fire_smoke KHÔNG dùng ở đây (kiểm mắt 04/11): khói thật trong ảnh không có
+      # box (lớp khói bị bỏ vì sai), ảnh tăng cường lật gương/kaleidoscope, lửa dán ghép.
+      - *src_dfire_train
+      - name: fasdd_cv
+        role: base
+        images: data/external/fasdd_cv/images
+        labels: data/external/fasdd_cv/labels
+        classes: {0: fire, 1: smoke}
+        pool: 20000         # tập con cố định theo MD5 tên file (95.314 ảnh); 10.000
+                            # không đủ sau khi loại trùng + rò rỉ (kiểm định 03/11)
+        prefix: fasdd
+        license: FASDD (Wang et al. 2022), CC BY-SA 4.0; trích dẫn bài báo
+  # ───── DataFireWatch-v2.0: detector lửa/khói CHUNG từ dữ liệu công khai (docs/ke_hoach_dataset_v2.md)
+  # python scripts/audit_data.py --profile datafirewatch-v2.0
+  # python scripts/build_finetune_set.py --profile datafirewatch-v2.0
+  # Khác `full`: D-Fire train dùng ĐỦ theo split chính thức (không giữ riêng D-Fire test,
+  # không bỏ ảnh có box lửa nhỏ, không bỏ ảnh nhỏ), FASDD lấy pool lớn hơn, không sinh
+  # biến thể _xam/_cam, nền không bị chặn bởi target_total. Vẫn giữ riêng T1, T2, clip mẫu.
+  datafirewatch-v2.0:
+    dataset_name: DataFireWatch
+    dataset_version: "2.0"
+    out_dir: data/processed/datafirewatch-v2.0
+    audit_dir: data/interim/audit_datafirewatch-v2.0
+    review_queue: data/interim/labels_curated_v2/human_queue.csv
+    catalog: data/catalog/clips.csv
+    frame_exclusions: *frame_exclusions
+    val_ratio: 0.15
+    seed: 42
+    target_total: 200000   # lớn hơn số ảnh nền còn dùng được -> lấy hết, không cắt
+    keep_domain: true
+    base_min_fire_px: 0    # D-Fire đủ: giữ cả box lửa nhỏ như bản phát hành
+    base_min_long_side: 0
+    general_detector: true # DATASHEET ghi mục đích "detector chung", không phải tầng 1
+    heldout_skip: [dfire_test]   # mAP trên D-Fire test báo kèm tập con sạch
+                                 # (bản đấu v2, khoá trước khi chạy)
+    regroup: {enabled: true, corr_any: 0.98, corr_seq: 0.90, seq_window: 20}
+    gray_variant: {enabled: false}
+    camera_variant: {enabled: false}
+    lists:
+      enabled: true
+      clip_target: 20
+      caps: {cctv: 4, ham: 4, tret: 4, quay_tay: 2}
+      camera_max: {tin_tuc: 2}
+      default_cap: 1
+      neg_domain_repeat: 2
+    link: true
+    sources:
+      - *src_khung_chay
+      - *src_khung_truoc_chay
+      - *src_khung_khong_chay
+      - <<: *src_dfire_train
+        keep_near_dups: true  # kiểm 05/11: dHash <= 2 loại 5.346/17.221 ảnh (khung
+                              # liền kề cùng camera); dùng đủ như bản phát hành
+      - name: fasdd_cv
+        role: base
+        images: data/external/fasdd_cv/images
+        labels: data/external/fasdd_cv/labels
+        classes: {0: fire, 1: smoke}
+        # Kiểm 05/11 (reports/kiem_box_khoi_dfire_fasdd.md): hai bộ vẽ box khói cùng
+        # kiểu, nhưng FASDD chiếm 85 % box khói của bộ trộn và là khói cận cảnh, cắt
+        # khung; D-Fire là khói xa, nhỏ. Cân lại theo tiền tố tên (= nhãn cảnh của
+        # FASDD): ảnh có khói ≈ 1:1 với D-Fire (8.444 ảnh), giữ hết ảnh chỉ lửa, âm
+        # "dễ nhầm" lấy 15.000. Thứ tự MD5 tên file nên cố định giữa audit và dựng.
+        pool_by_prefix: {smoke_: 5000, bothFireAndSmoke_: 5000, fire_: 12550,
+                         neitherFireNorSmoke_: 15000}
+        prefix: fasdd
+        license: FASDD (Wang et al. 2022), CC BY-SA 4.0; trích dẫn bài báo
+  # Chỉ để đo thiên vị: toàn bộ FASDD_CV (FireWatch-v1.0 train trên bộ này) và D-Fire train
+  # so với mọi tập test (python scripts/audit_data.py --profile kiem_ro_ri). Không dựng.
+  kiem_ro_ri:
+    dataset_name: kiem-ro-ri
+    out_dir: data/interim/khong_dung
+    audit_dir: data/interim/audit_kiem_ro_ri
+    sources:
+      - *src_dfire_train
+      - name: fasdd_cv_toan_bo
+        role: base
+        images: data/external/fasdd_cv/images
+        labels: data/external/fasdd_cv/labels
+        classes: {0: fire, 1: smoke}
+        prefix: fasdd
+
+# ───────── Kiểm định + làm sạch (scripts/audit_data.py) ─────────
+# Không xoá file nào: ghi exclusions.csv + groups.csv cho bước dựng bộ dữ liệu.
+audit:
+  out_dir: data/interim/audit
+  min_side: 128             # ảnh có cạnh ngắn nhỏ hơn -> loại
+  dup_dist: 2               # dHash 64 bit: gần như y hệt trong cùng nguồn -> giữ 1
+  thin_dist: 3              # khung liên tiếp của 1 clip không thêm thông tin -> tỉa
+  merge_dist: 4             # cùng cảnh nhưng khác tên nhóm -> gộp nhóm (chống rò train/val)
+  merge_scene_dist: 8       # lượt gộp nhóm lỏng: khung cùng camera của bộ công khai
+                            # không được nằm ở cả train và val (kiểm 04/11)
+  leak_dist: 4              # ảnh train gần trùng dữ liệu giữ riêng -> loại
+  min_corr: 0.90            # mọi cặp dHash phải qua xác minh tương quan ảnh 16x16 >= ngưỡng
+                            # (dHash một mình trùng giả trên khung tối/mờ khói: đo 03/11,
+                            # cặp giả tương quan ~0, cặp cùng camera ~0,999)
+  thin_sources: [khung_chay, khung_truoc_chay, khung_khong_chay]
+  heldout:                  # KHÔNG BAO GIỜ được vào train
+    - name: vn_test_80clip  # tập test cuối cùng của hệ thống
+      videos: data/raw/clips/test
+      fps: 1
+    - name: vn_test_bo_sung # clip cháy bổ sung vào tập test (curation/test_bo_sung.csv)
+      videos: data/raw/clips/test_bo_sung
+      fps: 1
+    - name: dfire_test      # thước đo frame-level hiện tại
+      images: data/external/dfire/test/images
+      scene_dist: 10        # D-Fire tự chia train/test theo ảnh: khung cùng camera AoF ở
+      scene_corr: 0.85      # cả hai phía (kiểm độc lập 04/11: ~1.170 ảnh train cùng cảnh)
+    - name: sample_clips    # clip mẫu công khai dùng để kiểm thử nhanh
+      videos: data/raw/clips/mau_cong_khai
+      fps: 1
+    - name: vn_test_chuyen_tu_train   # clip train chuyển sang test (scripts/resplit_test.py)
+      videos: data/raw/clips
+      catalog: data/catalog/clips.csv  # chỉ clip có vai_tro = test, ở bất kỳ thư mục nào
+      role: test
+      fps: 1
+      scene_dist: 10        # loại cả ảnh CÙNG CẢNH (camera cố định), không chỉ ảnh y hệt:
+      scene_corr: 0.85      # FASDD có khung CCTV trạm sạc Đông Quan của clip test (03/11)
+    - name: video_chuan     # FIRESENSE + VisiFire: tập test chuẩn thứ hai
+      videos: data/external/video_chuan
+      catalog: curation/catalog_video_chuan.csv
+      fps: 1
+      scene_dist: 10        # FASDD chứa khung của 37 video FIRESENSE/VisiFire (kiểm 03/11)
+      scene_corr: 0.85
+
+# ───────── Eval (scripts/eval_frames.py, eval_events.py, benchmark_cpu.py) ─────────
+eval:
+  reports_dir: reports
+  models:                   # thiếu file weights -> bỏ qua model đó và ghi vào báo cáo
+    - name: yolo26n_coco
+      weights: models/yolo26n.pt
+      source: https://github.com/ultralytics/assets/releases (COCO, chưa fine-tune)
+    # Tên và SHA-256 theo bảng đăng ký của FireWatch-Model (models/README.md ở đây).
+    - name: firewatch-v1.0
+      weights: models/firewatch-v1.0.pt
+      source: YOLO26n từ COCO (yolo26n.pt) trên DataFireWatch-v1.0 (FASDD_CV)
+    - name: firewatch-v2.0
+      weights: models/firewatch-v2.0.pt
+      source: YOLO26n train từ COCO trên DataFireWatch-v2.0 (D-Fire đủ + FASDD cân lại), chọn checkpoint theo mAP50 val
+    - name: firewatch-v1.5
+      weights: models/firewatch-v1.5.pt
+      source: YOLO26n train từ COCO (yolo26n.pt) trên DataFireWatch-v1.5, Kaggle 2×T4, checkpoint epoch45 chọn theo AP50 fire
+    - name: hf_rabahdev_yolov8n
+      weights: models/hf/rabahdev_fire-smoke-yolov8n.pt
+      source: https://huggingface.co/rabahdev/fire-smoke-yolov8n (YOLOv8n train trên D-Fire, AGPL-3.0)
+  frames:                   # frame-level. Mặc định: D-Fire test trong repo (bộ thay thế khi chưa có
+                            # khung từ 180 clip). Khi có khung clip đã gán nhãn thì trỏ images_dir/labels_dir/manifest về đó.
+    images_dir: data/external/dfire/test/images
+    labels_dir: data/external/dfire/test/labels
+    manifest: null          # CSV của prepare_data để tách HAM/TRET/NGOAI; null = không tách
+    split: test
+    conf_report: 0.25       # ngưỡng tính P/R/F1 (AP@50 không phụ thuộc ngưỡng)
+    conf_min: 0.001         # ngưỡng thấp để vẽ đường P-R
+    iou: 0.5
+    limit: 0                # 0 = toàn bộ; đặt 300 để chạy nhanh khi thử
+    seed: 42
+  events:                   # event-level qua đúng pipeline voting (VLM tắt)
+    clips_dir: data/eval/vn_test  # 83 clip test (scripts/make_vn_eval.py); mỗi clip cháy kèm
+                            # <clip>.json {"events":[{"t_start","label","t_end"}]}
+    tolerance_s: 30         # alert sau t_end tối đa chừng này vẫn tính là bắt được

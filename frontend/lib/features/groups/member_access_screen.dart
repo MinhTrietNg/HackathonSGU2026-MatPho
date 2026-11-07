@@ -58,7 +58,8 @@ class MemberAccessScreen extends ConsumerWidget {
     Member m,
   ) async {
     if (!await confirmRemoveMember(context, m.displayName) ||
-        !context.mounted) {
+        !context.mounted ||
+        !isSelectedGroup(ref, group.id)) {
       return;
     }
     final done = await runGroupAction(
@@ -74,7 +75,7 @@ class MemberAccessScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.mpColors;
     final t = context.mpText;
-    final view = ref.watch(currentGroupViewProvider).value;
+    final view = ref.watch(selectedGroupViewProvider);
     final m = view?.members.where((m) => m.id == memberId).firstOrNull;
     if (view == null || m == null) {
       return MpPage(
@@ -84,7 +85,7 @@ class MemberAccessScreen extends ConsumerWidget {
         children: const [],
       );
     }
-    final (:group, members: _, :cameras, :areas) = view;
+    final (selectedId: _, :group, members: _, :cameras, :areas) = view;
     final actions = ref.read(groupActionsProvider);
     final real = m.realName;
     final ids = m.cameraIds;

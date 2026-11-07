@@ -21,10 +21,16 @@ import 'package:mat_pho/features/auth/auth_session.dart';
 import 'package:mat_pho/features/groups/current_group.dart';
 import 'package:mat_pho/features/groups/group_routes.dart';
 import 'package:mat_pho/features/groups/group_state.dart'
-    show groupActionsProvider, invitationRowSubtitle, shortGroupName;
+    show
+        currentGroupViewProvider,
+        groupActionsProvider,
+        invitationRowSubtitle,
+        shortGroupName;
 import 'package:mat_pho/features/groups/group_widgets.dart';
 import 'package:mat_pho/features/groups/invite_member_screen.dart'
     show alreadyInGroupHint, notRegisteredHint;
+import 'package:mat_pho/features/groups/member_access_screen.dart';
+import 'package:mat_pho/features/groups/members_screen.dart';
 
 const _settingsStub = 'SETTINGS';
 const _monitorStub = 'MONITOR';
@@ -39,6 +45,7 @@ Future<ProviderContainer> _pump(
   required String initial,
   String? groupId,
   List<Override> overrides = const [],
+  FakeScenario scenario = const FakeScenario.test(),
 }) async {
   tester.view
     ..physicalSize = const Size(360, 780) * 2
@@ -47,7 +54,7 @@ Future<ProviderContainer> _pump(
   addTearDown(hideMpToast);
   final container = ProviderContainer(
     overrides: fakeOverrides([
-      fakeScenarioProvider.overrideWithValue(const FakeScenario.test()),
+      fakeScenarioProvider.overrideWithValue(scenario),
       authSessionProvider.overrideWith(_SignedIn.new),
       ...overrides,
     ]),
@@ -105,6 +112,13 @@ List<Member> _members(ProviderContainer c, String groupId) =>
     c.read(fakeWorldProvider).members[groupId] ?? const [];
 
 List<Group> _groups(ProviderContainer c) => c.read(fakeWorldProvider).groups;
+
+// Every repository call waits 400 ms, so a group's data is still on its way
+// for a while after it is picked.
+const _slow = FakeScenario(freezeClock: true);
+
+Finder _onMembers(String text) =>
+    find.descendant(of: find.byType(MembersScreen), matching: find.text(text));
 
 const _joinedElsewhere = Group(
   id: 'g-hi',
@@ -470,6 +484,44 @@ void main() {
       expect(find.text('hi'), findsOneWidget);
     });
 
+    testWidgets('no count before the groups arrive; a refresh keeps them', (
+      tester,
+    ) async {
+      final c = await _pump(
+        tester,
+        initial: AppRoutes.settings,
+        scenario: const FakeScenario(freezeClock: true),
+      );
+      unawaited(
+        GoRouter.of(
+          tester.element(find.text(_settingsStub)),
+        ).push<void>(GroupRoutes.groups),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Tạo nhóm'), findsOneWidget);
+      expect(find.textContaining('NHÓM CỦA BẠN'), findsNothing);
+
+      await _settle(tester);
+      expect(find.text('NHÓM CỦA BẠN · 3'), findsOneWidget);
+
+      _groups(c).add(_joinedElsewhere);
+      await tester.fling(
+        find.text('Mỗi nhóm có camera và người riêng.'),
+        const Offset(0, 400),
+        1000,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(c.read(groupsProvider).isLoading, isTrue);
+      expect(find.text('NHÓM CỦA BẠN · 3'), findsOneWidget);
+      expect(find.text('Văn phòng công ty'), findsOneWidget);
+
+      await _settle(tester);
+      expect(find.text('NHÓM CỦA BẠN · 4'), findsOneWidget);
+      expect(find.text('hi'), findsOneWidget);
+    });
+
     testWidgets('an invitation waiting is listed and opens J3', (tester) async {
       await _pump(tester, initial: GroupRoutes.groups, overrides: [_waiting]);
       expect(find.text('LỜI MỜI · 1'), findsOneWidget);
@@ -660,6 +712,120 @@ void main() {
     expect(find.text('NHÓM CỦA BẠN · 2'), findsOneWidget);
     expect(find.text('Văn phòng công ty'), findsNothing);
     expect(c.read(currentGroupIdProvider), isNull);
+  });
+
+  group('the current group never shows another group', () {
+    testWidgets('J7 → J1: while the picked group loads, nothing of the last '
+        'one shows and no action is reachable', (tester) async {
+      await _pump(tester, initial: GroupRoutes.groups, scenario: _slow);
+      await _tap(tester, find.text('Chung cư Sky Garden'));
+      expect(_onMembers('Quản lý toà nhà'), findsOneWidget);
+      expect(_onMembers('Giải tán nhóm'), findsOneWidget);
+      await _tap(tester, find.bySemanticsLabel('Quay lại'));
+
+      await tester.tap(find.text('Văn phòng công ty'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(MembersScreen), findsOneWidget);
+      expect(_onMembers('Thành viên'), findsOneWidget);
+      for (final text in [
+        'Chung cư Sky Garden',
+        'Văn phòng công ty',
+        'Quản lý toà nhà',
+        'Minh Anh (bạn)',
+        'Giải tán nhóm',
+        'Rời nhóm',
+        'Mời thành viên',
+      ]) {
+        expect(_onMembers(text), findsNothing, reason: text);
+      }
+
+      await _settle(tester);
+      expect(_onMembers('Văn phòng công ty'), findsOneWidget);
+      expect(_onMembers('Chị Mai'), findsOneWidget);
+      expect(_onMembers('Rời nhóm'), findsOneWidget);
+      expect(_onMembers('Chung cư Sky Garden'), findsNothing);
+      expect(_onMembers('Giải tán nhóm'), findsNothing);
+    });
+
+    testWidgets('a reload of the same group keeps it on screen', (
+      tester,
+    ) async {
+      final c = await _pump(
+        tester,
+        initial: GroupRoutes.members,
+        scenario: _slow,
+      );
+      void expectSky() {
+        expect(_onMembers('Chung cư Sky Garden'), findsOneWidget);
+        expect(_onMembers('Quản lý toà nhà'), findsOneWidget);
+        expect(_onMembers('Giải tán nhóm'), findsOneWidget);
+      }
+
+      expectSky();
+      c.read(groupActionsProvider).roleChanged('g-sky');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(c.read(currentGroupViewProvider).isLoading, isTrue);
+      expectSky();
+
+      // Picking the group already shown (it was the default) is no switch.
+      c.read(currentGroupIdProvider.notifier).select('g-sky');
+      await tester.pump();
+      expectSky();
+      await _settle(tester);
+      expectSky();
+    });
+
+    testWidgets('dissolve keeps the group tapped: a switch during the '
+        'confirm cancels it', (tester) async {
+      final c = await _pump(tester, initial: GroupRoutes.members);
+      await _tap(tester, _button('Giải tán nhóm'));
+      expect(find.text('Giải tán nhóm này?'), findsOneWidget);
+      c.read(currentGroupIdProvider.notifier).select('g-home');
+      await _settle(tester);
+      await _tap(tester, _button('Giải tán'));
+      expect(find.text('Giải tán nhóm này?'), findsNothing);
+      expect(_groups(c).map((g) => g.id), containsAll(['g-sky', 'g-home']));
+      expect(c.read(currentGroupIdProvider), 'g-home');
+      expect(_onMembers('Ba (bạn)'), findsOneWidget);
+    });
+
+    testWidgets('leave keeps the group tapped: a switch during the confirm '
+        'cancels it', (tester) async {
+      final c = await _pump(
+        tester,
+        initial: GroupRoutes.members,
+        groupId: 'g-office',
+      );
+      await _tap(tester, _button('Rời nhóm'));
+      expect(find.text('Rời Văn phòng công ty?'), findsOneWidget);
+      c.read(currentGroupIdProvider.notifier).select('g-sky');
+      await _settle(tester);
+      await _tap(tester, _button('Rời nhóm'));
+      expect(find.text('Rời Văn phòng công ty?'), findsNothing);
+      expect(_groups(c).map((g) => g.id), contains('g-office'));
+      expect(c.read(currentGroupIdProvider), 'g-sky');
+    });
+
+    testWidgets('J5 · a switch during "Xoá khỏi nhóm?" removes no one', (
+      tester,
+    ) async {
+      final c = await _pump(tester, initial: GroupRoutes.member('m-tuan'));
+      await _tap(tester, _button('Xoá khỏi nhóm'));
+      expect(find.text('Xoá Chú Tuấn bảo vệ khỏi nhóm?'), findsOneWidget);
+      c.read(currentGroupIdProvider.notifier).select('g-home');
+      await _settle(tester);
+      expect(
+        find.descendant(
+          of: find.byType(MemberAccessScreen),
+          matching: find.text('Xoá khỏi nhóm'),
+        ),
+        findsNothing,
+      );
+      await _tap(tester, _button('Xoá'));
+      expect(_members(c, 'g-sky').any((m) => m.id == 'm-tuan'), isTrue);
+    });
   });
 
   testWidgets('J15 · the owner dissolves the group', (tester) async {

@@ -9,6 +9,10 @@ __pycache__/
 # Bí mật
 .env
 
-# Trọng số model
+# Trọng số model và gói nén (dữ liệu, model)
 *.pt
 *.onnx
+*.zip
+
+# Kết quả chạy
+runs/

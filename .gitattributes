@@ -1,0 +1,9 @@
+# Giữ LF khi checkout để SHA-256 trong ai/docs/nguon_goc.md kiểm được trên mọi máy.
+* text=auto eol=lf
+*.pt binary
+*.onnx binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.pdf binary

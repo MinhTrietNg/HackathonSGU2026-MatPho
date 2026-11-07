@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mat_pho/core/widgets/mp_illustration_motion.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  mpIllustrationMotionEnabled = false;
   await _loadFamily('Be Vietnam Pro', 'be_vietnam_pro', [
     'BeVietnamPro-Regular',
     'BeVietnamPro-Medium',

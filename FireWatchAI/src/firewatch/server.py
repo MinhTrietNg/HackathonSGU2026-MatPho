@@ -189,9 +189,44 @@ def create_app(cfg: Config, store: EventStore,
     return app
 
 
+def chay_pipeline_nen(pipe: Any, health: PipelineHealth | None,
+                      khi_dung_bat_thuong: Any = None) -> bool:
+    """Chạy ``pipe.run()`` (trên thread nền của ``serve``).
+
+    Returns
+    -------
+    bool
+        ``True`` khi pipeline dừng ngoài ý muốn: ném lỗi, hoặc nguồn live kết
+        thúc. Khi đó ``khi_dung_bat_thuong()`` được gọi (nếu có). Nguồn file
+        chạy hết bình thường thì ``False``.
+    """
+    try:
+        bat_thuong = bool(pipe.run().live_source_lost)
+    except BaseException as exc:  # noqa: BLE001 - ghi vào /health
+        log.exception("pipeline dừng vì lỗi: %s", exc)
+        if health is not None and not health.error:
+            health.error = f"{type(exc).__name__}: {exc}"
+            health.finished = True
+        bat_thuong = True
+    if bat_thuong and khi_dung_bat_thuong is not None:
+        khi_dung_bat_thuong()
+    return bat_thuong
+
+
 def serve(cfg: Config, *, source: str | None, realtime: bool, host: str | None,
-          port: int | None) -> None:
-    """Run uvicorn; optionally run the pipeline on ``source`` in a thread."""
+          port: int | None, exit_on_pipeline_stop: bool = False) -> int:
+    """Run uvicorn; optionally run the pipeline on ``source`` in a thread.
+
+    ``exit_on_pipeline_stop``: pipeline dừng ngoài ý muốn (lỗi, nguồn live kết
+    thúc) thì dừng luôn server và trả mã 1, để supervisor (Docker
+    ``restart: unless-stopped``, systemd) khởi động lại cả tiến trình. Không
+    bật thì server vẫn chạy và ``/health`` trả 503 như trước.
+
+    Returns
+    -------
+    int
+        1 nếu pipeline đã dừng ngoài ý muốn, ngược lại 0.
+    """
     import uvicorn
 
     from .pipeline import Pipeline
@@ -201,20 +236,23 @@ def serve(cfg: Config, *, source: str | None, realtime: bool, host: str | None,
     health = PipelineHealth() if source else None
     app = create_app(cfg, store, health, acks)
     EscalationWatcher(store, acks, cfg.alerts.escalation_s).start()
+    server = uvicorn.Server(uvicorn.Config(
+        app, host=host or cfg.server.host, port=port or cfg.server.port,
+        log_level="info"))
+    dung_bat_thuong = threading.Event()
+
+    def _bao_dung() -> None:
+        dung_bat_thuong.set()
+        if exit_on_pipeline_stop:
+            log.error("pipeline dừng ngoài ý muốn: dừng serve (mã 1) để "
+                      "supervisor khởi động lại")
+            server.should_exit = True
+
     if source:
         pipe = Pipeline(cfg, source, realtime=realtime or None, store=store,
                         strict=True, health=health, acks=acks)
-
-        def _run() -> None:
-            try:
-                pipe.run()
-            except BaseException as exc:  # noqa: BLE001 - ghi vào /health
-                log.exception("pipeline dừng vì lỗi: %s", exc)
-                if health is not None and not health.error:
-                    health.error = f"{type(exc).__name__}: {exc}"
-                    health.finished = True
-
-        threading.Thread(target=_run, name="pipeline", daemon=True).start()
+        threading.Thread(target=chay_pipeline_nen, args=(pipe, health, _bao_dung),
+                         name="pipeline", daemon=True).start()
         log.info("pipeline chạy nền trên %s", source)
-    uvicorn.run(app, host=host or cfg.server.host, port=port or cfg.server.port,
-                log_level="info")
+    server.run()
+    return 1 if dung_bat_thuong.is_set() else 0

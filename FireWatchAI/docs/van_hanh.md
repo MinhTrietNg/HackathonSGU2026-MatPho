@@ -112,3 +112,74 @@ Máy kiểm: Windows 11, CPU, ultralytics 8.4.198, onnxruntime 1.31.1.
    - ONNX đã chép được dùng nguyên, không bị export lại, và SHA không đổi sau lượt chạy.
    - Đây là kiểm khói (smoke test): pipeline chạy đúng với model mới. **Không phải** số đo
      độ chính xác; clip này cũng nằm trong tập T1.
+
+## 7. Chạy như dịch vụ
+
+### Script chạy có kiểm trọng số
+
+```bash
+./run.sh serve --source rtsp://<camera>/stream        # Linux, macOS, container
+.\run.ps1 serve --source rtsp://<camera>/stream       # Windows PowerShell
+```
+
+- Hai script gọi `tools/kiem_trong_so.py` trước: SHA-256 của file `.pt` phải trùng
+  bảng trong `models/README.md`, sai hoặc thiếu thì **không chạy** (mã 1). ONNX lệch SHA
+  chỉ cảnh báo, vì đó là bản export lại trên máy.
+- Mọi tham số chuyển nguyên cho `python -m firewatch`. Trình thông dịch lấy từ
+  `FIREWATCH_PYTHON`, rồi `.venv` của thư mục, rồi `python` hệ thống.
+- Đặt `FIREWATCH_SOURCE` thì `serve` không kèm `--source` chạy trên nguồn đó.
+
+### Docker
+
+```bash
+docker build -t firewatch FireWatchAI
+docker run -d --name firewatch --restart unless-stopped -p 8000:8000 \
+  --env-file FireWatchAI/.env -e FIREWATCH_SOURCE=rtsp://<camera>/stream \
+  -v "$PWD/FireWatchAI/models:/app/models:ro" \
+  -v firewatch_events:/app/events -v firewatch_runs:/app/runs \
+  firewatch
+```
+
+| Mục | Cách làm |
+|---|---|
+| Lệnh | `run.sh serve --host 0.0.0.0 --port 8000 --exit-on-pipeline-stop`: kiểm SHA rồi chạy `python -m firewatch serve` với `/app/config.yaml` |
+| Trọng số | mount `models/` vào `/app/models`. Chép `.pt` rồi ONNX theo `models/README.md`; mount `:ro` được khi ONNX đã có và mới hơn `.pt`, nếu không thì mount ghi được để detector export ONNX |
+| Bí mật | `.env` không nằm trong image; truyền bằng `--env-file` hay `env_file` |
+| Event và ảnh | volume `/app/events` (JSON, keyframe, `acks.json`; `/snapshots` phục vụ từ đây) |
+| Log | `run.log` trong volume `/app/runs`, xoay vòng theo `output.log_toi_da_mb` × `output.log_so_ban`. Log stdout của container xoay bằng tuỳ chọn `logging` của Docker (ví dụ dưới) |
+| Healthcheck | `HEALTHCHECK` gọi `GET /health` mỗi 30 s; 503 hay không trả lời 3 lần thì container `unhealthy` |
+| Tự khởi động lại | `--exit-on-pipeline-stop`: pipeline lỗi hay nguồn live kết thúc thì `serve` thoát mã 1, và `restart: unless-stopped` khởi động lại cả tiến trình. Docker không tự khởi động lại container chỉ vì `unhealthy`; cờ này là thứ biến "pipeline chết" thành "tiến trình chết" |
+
+### Gắn vào docker-compose của backend
+
+Không sửa nhánh `backend`. Thêm service sau vào `docker-compose.yml` của backend, đường
+dẫn tính từ thư mục chứa file compose đó tới `FireWatchAI/` của repo:
+
+```yaml
+services:
+  firewatch:
+    build: ../FireWatchAI
+    restart: unless-stopped
+    env_file: ../FireWatchAI/.env          # FIREWATCH_WEBHOOK_URL, FIREWATCH_WEBHOOK_TOKEN, GEMINI_API_KEY
+    environment:
+      FIREWATCH_SOURCE: rtsp://mediamtx:8554/cam01
+    volumes:
+      - ../FireWatchAI/models:/app/models:ro
+      - firewatch_events:/app/events
+      - firewatch_runs:/app/runs
+    ports:
+      - "8000:8000"
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+volumes:
+  firewatch_events:
+  firewatch_runs:
+```
+
+- Webhook trỏ vào service backend trong cùng mạng compose, ví dụ
+  `FIREWATCH_WEBHOOK_URL=http://backend:<cổng>/<đường dẫn>`.
+- Mỗi camera một service (một tiến trình một nguồn), mỗi service một `camera.id`: ghi đè
+  bằng `command: ["--set", "camera.id=cam02", "serve", "--host", "0.0.0.0",
+  "--exit-on-pipeline-stop"]` và một volume event riêng.

@@ -26,6 +26,7 @@ Future<GoRouter> _pumpCameras(
   Set<FakeCase> cases = const {},
   String initialLocation = AppRoutes.monitor,
   List<Override> overrides = const [],
+  FakeScenario? scenario,
 }) async {
   tester.view
     ..physicalSize = const Size(360, 780) * 2
@@ -52,7 +53,9 @@ Future<GoRouter> _pumpCameras(
   await tester.pumpWidget(
     ProviderScope(
       overrides: fakeOverrides([
-        fakeScenarioProvider.overrideWithValue(FakeScenario.test(cases: cases)),
+        fakeScenarioProvider.overrideWithValue(
+          scenario ?? FakeScenario.test(cases: cases),
+        ),
         ...overrides,
       ]),
       child: MaterialApp.router(
@@ -213,6 +216,29 @@ void main() {
       expect(find.text(name), findsOneWidget);
     }
     expect(find.text('Khu sạc xe'), findsNothing);
+  });
+
+  testWidgets('while a picked place loads, the cameras of the last one are '
+      'not shown under its name', (tester) async {
+    await _pumpCameras(tester, scenario: const FakeScenario(freezeClock: true));
+    expect(find.text('Khu sạc xe'), findsOneWidget);
+    await _tap(tester, find.bySemanticsLabel('Chọn nơi: Chung cư Sky Garden'));
+
+    await tester.tap(find.text('Nhà mình'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    Finder onMonitor(String text) => find.descendant(
+      of: find.byType(CameraMonitorScreen),
+      matching: find.text(text),
+    );
+    expect(onMonitor('Chung cư Sky Garden'), findsNothing);
+    expect(onMonitor('Khu sạc xe'), findsNothing);
+    expect(onMonitor('HẦM B1'), findsNothing);
+
+    await _settle(tester);
+    expect(onMonitor('Nhà mình'), findsOneWidget);
+    expect(onMonitor('Phòng khách'), findsOneWidget);
+    expect(onMonitor('Khu sạc xe'), findsNothing);
   });
 
   testWidgets('rows say when AI is paused by schedule or off, and flip at '

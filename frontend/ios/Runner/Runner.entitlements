@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-	<key>aps-environment</key>
-	<string>development</string>
-	<key>com.apple.developer.usernotifications.critical-alerts</key>
-	<true/>
-	<key>com.apple.developer.usernotifications.time-sensitive</key>
-	<true/>
-</dict>
+<!--
+  Empty on purpose: the team signs with a free Apple ID, which cannot carry
+  aps-environment, critical-alerts or time-sensitive. With a paid Apple
+  Developer account, restore:
+    aps-environment = development
+    com.apple.developer.usernotifications.critical-alerts = true
+    com.apple.developer.usernotifications.time-sensitive = true
+-->
+<dict/>
 </plist>

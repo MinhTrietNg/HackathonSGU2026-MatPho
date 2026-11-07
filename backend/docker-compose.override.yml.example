@@ -1,0 +1,12 @@
+# ==============================================================================
+# Mắt Phố - Backend Docker Compose Local Override (docker-compose.override.yml)
+# Tự động nạp đè cấu hình khi chạy test trên máy local mà KHÔNG SỬA file .env
+# Cách dùng: Đổi tên thành `docker-compose.override.yml` và chạy `docker compose up`
+# ==============================================================================
+
+services:
+  backend:
+    environment:
+      - ENVIRONMENT=development
+      - MEDIAMTX_HOST=http://localhost:8888
+      - LOG_LEVEL=debug

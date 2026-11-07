@@ -844,3 +844,10 @@ async def relay_ai_fire_event(
         "relay_signal": "forwarded" if forward_success else "queued_offline",
         "cloud_response": cloud_response_data,
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("EDGE_BACKEND_PORT", "8090"))
+    logger.info("Starting Edge Backend on 0.0.0.0:%d...", port)
+    uvicorn.run("src.main:app", host="0.0.0.0", port=port, log_level="info")

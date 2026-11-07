@@ -45,6 +45,8 @@ router = APIRouter(prefix="/cameras", tags=["Cameras"])
 def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id: Optional[str] = None) -> str:
     path_template = os.getenv("HLS_PATH_TEMPLATE", "live/{cam_id}")
     stream_path = path_template.format(cam_id=cam_id)
+    # MediaMTX v1.18+ bypass cookie check handshake directly for ExoPlayer / Flutter
+    query_suffix = "?cookieCheck=1"
 
     # 1. Edge Gateway Public URL Discovery (xuyên mạng qua Cloudflare Tunnel)
     try:
@@ -54,28 +56,28 @@ def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id
         if target_edge_id:
             edge_pub_url = ws_mgr.get_edge_public_hls_url(target_edge_id)
             if edge_pub_url:
-                return f"{edge_pub_url}/{stream_path}/index.m3u8"
+                return f"{edge_pub_url}/{stream_path}/index.m3u8{query_suffix}"
     except Exception:
         pass
 
+    # 2. Explicit Cloud / Public domain configured via MEDIAMTX_HOST (Cloudflare Tunnel, CDN, public IP)
     env_host = os.getenv("MEDIAMTX_HOST")
-
-    if env_host and env_host.strip():
+    if env_host and env_host.strip() and "stream.matpho.vn" not in env_host:
         host_clean = env_host.strip().rstrip("/")
         if host_clean.startswith("http://") or host_clean.startswith("https://"):
-            return f"{host_clean}/{stream_path}/index.m3u8"
-        return f"https://{host_clean}/{stream_path}/index.m3u8"
+            return f"{host_clean}/{stream_path}/index.m3u8{query_suffix}"
+        return f"https://{host_clean}/{stream_path}/index.m3u8{query_suffix}"
 
+    # 3. Dynamic Host Resolution based on incoming request header (LAN IP / Emulator / Localhost fallback)
     if request:
         host_header = request.headers.get("host", "")
         if host_header:
             client_host = host_header.split(":")[0]
             if client_host == "testserver":
                 return f"https://stream.matpho.vn/{stream_path}/index.m3u8"
-            if client_host in ("10.0.2.2", "localhost", "127.0.0.1"):
-                return f"http://{client_host}:8888/{stream_path}/index.m3u8"
+            return f"http://{client_host}:8888/{stream_path}/index.m3u8{query_suffix}"
 
-    return f"https://stream.matpho.vn/{stream_path}/index.m3u8"
+    return f"http://localhost:8888/{stream_path}/index.m3u8{query_suffix}"
 
 
 # ==============================================================================

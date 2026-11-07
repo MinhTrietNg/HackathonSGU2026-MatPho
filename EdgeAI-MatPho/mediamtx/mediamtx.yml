@@ -19,11 +19,10 @@ protocols: [tcp, udp]
 hls: yes
 hlsAddress: :8888
 hlsAllowOrigin: '*'
-hlsVariant: lowLatency
+hlsVariant: mpegts
 hlsSegmentCount: 7
-hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
-hlsAlwaysRemux: yes
+hlsSegmentDuration: 2s
+hlsAlwaysRemux: no
 
 webrtc: yes
 webrtcAddress: :8889
@@ -42,6 +41,11 @@ paths:
     source: rtsp://localhost:8554/mock/cam_test
     sourceOnDemand: no
 
-  # 3. All active cameras (e.g. live/cam_01, live/{cam_id} published by edge-backend)
+  # 3. Dynamic On-Demand fallback for all camera sources (LAN/virtual fallback to mock stream)
+  ~^source/(.*)$:
+    source: rtsp://localhost:8554/mock/cam_test
+    sourceOnDemand: yes
+
+  # 4. All active live & output streams published by edge-backend or tool_test_rtsp
   all_others:
     source: publisher

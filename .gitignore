@@ -14,6 +14,11 @@ HEAD
 !.env.example
 !**/.env.example
 
+# Docker local overrides
+docker-compose.override.yml
+**/docker-compose.override.yml
+*.override.yml
+
 # Chặn Service Account JSON & Private Keys ở TẤT CẢ mọi thư mục
 firebase-service-account*.json
 *service-account*.json
@@ -71,6 +76,10 @@ data/
 # Chặn công cụ test RTSP nội bộ
 tool_test_rtsp/
 **/tool_test_rtsp/
+
+# Chặn công cụ test FCM nội bộ
+tool_test_fcm/
+**/tool_test_fcm/
 
 # Chặn toàn bộ thư mục kỹ năng và cấu hình AI cục bộ
 .agents/

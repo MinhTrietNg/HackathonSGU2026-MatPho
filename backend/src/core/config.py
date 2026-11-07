@@ -3,8 +3,10 @@ Application Configuration Settings for Mắt Phố Backend
 """
 
 import os
+import json
 from pathlib import Path
-from typing import List
+from typing import List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -37,8 +39,11 @@ class Settings(BaseSettings):
         "FIREBASE_CREDENTIALS_PATH", "credentials/firebase-service-account.json"
     )
 
-    # Redis & State Cache
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # Redis & State Cache (Upstash Cloud Redis with TLS by default)
+    REDIS_URL: str = os.getenv(
+        "REDIS_URL",
+        "rediss://default:gQAAAAAAAvH2AAIgcDI3Mzg5YjhlYzNhODc0MTJhOWIyNDg2NmIwNmJmMWI0YQ@integral-osprey-193014.upstash.io:6379",
+    )
 
     # MediaMTX
     MEDIAMTX_API_URL: str = os.getenv("MEDIAMTX_API_URL", "http://localhost:9997")
@@ -47,7 +52,22 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["*"]
 
-    model_config = SettingsConfigDict(case_sensitive=True)
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return v
+        return ["*"]
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
 
 settings = Settings()

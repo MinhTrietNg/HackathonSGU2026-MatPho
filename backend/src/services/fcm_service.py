@@ -44,6 +44,7 @@ class FCMService:
                 body=body,
                 sound="default",
                 channel_id="fire_alarms",
+                priority="max",
             ) if (title and body) else None
             aps_alert = messaging.ApsAlert(title=title, body=body) if (title and body) else None
             aps_sound = "alarm.caf"
@@ -110,6 +111,8 @@ class FCMService:
             "alert_id": alert_id,
             "escalation_level": str(escalation_level),
             "emergency_token": emergency_token,
+            "urgency": "HIGH" if escalation_level > 0 else "NORMAL",
+            "loud_when_silent": "true" if escalation_level > 0 else "false",
             "action_call": "tel:114",
             "action_view": f"/alert/{alert_id}?emergency_token={emergency_token}",
         }

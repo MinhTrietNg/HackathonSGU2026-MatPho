@@ -23,6 +23,7 @@ from .websocket_manager import get_websocket_manager
 from .fcm_service import get_fcm_service
 from .repositories.user_repo import get_user_repository
 from .repositories.group_repo import get_group_repository
+from ..core.config import settings
 from ..core.formatters import format_iso_utc
 from ..models.common import UserRole
 
@@ -31,7 +32,7 @@ logger = logging.getLogger("matpho.escalation")
 
 class EscalationService:
     def __init__(self, redis_url: Optional[str] = None):
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://redis:6379/0")
+        self.redis_url = redis_url or os.getenv("REDIS_URL", settings.REDIS_URL)
         self._redis = None
         self._in_memory_timers: Dict[str, Dict[str, Any]] = {}
         # Local tracking set of active timers to prevent idle Redis polling (0 commands/day on Upstash when idle)

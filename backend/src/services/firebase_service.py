@@ -39,6 +39,25 @@ def init_firebase() -> firebase_admin.App:
     except ValueError:
         pass
 
+    # 0. Check raw JSON string or Secret Manager env
+    raw_cred_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if raw_cred_json and raw_cred_json.strip():
+        import json
+        try:
+            cred_dict = json.loads(raw_cred_json)
+            cred = credentials.Certificate(cred_dict)
+            _firebase_app = firebase_admin.initialize_app(cred, {
+                "storageBucket": storage_bucket_name
+            })
+            _firestore_client = firestore.client()
+            try:
+                _storage_bucket = storage.bucket()
+            except Exception:
+                _storage_bucket = None
+            return _firebase_app
+        except Exception as e:
+            pass
+
     # Resolve credentials path
     cred_path = None
     gac_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")

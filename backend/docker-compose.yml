@@ -16,7 +16,7 @@ volumes:
 
 services:
   # ----------------------------------------------------------------------------
-  # 1. MediaMTX: Media Server (RTSP Proxy & On-Demand HLS/WebRTC Server)
+  # 1. MediaMTX: Optional Local Mock (The Real MediaMTX runs in EdgeAI-MatPho)
   # ----------------------------------------------------------------------------
   mediamtx:
     image: bluenviron/mediamtx:latest
@@ -32,9 +32,11 @@ services:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     networks:
       - backend-net
+    profiles:
+      - mock-mtx
 
   # ----------------------------------------------------------------------------
-  # 2. Redis: In-Memory State Tracker & Event Debounce Cache
+  # 2. Redis: Optional Local Fallback (Upstash Redis Cloud is used by default)
   # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
@@ -53,6 +55,8 @@ services:
       timeout: 3s
       retries: 5
       start_period: 3s
+    profiles:
+      - local-redis
 
   # ----------------------------------------------------------------------------
   # 3. Backend: FastAPI Core Gateway (REST API, WebSocket, Managers, Debounce)
@@ -73,10 +77,10 @@ services:
       - ENVIRONMENT=development
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - MEDIAMTX_API_URL=http://mediamtx:9997
-      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
+      - MEDIAMTX_API_URL=${MEDIAMTX_API_URL:-http://host.docker.internal:9997}
+      - MEDIAMTX_RTSP_URL=${MEDIAMTX_RTSP_URL:-rtsp://host.docker.internal:8554}
       - MEDIAMTX_HOST=${MEDIAMTX_HOST:-http://localhost:8888}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-rediss://default:gQAAAAAAAvH2AAIgcDI3Mzg5YjhlYzNhODc0MTJhOWIyNDg2NmIwNmJmMWI0YQ@integral-osprey-193014.upstash.io:6379}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-matpho-c7e77}
       - FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-matpho-c7e77.firebasestorage.app}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-service-account.json
@@ -84,10 +88,5 @@ services:
       - ./src:/app/src
       - ./tests:/app/tests
       - ${FIREBASE_CREDENTIALS_PATH:-./credentials/firebase-service-account.json}:/app/credentials/firebase-service-account.json:ro
-    depends_on:
-      mediamtx:
-        condition: service_started
-      redis:
-        condition: service_healthy
     networks:
       - backend-net

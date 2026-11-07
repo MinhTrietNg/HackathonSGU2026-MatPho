@@ -48,8 +48,8 @@ def test_heldout_skip_is_a_profile_field():
     assert Config().finetune.heldout_skip == []
 
 
-def test_v2_base_keeps_dfire_as_published():
-    cfg = load_config(ROOT / "config.yaml").with_profile("v2_base")
+def test_datafirewatch_v2_0_keeps_dfire_as_published():
+    cfg = load_config(ROOT / "config.yaml").with_profile("datafirewatch-v2.0")
     by = {s.name: s for s in cfg.finetune.sources}
     assert by["dfire_train"].keep_near_dups is True
     assert by["fasdd_cv"].keep_near_dups is False

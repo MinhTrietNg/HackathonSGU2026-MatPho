@@ -48,7 +48,7 @@ class HeartbeatConfig(_Strict):
 
 
 class DetectorConfig(_Strict):
-    weights: Path = Path("models/best.pt")
+    weights: Path = Path("models/firewatch-v2.0.pt")
     fallback_weights: Path = Path("models/yolo26n.pt")
     backend: Literal["pt", "onnx"] = "pt"
     device: str = "cpu"
@@ -75,6 +75,10 @@ class OutputConfig(_Strict):
     log_every_heartbeat: bool = True
     keep_runs: int = Field(30, ge=0)
     """Keep only the newest N run folders under ``dir``; 0 keeps everything."""
+    log_toi_da_mb: float = Field(20.0, ge=0)
+    """``run.log`` xoay vòng khi đạt chừng này MB; 0 = không xoay."""
+    log_so_ban: int = Field(5, ge=1)
+    """Số bản ``run.log.N`` cũ được giữ khi xoay vòng."""
 
 
 class VotingConfig(_Strict):
@@ -138,6 +142,49 @@ class VLMConfig(_Strict):
     """Mock answer for ``vlm.fire_type`` (only kept for NGOAI, see vlm.py)."""
 
 
+class CauDaoConfig(_Strict):
+    """Cầu dao của verifier (ADR 2026-11-07-verifier-ben-vung)."""
+
+    loi_lien_tiep: int = Field(3, ge=1)
+    """Số yêu cầu xác minh thất bại liên tiếp thì mở cầu dao."""
+    mo_s: float = Field(60.0, gt=0)
+    """Cầu dao mở chừng này giây, sau đó cho đúng một lượt gọi thử."""
+
+
+class VerifierConfig(_Strict):
+    """Verifier bền vững, sau cờ ``ben_vung`` (mặc định tắt).
+
+    Cờ tắt, hoặc thiếu khối ``verifier`` trong ``config.yaml``: hành vi, log và
+    JSON của event y hệt trước khi có cờ.
+    """
+
+    ben_vung: bool = False
+    ngan_sach_s: float = Field(10.0, gt=0)
+    """Ngân sách nền tính từ lúc Voting quyết; quá hạn thì ``VLM_TIMEOUT``."""
+    hang_cho_toi_da: int = Field(8, ge=1)
+    """Số mục tối đa đang chờ gọi VLM, khoá theo ``event_id``."""
+    cau_dao: CauDaoConfig = CauDaoConfig()
+
+
+class SuCoConfig(_Strict):
+    """Gom sự cố (ADR 2026-11-07-gom-su-co); chỉ chạy khi ``verifier.ben_vung``.
+
+    Một sự cố là một ``event_id``: ``created`` một lần, sau đó chỉ ``updated``.
+    """
+
+    khoang_cach_s: float = Field(120.0, gt=0)
+    """Quá chừng này giây không thấy cháy thì sự cố ``ended``; thấy lại sau đó là
+    sự cố mới. Cảnh báo đến khi sự cố còn mở thì vào cùng ``event_id``."""
+    nhip_cap_nhat_s: float = Field(30.0, gt=0)
+    """``updated`` thường (thấy cháy tiếp, nhắc lại của voting) nhiều nhất mỗi
+    chừng này giây; mức tăng và trạng thái xác minh đổi thì phát ngay."""
+    vlm_kiem_lai_s: float = Field(300.0, gt=0)
+    """Sự cố còn mở và còn thấy cháy thì mở lượt xác minh mới sau chừng này giây
+    kể từ lượt trước."""
+    iou_ghep: float = Field(0.3, ge=0, le=1)
+    """Track mới chồng box sự cố quá ngưỡng này thì được tính là còn thấy cháy."""
+
+
 class AlertsConfig(_Strict):
     events_dir: Path = Path("events")
     snapshot_jpeg_quality: int = Field(90, ge=1, le=100)
@@ -159,6 +206,17 @@ class AlertsConfig(_Strict):
     escalation_s: float = Field(120.0, ge=0)
     """``serve``: a CRITICAL event nobody acknowledged is pushed again (same
     event_id, WebSocket + webhook) every this many seconds; 0 = off."""
+
+
+class WebhookConfig(_Strict):
+    """Nội dung payload webhook; URL và token đọc từ ``.env`` theo
+    ``alerts.webhook_url_env`` / ``alerts.webhook_token_env``."""
+
+    gui_anh: bool = False
+    """Gửi kèm ``snapshot_base64``: keyframe gốc (không vẽ box) JPEG base64, chỉ
+    trong payload webhook, không ghi file, không qua WebSocket."""
+    anh_toi_da_kb: int = Field(200, ge=10)
+    """Cỡ JPEG tối đa (KB): hạ chất lượng rồi thu nhỏ cho tới khi đủ nhỏ."""
 
 
 class ServerConfig(_Strict):
@@ -187,8 +245,8 @@ class DataConfig(_Strict):
 
 
 class TrainConfig(_Strict):
-    base_weights: Path = Path("models/best.pt")
-    data_yaml: Path = Path("data/processed/matpho_fire/data.yaml")
+    base_weights: Path = Path("models/firewatch-v1.0.pt")
+    data_yaml: Path = Path("data/processed/datafirewatch/data.yaml")
     epochs: int = Field(50, ge=1)
     batch: int = Field(16, ge=1)
     imgsz: int = Field(640, ge=32)
@@ -373,7 +431,7 @@ class TrainListConfig(_Strict):
 
 
 class FinetuneConfig(_Strict):
-    out_dir: Path = Path("data/processed/matpho_fire")
+    out_dir: Path = Path("data/processed/datafirewatch")
     audit_dir: Path | None = None
     """When set, exclusions.csv and groups.csv from audit_data.py are applied."""
     frame_exclusions: list[Path] = Field(default_factory=list)
@@ -404,7 +462,8 @@ class FinetuneConfig(_Strict):
     general_detector: bool = False
     """Datasheet wording: a general fire / smoke detector trained from COCO
     for public benchmarks (v2.0) instead of the tier-1 fine-tune of
-    ``models/best.pt`` for the parking-lot context (v0.x / v1.x)."""
+    FireWatch-v1.0 (``models/firewatch-v1.0.pt``) for the parking-lot context
+    (v0.x / v1.x)."""
     heldout_skip: list[str] = Field(default_factory=list)
     """Names in ``audit.heldout`` this profile does NOT hold out, e.g. a
     public benchmark's test split when its official train split is used in
@@ -475,7 +534,10 @@ class Config(_Strict):
     output: OutputConfig = OutputConfig()
     voting: VotingConfig = VotingConfig()
     vlm: VLMConfig = VLMConfig()
+    verifier: VerifierConfig = VerifierConfig()
+    su_co: SuCoConfig = SuCoConfig()
     alerts: AlertsConfig = AlertsConfig()
+    webhook: WebhookConfig = WebhookConfig()
     server: ServerConfig = ServerConfig()
     data: DataConfig = DataConfig()
     train: TrainConfig = TrainConfig()
@@ -486,6 +548,14 @@ class Config(_Strict):
     audit: AuditConfig = AuditConfig()
     eval: EvalConfig = EvalConfig()
     root: Path = Field(default_factory=Path.cwd, exclude=True)
+
+    @model_validator(mode="after")
+    def _ngan_sach_dai_hon_cua_so(self) -> "Config":
+        if self.verifier.ben_vung and self.verifier.ngan_sach_s <= self.vlm.grace_s:
+            raise ValueError(
+                f"verifier.ngan_sach_s ({self.verifier.ngan_sach_s}) phải lớn hơn "
+                f"vlm.grace_s ({self.vlm.grace_s}) khi verifier.ben_vung bật")
+        return self
 
     def with_profile(self, name: str | None) -> "Config":
         """Copy of the config whose ``finetune`` is dataset profile ``name``.

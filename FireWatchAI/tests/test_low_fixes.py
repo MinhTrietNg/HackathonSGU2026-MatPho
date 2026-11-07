@@ -104,7 +104,8 @@ def test_webhook_does_not_retry_on_4xx(monkeypatch):
     ev = Event(**json.loads(Event.model_validate_json(
         '{"event_id":"e1","camera_id":"c","context":"HAM","severity":"WARNING",'
         '"verification":"UNVERIFIED","started_at":"2026-11-02T00:00:00+07:00",'
-        '"video_ts_sec":1.0,"boxes":[],"vlm":null,"snapshot_path":""}'
+        '"video_ts_sec":1.0,"boxes":[],"vlm":null,"snapshot_path":"",'
+        '"frame_w":640,"frame_h":360,"frame_ts":1762016400.0}'
     ).model_dump_json()))
     sink._post(ev)
     assert len(calls) == 1

@@ -41,6 +41,27 @@ class AckIn(BaseModel):
     note: str = Field("", max_length=500)
 
 
+def ws_payload(event: Event, kind: str) -> dict[str, Any]:
+    """Message ``WS /ws`` cho một thông báo của store.
+
+    ``created`` → ``type: event``; còn lại → ``type: event_update`` với
+    ``reason: "escalation"`` khi gửi lại CRITICAL chưa ai trả lời, và
+    ``reason: "verifier"`` khi object ``verifier`` đổi trạng thái và
+    ``reason: "su_co"`` khi sự cố cập nhật (nhịp, mức tăng, kết thúc), cả hai
+    chỉ khi cờ ``verifier.ben_vung`` bật. Cập nhật VLM khi cờ tắt không có
+    ``reason``, như trước.
+    """
+    msg_type = "event" if kind == "created" else "event_update"
+    payload: dict[str, Any] = {"type": msg_type, "event": event_to_dict(event)}
+    if kind == "escalated":
+        payload["reason"] = "escalation"
+    elif kind == "updated" and event.verifier is not None:
+        payload["reason"] = "verifier"
+    elif kind == "su_co":
+        payload["reason"] = "su_co"
+    return payload
+
+
 class Broadcaster:
     """Fan out events from the pipeline thread to WebSocket clients."""
 
@@ -52,11 +73,7 @@ class Broadcaster:
         self.loop = loop
 
     def publish_threadsafe(self, event: Event, kind: str = "created") -> None:
-        msg_type = "event" if kind == "created" else "event_update"
-        payload: dict[str, Any] = {"type": msg_type, "event": event_to_dict(event)}
-        if kind == "escalated":
-            payload["reason"] = "escalation"
-        self.publish_payload_threadsafe(payload)
+        self.publish_payload_threadsafe(ws_payload(event, kind))
 
     def publish_ack_threadsafe(self, ack: Ack) -> None:
         self.publish_payload_threadsafe({"type": "ack", "ack": ack.model_dump()})
@@ -120,14 +137,22 @@ def create_app(cfg: Config, store: EventStore,
     @app.get("/health")
     def health_route(response: Response) -> dict[str, Any]:
         """200 khi pipeline còn sống (hoặc server chỉ phục vụ event cũ);
-        503 khi pipeline chết, lỗi, hay quá lâu không có heartbeat."""
+        503 khi pipeline chết, lỗi, hay quá lâu không có heartbeat.
+
+        Cờ ``verifier.ben_vung`` bật thì có thêm khối ``verifier`` (cầu dao,
+        hàng chờ, tỉ lệ kịp và p50 / p95 trong 10 phút, số lần VLM_OFF); các
+        trường cũ giữ nguyên.
+        """
         if health is None:
             return {"status": "ok", "pipeline": None, "vlm_provider": vlm_provider}
         snap = health.snapshot()
         if snap["status"] in ("dead", "stale"):
             response.status_code = 503
-        return {"status": "ok" if snap["status"] == "ok" else snap["status"],
+        body = {"status": "ok" if snap["status"] == "ok" else snap["status"],
                 "pipeline": snap, "vlm_provider": vlm_provider}
+        if health.verifier_stats is not None:
+            body["verifier"] = health.verifier_stats()
+        return body
 
     @app.get("/events", response_model=list[Event])
     def list_events(limit: int = Query(50, ge=0, description="0 = tất cả"),
@@ -189,9 +214,44 @@ def create_app(cfg: Config, store: EventStore,
     return app
 
 
+def chay_pipeline_nen(pipe: Any, health: PipelineHealth | None,
+                      khi_dung_bat_thuong: Any = None) -> bool:
+    """Chạy ``pipe.run()`` (trên thread nền của ``serve``).
+
+    Returns
+    -------
+    bool
+        ``True`` khi pipeline dừng ngoài ý muốn: ném lỗi, hoặc nguồn live kết
+        thúc. Khi đó ``khi_dung_bat_thuong()`` được gọi (nếu có). Nguồn file
+        chạy hết bình thường thì ``False``.
+    """
+    try:
+        bat_thuong = bool(pipe.run().live_source_lost)
+    except BaseException as exc:  # noqa: BLE001 - ghi vào /health
+        log.exception("pipeline dừng vì lỗi: %s", exc)
+        if health is not None and not health.error:
+            health.error = f"{type(exc).__name__}: {exc}"
+            health.finished = True
+        bat_thuong = True
+    if bat_thuong and khi_dung_bat_thuong is not None:
+        khi_dung_bat_thuong()
+    return bat_thuong
+
+
 def serve(cfg: Config, *, source: str | None, realtime: bool, host: str | None,
-          port: int | None) -> None:
-    """Run uvicorn; optionally run the pipeline on ``source`` in a thread."""
+          port: int | None, exit_on_pipeline_stop: bool = False) -> int:
+    """Run uvicorn; optionally run the pipeline on ``source`` in a thread.
+
+    ``exit_on_pipeline_stop``: pipeline dừng ngoài ý muốn (lỗi, nguồn live kết
+    thúc) thì dừng luôn server và trả mã 1, để supervisor (Docker
+    ``restart: unless-stopped``, systemd) khởi động lại cả tiến trình. Không
+    bật thì server vẫn chạy và ``/health`` trả 503 như trước.
+
+    Returns
+    -------
+    int
+        1 nếu pipeline đã dừng ngoài ý muốn, ngược lại 0.
+    """
     import uvicorn
 
     from .pipeline import Pipeline
@@ -201,20 +261,23 @@ def serve(cfg: Config, *, source: str | None, realtime: bool, host: str | None,
     health = PipelineHealth() if source else None
     app = create_app(cfg, store, health, acks)
     EscalationWatcher(store, acks, cfg.alerts.escalation_s).start()
+    server = uvicorn.Server(uvicorn.Config(
+        app, host=host or cfg.server.host, port=port or cfg.server.port,
+        log_level="info"))
+    dung_bat_thuong = threading.Event()
+
+    def _bao_dung() -> None:
+        dung_bat_thuong.set()
+        if exit_on_pipeline_stop:
+            log.error("pipeline dừng ngoài ý muốn: dừng serve (mã 1) để "
+                      "supervisor khởi động lại")
+            server.should_exit = True
+
     if source:
         pipe = Pipeline(cfg, source, realtime=realtime or None, store=store,
                         strict=True, health=health, acks=acks)
-
-        def _run() -> None:
-            try:
-                pipe.run()
-            except BaseException as exc:  # noqa: BLE001 - ghi vào /health
-                log.exception("pipeline dừng vì lỗi: %s", exc)
-                if health is not None and not health.error:
-                    health.error = f"{type(exc).__name__}: {exc}"
-                    health.finished = True
-
-        threading.Thread(target=_run, name="pipeline", daemon=True).start()
+        threading.Thread(target=chay_pipeline_nen, args=(pipe, health, _bao_dung),
+                         name="pipeline", daemon=True).start()
         log.info("pipeline chạy nền trên %s", source)
-    uvicorn.run(app, host=host or cfg.server.host, port=port or cfg.server.port,
-                log_level="info")
+    server.run()
+    return 1 if dung_bat_thuong.is_set() else 0

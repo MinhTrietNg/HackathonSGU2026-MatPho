@@ -9,17 +9,24 @@ becomes an event (JSON + keyframe) in ``events/``; a run summary is written.
 Alert timing: an alert never waits more than ``vlm.grace_s`` for the VLM.
 If the verdict is late the event goes out as ``UNVERIFIED`` and is patched
 (same ``event_id``) when the verdict arrives.
+
+Cờ ``verifier.ben_vung`` bật: cảnh báo được giao cho
+:class:`~firewatch.xac_minh_nen.DieuPhoiXacMinh` (hàng chờ, ngân sách nền, hẹn
+giờ độc lập heartbeat) thay vì chờ ở ``_flush_pending``.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import queue
 import shutil
 import statistics
 import threading
 import time
+import uuid
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,13 +35,15 @@ from pathlib import Path
 import cv2
 
 from .acks import MUTING_ACTIONS, Ack, AckStore
-from .alerts import Event, EventStore
+from .alerts import Event, EventStore, VerifierInfo
 from .annotate import draw_detections, draw_tracks, write_jpeg
 from .config import Config
 from .detector import DetectResult, Detector, Detection
 from .sources import Heartbeat, HeartbeatSampler, open_source
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest, build_verifier
 from .voting import Severity, TrackEvent, VotingEngine, union
+from .su_co import GomSuCo
+from .xac_minh_nen import DieuPhoiXacMinh, DongHo
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +104,10 @@ class PipelineHealth:
         self.error: str | None = None
         self.source_live = False
         self.heartbeat_interval_s = 1.0
+        self.verifier_stats: Callable[[], dict] | None = None
+        """Khối ``verifier`` của ``/health`` (``DieuPhoiXacMinh.thong_ke``), chỉ
+        được gán khi cờ ``verifier.ben_vung`` bật; ``None`` thì ``/health`` giữ
+        đúng các trường cũ."""
 
     def beat(self) -> None:
         with self._lock:
@@ -125,9 +138,13 @@ class PipelineHealth:
 
 @dataclass
 class _PendingAlert:
-    """An alert waiting for (or already sent ahead of) its VLM verdict."""
+    """An alert waiting for (or already sent ahead of) its VLM verdict.
 
-    future: Future
+    Cờ ``verifier.ben_vung`` bật: ``future`` là ``None`` (bộ điều phối nền giữ
+    việc gọi VLM) và ``event_id`` được cấp ngay lúc Voting quyết.
+    """
+
+    future: Future | None
     deadline_wall: float
     kind: str
     track_id: int
@@ -138,6 +155,7 @@ class _PendingAlert:
     started_at: datetime
     event: Event | None = None
     record: dict | None = None
+    event_id: str | None = None
 
 
 class Pipeline:
@@ -162,6 +180,10 @@ class Pipeline:
         self._ack_queue: queue.SimpleQueue[Ack] = queue.SimpleQueue()
         self._event_track: dict[str, int] = {}
         """event_id -> track_id of events created by this run (for acks)."""
+        self._dieu_phoi: DieuPhoiXacMinh | None = None
+        self._gom: GomSuCo | None = None
+        """Lớp gom sự cố; chỉ có khi cờ ``verifier.ben_vung`` bật (ADR gom sự cố)."""
+        """Chỉ có khi cờ ``verifier.ben_vung`` bật."""
         if weights:
             cfg.detector.weights = Path(weights)
 
@@ -175,7 +197,8 @@ class Pipeline:
         _prune_runs(runs_root, cfg.output.keep_runs)
         out_dir = runs_root / f"{source.name}_{stamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
-        file_log = _attach_file_log(out_dir / "run.log")
+        file_log = _attach_file_log(out_dir / "run.log",
+                                    cfg.output.log_toi_da_mb, cfg.output.log_so_ban)
         if self.health:
             self.health.source_live = source.is_live
             self.health.heartbeat_interval_s = cfg.heartbeat.interval_s
@@ -186,13 +209,16 @@ class Pipeline:
             raise SystemExit(
                 f"weights {detector.weights.name} không có class "
                 f"{cfg.detector.classes}: từ chối chạy live/serve vì sẽ không bao "
-                "giờ báo cháy. Đặt models/best.pt hoặc --weights đúng file.")
+                "giờ báo cháy. Đặt models/firewatch-v2.0.pt (xem models/README.md) "
+                "hoặc --weights đúng file.")
         sampler = HeartbeatSampler(cfg.heartbeat.interval_s, cfg.heartbeat.ring_buffer)
         voting = VotingEngine(cfg.voting)
         store = self._event_store()
         verifier = VerificationService(cfg.vlm, build_verifier(cfg.vlm))
         summary = RunSummary(source=self.source_spec, weights=str(detector.weights),
                              out_dir=str(out_dir))
+        if cfg.verifier.ben_vung:
+            self._tao_gom(store, summary, verifier)
         log.info("bắt đầu: nguồn=%s T=%.2fs imgsz=%d conf=%.2f k=%d/%d lưu=%s",
                  self.source_spec, cfg.heartbeat.interval_s, cfg.detector.imgsz,
                  cfg.detector.conf_threshold, cfg.voting.k_enter, cfg.voting.window_m,
@@ -216,6 +242,9 @@ class Pipeline:
                                            result.detections, frame=hb.frame)
                     for ev in events:
                         self._on_track_event(ev, summary, verifier)
+                    if self._gom is not None:
+                        self._gom.thay_chay(_track_co_phieu(voting, hb.seq),
+                                            hb.frame.wall_time, hb.frame.image)
                     self._flush_pending(store, summary)
                     self._record(summary, hb, result, voting, out_dir)
                     if self.health:
@@ -238,6 +267,14 @@ class Pipeline:
                 self.acks.unsubscribe(self._ack_queue.put)
             if self.show:
                 cv2.destroyAllWindows()
+            if self._dieu_phoi is not None:
+                han = cfg.verifier.ngan_sach_s + 1
+                if not self._dieu_phoi.cho_xong(han):
+                    log.warning("verifier nền chưa xong sau %.0fs", han)
+                if self._gom is not None:
+                    self._gom.dong()
+                else:
+                    self._dieu_phoi.dong()
             budget = cfg.vlm.timeout_s * (cfg.vlm.retries + 1) + 2
             left = verifier.drain(timeout_s=budget)
             if left:
@@ -292,14 +329,68 @@ class Pipeline:
         first = next(ev.track.iter_votes(), None)
         first_img = (first.frame.image if first is not None and first is not vote
                      and first.frame is not None else None)
-        fut = verifier.submit(VerifyRequest(vote.frame.image, box,
-                                            self.cfg.camera.context,
-                                            ev.severity.value, ev.ts, first_img))
+        req = VerifyRequest(vote.frame.image, box, self.cfg.camera.context,
+                            ev.severity.value, ev.ts, first_img)
+        if self._gom is not None:
+            self._gom.canh_bao(
+                kind=ev.kind, track_id=ev.track.track_id, severity=ev.severity,
+                ts=ev.ts, detections=list(vote.detections), image=vote.frame.image,
+                wall_time=vote.frame.wall_time, box=box, req=req)
+            return
+        if self._dieu_phoi is not None:
+            self._gui_nen(req, _PendingAlert(
+                future=None, deadline_wall=0.0, kind=ev.kind,
+                track_id=ev.track.track_id, severity=ev.severity, ts=ev.ts,
+                detections=list(vote.detections), image=vote.frame.image,
+                started_at=datetime.fromtimestamp(vote.frame.wall_time).astimezone()))
+            return
+        fut = verifier.submit(req)
         self._pending.append(_PendingAlert(
             future=fut, deadline_wall=time.time() + self.cfg.vlm.grace_s,
             kind=ev.kind, track_id=ev.track.track_id, severity=ev.severity, ts=ev.ts,
             detections=list(vote.detections), image=vote.frame.image,
             started_at=datetime.fromtimestamp(vote.frame.wall_time).astimezone()))
+
+    # ------------------------------------------------- verifier bền vững
+    def _tao_gom(self, store: EventStore, summary: RunSummary,
+                 service: VerificationService,
+                 dong_ho: DongHo | None = None) -> GomSuCo:
+        """Lớp gom sự cố cùng bộ điều phối của nó (cờ ``verifier.ben_vung``).
+
+        Đây là đường chạy thật khi cờ bật. ``_tao_dieu_phoi`` / ``_gui_nen`` chỉ
+        còn là lớp lượt xác minh trần, mỗi cảnh báo một event, để test bộ điều
+        phối riêng.
+        """
+        self._gom = GomSuCo(self.cfg, store, service, summary=summary,
+                            health=self.health, dong_ho=dong_ho)
+        self._dieu_phoi = self._gom.dieu_phoi
+        if self.health is not None:
+            self.health.verifier_stats = self._dieu_phoi.thong_ke
+        return self._gom
+
+    def _tao_dieu_phoi(self, store: EventStore, summary: RunSummary,
+                       service: VerificationService,
+                       dong_ho: DongHo | None = None) -> DieuPhoiXacMinh:
+        """Bộ điều phối xác minh nền (cờ ``verifier.ben_vung``).
+
+        ``created`` / ``updated`` được phát từ luồng hẹn giờ hoặc worker của bộ
+        điều phối, qua đúng ``_emit`` / ``_cap_nhat`` như đường cờ tắt.
+        """
+        self._dieu_phoi = DieuPhoiXacMinh(
+            self.cfg, service,
+            phat_tao=lambda m, o, v: self._emit(store, summary, m.du_lieu, o, v),
+            phat_cap_nhat=lambda m, o, v: self._cap_nhat(store, m.du_lieu, o, v),
+            dong_ho=dong_ho)
+        if self.health is not None:
+            self.health.verifier_stats = self._dieu_phoi.thong_ke
+        return self._dieu_phoi
+
+    def _gui_nen(self, req: VerifyRequest, p: _PendingAlert) -> str:
+        """Cấp ``event_id`` ngay lúc Voting quyết rồi giao cho bộ điều phối."""
+        assert self._dieu_phoi is not None
+        p.event_id = str(uuid.uuid4())
+        self._dieu_phoi.gui(p.event_id, req, p)
+        return p.event_id
 
     @staticmethod
     def _vote_for_alert(ev: TrackEvent):
@@ -314,21 +405,24 @@ class Pipeline:
 
     def _flush_pending(self, store: EventStore, summary: RunSummary,
                        final: bool = False) -> None:
-        """Tier 5: emit events whose verdict is in, or whose grace expired."""
+        """Tier 5: emit events whose verdict is in, or whose grace expired.
+
+        Mọi ``created`` / ``updated`` đều phát trên luồng pipeline, và
+        ``updated`` chỉ phát khi event đã có (``p.event``), nên không có
+        ``updated`` nào đi trước ``created`` của cùng ``event_id``.
+
+        Đây là đường cờ ``verifier.ben_vung`` tắt. Cờ bật thì cảnh báo không vào
+        ``self._pending`` mà do bộ điều phối nền phát (``_tao_dieu_phoi``).
+        """
         now = time.time()
         for p in list(self._pending):
+            assert p.future is not None
             if p.future.done():
                 outcome: VerifyOutcome = p.future.result()
                 if p.event is None:
                     self._emit(store, summary, p, outcome)
                 else:
-                    store.update(p.event.event_id, verification=outcome.verification,
-                                 vlm=outcome.result)
-                    if p.record is not None:
-                        p.record.update({"verification": outcome.verification,
-                                         "vlm_latency_s": round(outcome.latency_s, 2),
-                                         "vlm_attempts": outcome.attempts,
-                                         "vlm_error": outcome.error, "updated": True})
+                    self._cap_nhat(store, p, outcome)
                 self._pending.remove(p)
             elif p.event is None and (final or now >= p.deadline_wall):
                 late = VerifyOutcome("UNVERIFIED", None, now - (p.deadline_wall
@@ -338,12 +432,27 @@ class Pipeline:
                 if final:
                     self._pending.remove(p)
 
+    def _cap_nhat(self, store: EventStore, p: _PendingAlert, outcome: VerifyOutcome,
+                  v: VerifierInfo | None = None) -> None:
+        """Vá kết luận VLM vào event đã phát (``updated``) và vào summary."""
+        assert p.event is not None
+        store.update(p.event.event_id, verification=outcome.verification,
+                     vlm=outcome.result, verifier=v)
+        if p.record is not None:
+            p.record.update({"verification": outcome.verification,
+                             "vlm_latency_s": round(outcome.latency_s, 2),
+                             "vlm_attempts": outcome.attempts,
+                             "vlm_error": outcome.error, "updated": True})
+            if v is not None:
+                p.record["verifier_status"] = v.status
+
     def _emit(self, store: EventStore, summary: RunSummary, p: _PendingAlert,
-              outcome: VerifyOutcome) -> None:
+              outcome: VerifyOutcome, verifier: VerifierInfo | None = None) -> None:
         p.event = store.create(severity=p.severity.value,
                                verification=outcome.verification, video_ts=p.ts,
                                detections=p.detections, image=p.image,
-                               vlm=outcome.result, started_at=p.started_at)
+                               vlm=outcome.result, started_at=p.started_at,
+                               verifier=verifier, event_id=p.event_id)
         p.record = {"event_id": p.event.event_id, "kind": p.kind,
                     "severity": p.event.severity,
                     "verification": p.event.verification,
@@ -351,6 +460,8 @@ class Pipeline:
                     "vlm_latency_s": round(outcome.latency_s, 2),
                     "vlm_attempts": outcome.attempts, "vlm_error": outcome.error,
                     "updated": False}
+        if verifier is not None:
+            p.record["verifier_status"] = verifier.status
         summary.alerts.append(p.record)
         self._event_track[p.event.event_id] = p.track_id
         if self.health:
@@ -364,13 +475,19 @@ class Pipeline:
                 ack = self._ack_queue.get_nowait()
             except queue.Empty:
                 return
-            track_id = self._event_track.get(ack.event_id)
-            if ack.action not in MUTING_ACTIONS or track_id is None:
+            if ack.action not in MUTING_ACTIONS:
                 continue
-            if voting.mute(track_id):
-                log.info("track#%d: người trực trả lời event %s (%s) -> tắt nhắc "
-                         "STILL_BURNING; leo thang vẫn báo", track_id,
-                         ack.event_id[:8], ack.action)
+            if self._gom is not None:
+                # Cờ bật: ack áp lên cả sự cố, mọi track của nó.
+                tracks = sorted(self._gom.track_cua(ack.event_id))
+            else:
+                track_id = self._event_track.get(ack.event_id)
+                tracks = [] if track_id is None else [track_id]
+            for track_id in tracks:
+                if voting.mute(track_id):
+                    log.info("track#%d: người trực trả lời event %s (%s) -> tắt "
+                             "nhắc STILL_BURNING; leo thang vẫn báo", track_id,
+                             ack.event_id[:8], ack.action)
 
     # ---------------------------------------------------------------- helpers
     def _record(self, summary: RunSummary, hb: Heartbeat, result: DetectResult,
@@ -410,6 +527,16 @@ class Pipeline:
         return (cv2.waitKey(1) & 0xFF) != ord("q")
 
 
+def _track_co_phieu(voting: VotingEngine, seq: int) -> list[tuple[int, tuple]]:
+    """``(track_id, box)`` của các track vừa có phiếu ở heartbeat ``seq``."""
+    out = []
+    for t in voting.tracks:
+        v = t.latest_vote
+        if v is not None and v.seq == seq:
+            out.append((t.track_id, t.box))
+    return out
+
+
 def _prune_runs(root: Path, keep: int) -> int:
     """Delete the oldest run folders so at most ``keep - 1`` remain (the new
     run makes ``keep``). ``keep == 0`` disables."""
@@ -429,9 +556,17 @@ def _prune_runs(root: Path, keep: int) -> int:
     return n
 
 
-def _attach_file_log(path: Path) -> logging.FileHandler:
-    """Mirror the root logger to ``path`` for the duration of one run."""
-    fh = logging.FileHandler(path, encoding="utf-8")
+def _attach_file_log(path: Path, toi_da_mb: float = 20.0,
+                     so_ban: int = 5) -> logging.Handler:
+    """Mirror the root logger to ``path`` for the duration of one run.
+
+    File xoay vòng theo kích thước: đầy ``toi_da_mb`` MB thì đổi thành
+    ``run.log.1`` (cũ hơn thành ``.2``...), giữ ``so_ban`` bản cũ, nên một lần
+    ``serve`` chạy nhiều ngày không làm đầy đĩa. ``toi_da_mb = 0`` thì không xoay.
+    """
+    fh = logging.handlers.RotatingFileHandler(
+        path, maxBytes=int(toi_da_mb * 1024 * 1024), backupCount=so_ban,
+        encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(fh)
     return fh

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/errors.dart';
@@ -64,14 +65,24 @@ class TestAlert extends Notifier<AsyncValue<TestAlertResult>> {
     if (!ref.mounted) return;
     state = const AsyncLoading();
     final result = await AsyncValue.guard(() async {
-      final permission = await ref.read(notificationServiceProvider).status();
+      final notifications = ref.read(notificationServiceProvider);
+      final settings = ref.read(settingsRepositoryProvider);
+      final permission = await notifications.status();
       if (permission != NotificationPermission.granted) {
         throw const TestAlertBlocked();
       }
-      final received = await ref
-          .read(settingsRepositoryProvider)
-          .sendTestAlert();
-      await ref.read(notificationServiceProvider).showTestAlert();
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // No APNs without a paid Apple Developer account, so the FCM round
+        // trip never completes on iOS: show the local notification directly.
+        final stopwatch = Stopwatch()..start();
+        await notifications.showTestAlert();
+        return TestAlertResult(
+          receivedAfter: stopwatch.elapsed,
+          loudWhenSilent: await settings.loudWhenSilent(),
+        );
+      }
+      final received = await settings.sendTestAlert();
+      await notifications.showTestAlert();
       return received;
     });
     if (ref.mounted) state = result;

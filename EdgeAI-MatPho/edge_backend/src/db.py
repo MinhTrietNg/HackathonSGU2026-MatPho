@@ -45,10 +45,21 @@ class EdgeDatabase:
                     rtsp_url TEXT NOT NULL,
                     watch_area_json TEXT DEFAULT NULL,
                     is_active INTEGER NOT NULL DEFAULT 1,
+                    ai_mode TEXT NOT NULL DEFAULT 'ALWAYS',
+                    ai_schedules_json TEXT DEFAULT '[]',
                     updated_at REAL NOT NULL
                 );
                 """
             )
+            # Auto-migration for existing SQLite databases created before Phase 8
+            try:
+                await db.execute("ALTER TABLE local_cameras ADD COLUMN ai_mode TEXT NOT NULL DEFAULT 'ALWAYS';")
+            except Exception:
+                pass
+            try:
+                await db.execute("ALTER TABLE local_cameras ADD COLUMN ai_schedules_json TEXT DEFAULT '[]';")
+            except Exception:
+                pass
 
             await db.execute(
                 """
@@ -72,24 +83,65 @@ class EdgeDatabase:
         cam_name: str = "",
         watch_area: Optional[WatchAreaType] = None,
         is_active: bool = True,
+        ai_mode: Optional[str] = None,
+        ai_schedules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         watch_json = json.dumps(watch_area) if watch_area is not None else None
+        schedules_json = json.dumps(ai_schedules) if ai_schedules is not None else None
+        mode_val = (ai_mode or "ALWAYS").upper()
         now = time.time()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
-                INSERT INTO local_cameras (cam_id, cam_name, rtsp_url, watch_area_json, is_active, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO local_cameras (
+                    cam_id, cam_name, rtsp_url, watch_area_json, is_active, ai_mode, ai_schedules_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(cam_id) DO UPDATE SET
                     cam_name = excluded.cam_name,
                     rtsp_url = excluded.rtsp_url,
                     watch_area_json = COALESCE(excluded.watch_area_json, local_cameras.watch_area_json),
                     is_active = excluded.is_active,
+                    ai_mode = CASE WHEN ? IS NOT NULL THEN excluded.ai_mode ELSE local_cameras.ai_mode END,
+                    ai_schedules_json = CASE WHEN ? IS NOT NULL THEN excluded.ai_schedules_json ELSE local_cameras.ai_schedules_json END,
                     updated_at = excluded.updated_at;
                 """,
-                (cam_id, cam_name, rtsp_url, watch_json, 1 if is_active else 0, now),
+                (
+                    cam_id,
+                    cam_name,
+                    rtsp_url,
+                    watch_json,
+                    1 if is_active else 0,
+                    mode_val,
+                    schedules_json or "[]",
+                    now,
+                    ai_mode,
+                    schedules_json,
+                ),
             )
             await db.commit()
+
+    async def update_camera_ai_config(
+        self,
+        cam_id: str,
+        ai_mode: str,
+        ai_schedules: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        """Update AI mode and rest schedule slots for a camera in local SQLite."""
+        mode_val = (ai_mode or "ALWAYS").upper()
+        schedules_json = json.dumps(ai_schedules or [])
+        now = time.time()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE local_cameras
+                SET ai_mode = ?, ai_schedules_json = ?, updated_at = ?
+                WHERE cam_id = ?
+                """,
+                (mode_val, schedules_json, now, cam_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
 
     async def remove_camera(self, cam_id: str) -> bool:
         async with aiosqlite.connect(self.db_path) as db:
@@ -98,7 +150,10 @@ class EdgeDatabase:
             return cursor.rowcount > 0
 
     async def get_camera(self, cam_id: str) -> Optional[Dict[str, Any]]:
-        query = "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, updated_at FROM local_cameras WHERE cam_id = ?"
+        query = (
+            "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, "
+            "ai_mode, ai_schedules_json, updated_at FROM local_cameras WHERE cam_id = ?"
+        )
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(query, (cam_id,)) as cursor:
@@ -111,17 +166,28 @@ class EdgeDatabase:
                         watch_area = json.loads(row["watch_area_json"])
                     except Exception:
                         watch_area = None
+                schedules = []
+                if row["ai_schedules_json"]:
+                    try:
+                        schedules = json.loads(row["ai_schedules_json"])
+                    except Exception:
+                        schedules = []
                 return {
                     "cam_id": row["cam_id"],
                     "cam_name": row["cam_name"],
                     "rtsp_url": row["rtsp_url"],
                     "watch_area": watch_area,
                     "is_active": bool(row["is_active"]),
+                    "ai_mode": row["ai_mode"] or "ALWAYS",
+                    "ai_schedules": schedules if isinstance(schedules, list) else [],
                     "updated_at": row["updated_at"],
                 }
 
     async def list_cameras(self, only_active: bool = False) -> List[Dict[str, Any]]:
-        query = "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, updated_at FROM local_cameras"
+        query = (
+            "SELECT cam_id, cam_name, rtsp_url, watch_area_json, is_active, "
+            "ai_mode, ai_schedules_json, updated_at FROM local_cameras"
+        )
         if only_active:
             query += " WHERE is_active = 1"
         query += " ORDER BY cam_id ASC"
@@ -138,6 +204,12 @@ class EdgeDatabase:
                             watch_area = json.loads(r["watch_area_json"])
                         except Exception:
                             watch_area = None
+                    schedules = []
+                    if r["ai_schedules_json"]:
+                        try:
+                            schedules = json.loads(r["ai_schedules_json"])
+                        except Exception:
+                            schedules = []
                     result.append(
                         {
                             "cam_id": r["cam_id"],
@@ -145,6 +217,8 @@ class EdgeDatabase:
                             "rtsp_url": r["rtsp_url"],
                             "watch_area": watch_area,
                             "is_active": bool(r["is_active"]),
+                            "ai_mode": r["ai_mode"] or "ALWAYS",
+                            "ai_schedules": schedules if isinstance(schedules, list) else [],
                             "updated_at": r["updated_at"],
                         }
                     )

@@ -99,12 +99,9 @@ class CameraAIWorker:
                     continue
                 last_infer_ts = now
 
-                # 1. Optional Watch Area Masking (supports both Rectangle dict & Polygon list)
-                masked_frame = apply_watch_area_mask(frame, self.target.watch_area)
-
-                # 2. Model Inference Slot (Empty Stub until AI Team adds model)
+                # 1. Full-Frame AI Model Inference Slot (No pre-masking; bbox returned on fire detection)
                 detections: List[DetectionResult] = self.model.predict(
-                    masked_frame, conf_threshold=self.settings.ai_confidence_threshold
+                    frame, conf_threshold=self.settings.ai_confidence_threshold
                 )
 
                 if not detections:
@@ -150,28 +147,45 @@ async def main_async() -> None:
 
     try:
         while True:
-            await asyncio.sleep(5.0)
-            # Dynamic synchronization of cameras & watch_area from edge-backend SQLite
+            await asyncio.sleep(2.0)
+            # Dynamic synchronization of cameras & AI schedule (should_ai_scan_now) from edge-backend SQLite
             try:
                 async with httpx.AsyncClient(timeout=3.0) as client:
                     res = await client.get(f"{settings.edge_backend_url}/api/v1/edge/cameras")
                     if res.status_code == 200:
                         cams = res.json().get("cameras", [])
-                        active_ids = set()
                         for c in cams:
                             cid = c.get("cam_id")
-                            if not cid or not c.get("is_active", True):
+                            if not cid:
                                 continue
-                            active_ids.add(cid)
+                            should_scan = bool(c.get("is_active", True)) and bool(
+                                c.get("should_ai_scan_now", True)
+                            )
                             w_area = c.get("watch_area")
-                            if cid in workers_map:
-                                workers_map[cid].update_watch_area(w_area)
+
+                            if should_scan:
+                                if cid in workers_map:
+                                    workers_map[cid].update_watch_area(w_area)
+                                else:
+                                    new_t = CameraStreamTarget(cam_id=cid, watch_area=w_area)
+                                    new_w = CameraAIWorker(new_t, settings, model, webhook, loop)
+                                    new_w.start()
+                                    workers_map[cid] = new_w
+                                    logger.info(
+                                        "[cam_id=%s] Connected RTSP stream to AI worker (ai_mode=%s).",
+                                        cid,
+                                        c.get("ai_mode", "ALWAYS"),
+                                    )
                             else:
-                                new_t = CameraStreamTarget(cam_id=cid, watch_area=w_area)
-                                new_w = CameraAIWorker(new_t, settings, model, webhook, loop)
-                                new_w.start()
-                                workers_map[cid] = new_w
-                                logger.info("[cam_id=%s] Dynamically started AI worker from Edge DB.", cid)
+                                # Disconnect RTSP stream from AI immediately when OFF or inside SCHEDULE rest window
+                                if cid in workers_map:
+                                    old_worker = workers_map.pop(cid)
+                                    await asyncio.to_thread(old_worker.stop)
+                                    logger.info(
+                                        "[cam_id=%s] Disconnected RTSP stream from AI worker (ai_mode=%s, should_ai_scan_now=False).",
+                                        cid,
+                                        c.get("ai_mode", "OFF"),
+                                    )
             except Exception as exc:
                 logger.debug("Edge DB camera sync skipped: %s", exc)
     except asyncio.CancelledError:

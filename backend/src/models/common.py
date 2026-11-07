@@ -24,6 +24,12 @@ class CameraStatus(str, Enum):
     DELETED = "DELETED"
 
 
+class AIMode(str, Enum):
+    ALWAYS = "ALWAYS"
+    SCHEDULE = "SCHEDULE"
+    OFF = "OFF"
+
+
 class AlertStatus(str, Enum):
     NEW = "NEW"
     CONFIRMED = "CONFIRMED"
@@ -75,6 +81,7 @@ class AuditAction(str, Enum):
     DELETE_CAMERA = "DELETE_CAMERA"
     RESTORE_CAMERA = "RESTORE_CAMERA"
     UPDATE_WATCH_AREA = "UPDATE_WATCH_AREA"
+    UPDATE_CAMERA_AI_CONFIG = "UPDATE_CAMERA_AI_CONFIG"
 
     # Emergency & Alerts
     CALL_114 = "CALL_114"

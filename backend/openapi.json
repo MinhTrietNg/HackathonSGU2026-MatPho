@@ -3048,7 +3048,7 @@
           "Cameras"
         ],
         "summary": "Probe RTSP stream",
-        "description": "Test connect RTSP stream within 3-5 seconds, extract resolution/fps and return preview snapshot.\nFigma screens I2, I4, I5.",
+        "description": "Test connect RTSP stream within 3-5 seconds, extract resolution/fps and return preview snapshot.\nIf an Edge Node is connected via Outbound WebSocket, delegates LAN probing to the Edge Node first.\nFigma screens I2, I4, I5.",
         "operationId": "probe_camera_api_v1_cameras_probe_post",
         "parameters": [
           {
@@ -3296,6 +3296,275 @@
                     "additionalProperties": true
                   },
                   "title": "Response List Trash Cameras Api V1 Cameras Trash Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cameras/ai-settings": {
+      "get": {
+        "tags": [
+          "Cameras"
+        ],
+        "summary": "List AI settings per camera across groups (Figma H7, H8, H9)",
+        "description": "Returns grouped camera AI settings for screens H7, H8, H9:\n- Filter tabs (chips) for all groups the user belongs to.\n- For each group: access_mode ('Editable' for LEADER, 'Locked' for members with lock banner).\n- For each camera: ai_mode, schedules, is_ai_currently_scanning, and formatted status_text.",
+        "operationId": "list_camera_ai_settings_api_v1_cameras_ai_settings_get",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lọc theo 1 nhóm cụ thể nếu muốn",
+              "title": "Group Id"
+            },
+            "description": "Lọc theo 1 nhóm cụ thể nếu muốn"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Camera Ai Settings Api V1 Cameras Ai Settings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cameras/{cam_id}/ai-config": {
+      "get": {
+        "tags": [
+          "Cameras"
+        ],
+        "summary": "Get camera AI detection & schedule config (Figma H10-H15)",
+        "description": "Get detailed AI mode and rest schedule slots for a single camera (Figma H10-H15).",
+        "operationId": "get_camera_ai_config_api_v1_cameras__cam_id__ai_config_get",
+        "parameters": [
+          {
+            "name": "cam_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cam Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Camera Ai Config Api V1 Cameras  Cam Id  Ai Config Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Cameras"
+        ],
+        "summary": "Update camera AI detection & schedule config (Patch)",
+        "description": "Save per-camera AI mode (ALWAYS | SCHEDULE | OFF) and up to 2 rest schedule slots (Figma H10-H15).\nRBAC: STRICTLY ONLY LEADER (Screen H8: 'Chỉ chủ nhóm được đổi cài đặt AI').\nSimultaneously pushes `SET_CAMERA_AI_CONFIG` down to the Edge Gateway (`edge-backend` -> `firewatch-ai`)\nto immediately connect or disconnect the RTSP input stream to the AI worker.",
+        "operationId": "update_camera_ai_config_api_v1_cameras__cam_id__ai_config_patch",
+        "parameters": [
+          {
+            "name": "cam_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cam Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraAIConfigUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Camera Ai Config Api V1 Cameras  Cam Id  Ai Config Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Cameras"
+        ],
+        "summary": "Update camera AI detection & schedule config (Figma H10-H15)",
+        "description": "Save per-camera AI mode (ALWAYS | SCHEDULE | OFF) and up to 2 rest schedule slots (Figma H10-H15).\nRBAC: STRICTLY ONLY LEADER (Screen H8: 'Chỉ chủ nhóm được đổi cài đặt AI').\nSimultaneously pushes `SET_CAMERA_AI_CONFIG` down to the Edge Gateway (`edge-backend` -> `firewatch-ai`)\nto immediately connect or disconnect the RTSP input stream to the AI worker.",
+        "operationId": "update_camera_ai_config_api_v1_cameras__cam_id__ai_config_put",
+        "parameters": [
+          {
+            "name": "cam_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cam Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraAIConfigUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Camera Ai Config Api V1 Cameras  Cam Id  Ai Config Put"
                 }
               }
             }
@@ -4182,6 +4451,75 @@
         }
       }
     },
+    "/api/v1/cameras/{cam_id}/thumbnail": {
+      "post": {
+        "tags": [
+          "Cameras"
+        ],
+        "summary": "Upload camera snapshot-on-exit thumbnail",
+        "description": "Receive Base64 PNG/JPEG snapshot-on-exit from Flutter mobile app,\nupload to Firebase Storage CDN with cache-buster ?v=<timestamp>,\nand update camera record in Firestore.\nRBAC: LEADER, MEMBER_MANAGER, or assigned MEMBER. NOTIFIER is forbidden (403).",
+        "operationId": "upload_camera_thumbnail_api_v1_cameras__cam_id__thumbnail_post",
+        "parameters": [
+          {
+            "name": "cam_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cam Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CameraThumbnailUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraThumbnailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/test-alert": {
       "post": {
         "tags": [
@@ -4327,6 +4665,22 @@
               ],
               "title": "X-Internal-Secret"
             }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "requestBody": {
@@ -4384,6 +4738,22 @@
                 }
               ],
               "title": "X-Internal-Secret"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -4443,6 +4813,22 @@
               ],
               "title": "X-Internal-Secret"
             }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "requestBody": {
@@ -4501,6 +4887,22 @@
               ],
               "title": "X-Internal-Secret"
             }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "requestBody": {
@@ -4541,7 +4943,7 @@
           "Internal AI"
         ],
         "summary": "Receive Ai Fire Events",
-        "description": "Webhook endpoint for Edge AI Service to push fire detection results.\n1. Saves event into Cloud Firestore (debounced 90s) & uploads snapshot to Storage.\n2. Starts Redis Two-Tier Escalation Timer (ADR 0011).\n3. Broadcasts Level 0 WebSocket alert to Leaders & Managers.\n4. Dispatches Level 0 FCM Data Message simultaneously.",
+        "description": "Phase 1 Fast Signal Webhook (<30ms):\nReceives lightweight fire signal JSON (~0.6KB) from Edge AI / EAG.\n1. Upserts event into Cloud Firestore (indexed by event_id or debounced 90s).\n2. If SUPPRESSED or REJECTED: cancels Redis escalation timer and notifies Frontend.\n3. If active fire: starts Redis Two-Tier Escalation Timer (ADR 0011) and broadcasts Level 0 alert.\n4. If snapshot_base64 is present, queues Phase 2 background storage upload.",
         "operationId": "receive_ai_fire_events_api_v1_alerts_events_post",
         "parameters": [
           {
@@ -4558,6 +4960,22 @@
                 }
               ],
               "title": "X-Internal-Secret"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -4599,7 +5017,7 @@
           "Internal AI"
         ],
         "summary": "Receive Ai Fire Events",
-        "description": "Webhook endpoint for Edge AI Service to push fire detection results.\n1. Saves event into Cloud Firestore (debounced 90s) & uploads snapshot to Storage.\n2. Starts Redis Two-Tier Escalation Timer (ADR 0011).\n3. Broadcasts Level 0 WebSocket alert to Leaders & Managers.\n4. Dispatches Level 0 FCM Data Message simultaneously.",
+        "description": "Phase 1 Fast Signal Webhook (<30ms):\nReceives lightweight fire signal JSON (~0.6KB) from Edge AI / EAG.\n1. Upserts event into Cloud Firestore (indexed by event_id or debounced 90s).\n2. If SUPPRESSED or REJECTED: cancels Redis escalation timer and notifies Frontend.\n3. If active fire: starts Redis Two-Tier Escalation Timer (ADR 0011) and broadcasts Level 0 alert.\n4. If snapshot_base64 is present, queues Phase 2 background storage upload.",
         "operationId": "receive_ai_fire_events_api_v1_internal_ai_fire_events_post",
         "parameters": [
           {
@@ -4616,6 +5034,22 @@
                 }
               ],
               "title": "X-Internal-Secret"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -4657,7 +5091,7 @@
           "Internal AI"
         ],
         "summary": "Receive Ai Fire Events",
-        "description": "Webhook endpoint for Edge AI Service to push fire detection results.\n1. Saves event into Cloud Firestore (debounced 90s) & uploads snapshot to Storage.\n2. Starts Redis Two-Tier Escalation Timer (ADR 0011).\n3. Broadcasts Level 0 WebSocket alert to Leaders & Managers.\n4. Dispatches Level 0 FCM Data Message simultaneously.",
+        "description": "Phase 1 Fast Signal Webhook (<30ms):\nReceives lightweight fire signal JSON (~0.6KB) from Edge AI / EAG.\n1. Upserts event into Cloud Firestore (indexed by event_id or debounced 90s).\n2. If SUPPRESSED or REJECTED: cancels Redis escalation timer and notifies Frontend.\n3. If active fire: starts Redis Two-Tier Escalation Timer (ADR 0011) and broadcasts Level 0 alert.\n4. If snapshot_base64 is present, queues Phase 2 background storage upload.",
         "operationId": "receive_ai_fire_events_internal_ai_fire_events_post",
         "parameters": [
           {
@@ -4675,6 +5109,22 @@
               ],
               "title": "X-Internal-Secret"
             }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "requestBody": {
@@ -4683,6 +5133,172 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AIFireEventPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ai/fire-events/{event_id}/snapshot": {
+      "post": {
+        "tags": [
+          "Internal AI"
+        ],
+        "summary": "Upload Ai Snapshot",
+        "description": "Phase 2 Background Upload Endpoint:\nEAG forwards the single clean JPEG snapshot (snapshot_base64 <= 200KB) to Cloud Backend.\nBackend stores it in Firebase Storage, marks snapshot_status=\"READY\", and notifies Frontend via WS.",
+        "operationId": "upload_ai_snapshot_api_v1_internal_ai_fire_events__event_id__snapshot_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "X-Internal-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Secret"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AISnapshotUploadPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/ai/fire-events/{event_id}/snapshot": {
+      "post": {
+        "tags": [
+          "Internal AI"
+        ],
+        "summary": "Upload Ai Snapshot",
+        "description": "Phase 2 Background Upload Endpoint:\nEAG forwards the single clean JPEG snapshot (snapshot_base64 <= 200KB) to Cloud Backend.\nBackend stores it in Firebase Storage, marks snapshot_status=\"READY\", and notifies Frontend via WS.",
+        "operationId": "upload_ai_snapshot_internal_ai_fire_events__event_id__snapshot_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "X-Internal-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Secret"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AISnapshotUploadPayload"
               }
             }
           }
@@ -5295,25 +5911,295 @@
   },
   "components": {
     "schemas": {
-      "AIFireEventPayload": {
+      "AIEventBoxModel": {
         "properties": {
-          "cam_id": {
+          "cls": {
             "type": "string",
-            "title": "Cam Id",
-            "description": "Mã camera phát hiện ngọn lửa"
-          },
-          "class_name": {
-            "type": "string",
-            "title": "Class Name",
-            "description": "Loại phát hiện: fire | smoke | both",
+            "title": "Cls",
+            "description": "fire | smoke",
             "default": "fire"
           },
-          "confidence": {
+          "conf": {
             "type": "number",
             "maximum": 1.0,
             "minimum": 0.0,
+            "title": "Conf",
+            "description": "Độ tự tin nhận diện",
+            "default": 0.8
+          },
+          "xyxy": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Xyxy",
+            "description": "Tọa độ pixel [x1, y1, x2, y2] trên khung gốc"
+          },
+          "xyxyn": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Xyxyn",
+            "description": "Tọa độ chuẩn hóa [x1, y1, x2, y2] tỉ lệ 0.0 - 1.0"
+          }
+        },
+        "type": "object",
+        "title": "AIEventBoxModel"
+      },
+      "AIFireEventPayload": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type",
+            "description": "created | updated",
+            "default": "created"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id",
+            "description": "Khóa sự cố duy nhất từ AI"
+          },
+          "camera_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Id",
+            "description": "Mã camera định danh phía AI"
+          },
+          "cam_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cam Id",
+            "description": "Mã camera chuẩn của hệ thống (do EAG gắn)"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "open | ended",
+            "default": "open"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity",
+            "description": "WARNING | CRITICAL",
+            "default": "WARNING"
+          },
+          "fire_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fire Type",
+            "description": "Phân loại đám cháy"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "Thời điểm bắt đầu phát hiện"
+          },
+          "last_seen_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen Ts",
+            "description": "Thời điểm gần nhất còn thấy lửa"
+          },
+          "frame_ts": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Ts",
+            "description": "Mốc thời gian frame chụp"
+          },
+          "frame_w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame W",
+            "description": "Chiều rộng khung gốc",
+            "default": 1920
+          },
+          "frame_h": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame H",
+            "description": "Chiều cao khung gốc",
+            "default": 1080
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/AIEventBoxModel"
+            },
+            "type": "array",
+            "title": "Boxes",
+            "description": "Danh sách box"
+          },
+          "verification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification",
+            "description": "VERIFIED | UNVERIFIED | SUPPRESSED",
+            "default": "UNVERIFIED"
+          },
+          "vlm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIVLMResultModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Kết quả mô hình VLM"
+          },
+          "verifier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIVerifierModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thông số verifier bền vững"
+          },
+          "luot_xac_minh": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Luot Xac Minh",
+            "description": "Số lượt thẩm định",
+            "default": 1
+          },
+          "snapshot_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Path",
+            "description": "Đường dẫn file ảnh trên Edge"
+          },
+          "snapshot_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Base64",
+            "description": "Chuỗi ảnh JPEG Base64"
+          },
+          "class_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Name",
+            "description": "fire | smoke | both",
+            "default": "fire"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Confidence",
-            "description": "Độ tin cậy nhận diện (0.0 -> 1.0)"
+            "description": "Độ tự tin nhận diện"
           },
           "timestamp": {
             "anyOf": [
@@ -5325,7 +6211,7 @@
               }
             ],
             "title": "Timestamp",
-            "description": "Mốc thời gian timestamp từ camera"
+            "description": "Epoch timestamp từ camera"
           },
           "bbox": {
             "items": {
@@ -5333,7 +6219,7 @@
             },
             "type": "array",
             "title": "Bbox",
-            "description": "Tọa độ [x1, y1, x2, y2] chuẩn hóa 0.0 - 1.0"
+            "description": "Tọa độ [x1, y1, x2, y2]"
           },
           "image_base64": {
             "anyOf": [
@@ -5345,15 +6231,195 @@
               }
             ],
             "title": "Image Base64",
-            "description": "Ảnh snapshot chụp lại thời điểm phát hiện cháy"
+            "description": "Alias cũ của snapshot_base64"
+          }
+        },
+        "type": "object",
+        "title": "AIFireEventPayload"
+      },
+      "AIMode": {
+        "type": "string",
+        "enum": [
+          "ALWAYS",
+          "SCHEDULE",
+          "OFF"
+        ],
+        "title": "AIMode"
+      },
+      "AIScheduleItemModel": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$",
+            "title": "From",
+            "description": "Giờ bắt đầu nghỉ theo định dạng 24h (HH:mm hoặc HH:mm:ss)"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$",
+            "title": "To",
+            "description": "Giờ kết thúc nghỉ theo định dạng 24h (HH:mm hoặc HH:mm:ss)"
+          },
+          "days": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Days",
+            "description": "Các thứ trong tuần theo chuẩn ISO-8601: 1 = Thứ Hai ... 7 = Chủ Nhật"
           }
         },
         "type": "object",
         "required": [
-          "cam_id",
-          "confidence"
+          "from",
+          "to",
+          "days"
         ],
-        "title": "AIFireEventPayload"
+        "title": "AIScheduleItemModel"
+      },
+      "AIScheduleSlotModel": {
+        "properties": {
+          "slot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Id",
+            "description": "Mã định danh khung giờ nghỉ (slot_1, slot_2)"
+          },
+          "start_time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Start Time",
+            "description": "Giờ bắt đầu nghỉ (HH:MM)"
+          },
+          "end_time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "End Time",
+            "description": "Giờ kết thúc nghỉ (HH:MM)"
+          },
+          "days": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "T2",
+                "T3",
+                "T4",
+                "T5",
+                "T6",
+                "T7",
+                "CN"
+              ]
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Days",
+            "description": "Các thứ áp dụng: T2..T7, CN"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_time",
+          "end_time",
+          "days"
+        ],
+        "title": "AIScheduleSlotModel"
+      },
+      "AISnapshotUploadPayload": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id",
+            "description": "Mã sự cố tương ứng"
+          },
+          "cam_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cam Id",
+            "description": "Mã camera chuẩn"
+          },
+          "camera_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Id",
+            "description": "Mã camera phía AI"
+          },
+          "frame_ts": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Ts",
+            "description": "Mốc thời gian chụp frame"
+          },
+          "frame_w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame W",
+            "description": "Chiều rộng khung gốc",
+            "default": 1920
+          },
+          "frame_h": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame H",
+            "description": "Chiều cao khung gốc",
+            "default": 1080
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/AIEventBoxModel"
+            },
+            "type": "array",
+            "title": "Boxes",
+            "description": "Danh sách bounding box"
+          },
+          "snapshot_base64": {
+            "type": "string",
+            "title": "Snapshot Base64",
+            "description": "Chuỗi Base64 ảnh JPEG gốc không vẽ box"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "snapshot_base64"
+        ],
+        "title": "AISnapshotUploadPayload"
       },
       "AISuppressedPayload": {
         "properties": {
@@ -5391,6 +6457,111 @@
           "cam_id"
         ],
         "title": "AISuppressedPayload"
+      },
+      "AIVLMResultModel": {
+        "properties": {
+          "is_fire": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Fire"
+          },
+          "is_smoke": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Smoke"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "description_vi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description Vi"
+          },
+          "fire_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fire Type"
+          }
+        },
+        "type": "object",
+        "title": "AIVLMResultModel"
+      },
+      "AIVerifierModel": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "needs_human_check": {
+            "type": "boolean",
+            "title": "Needs Human Check",
+            "default": false
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "AIVerifierModel"
       },
       "AIVerifyingPayload": {
         "properties": {
@@ -5485,6 +6656,35 @@
         "type": "object",
         "title": "AssignCamerasRequest"
       },
+      "CameraAIConfigUpdateRequest": {
+        "properties": {
+          "ai_mode": {
+            "$ref": "#/components/schemas/AIMode",
+            "description": "ALWAYS | SCHEDULE | OFF"
+          },
+          "schedules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AIScheduleSlotModel"
+                },
+                "type": "array",
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedules",
+            "description": "Tối đa 2 khung giờ nghỉ AI (chỉ áp dụng khi ai_mode = SCHEDULE)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ai_mode"
+        ],
+        "title": "CameraAIConfigUpdateRequest"
+      },
       "CameraCreateRequest": {
         "properties": {
           "group_id": {
@@ -5543,6 +6743,55 @@
                 "type": "null"
               }
             ]
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active",
+            "default": true
+          },
+          "is_ai_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Ai Enabled",
+            "default": true
+          },
+          "ai_schedule": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AIScheduleItemModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Schedule"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
           }
         },
         "type": "object",
@@ -5606,6 +6855,48 @@
           "preview_snapshot_url"
         ],
         "title": "CameraProbeResponse"
+      },
+      "CameraThumbnailResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "cam_id": {
+            "type": "string",
+            "title": "Cam Id"
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "title": "Thumbnail Url"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cam_id",
+          "thumbnail_url",
+          "updated_at"
+        ],
+        "title": "CameraThumbnailResponse"
+      },
+      "CameraThumbnailUploadRequest": {
+        "properties": {
+          "image_base64": {
+            "type": "string",
+            "title": "Image Base64",
+            "description": "Chuỗi base64 của ảnh thumbnail (PNG hoặc JPEG)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_base64"
+        ],
+        "title": "CameraThumbnailUploadRequest"
       },
       "CameraUpdateRequest": {
         "properties": {
@@ -5687,6 +6978,31 @@
               }
             ],
             "title": "Is Ai Enabled"
+          },
+          "ai_schedule": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AIScheduleItemModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Schedule"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
           }
         },
         "type": "object",

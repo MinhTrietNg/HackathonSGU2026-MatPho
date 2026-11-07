@@ -3,9 +3,77 @@ Camera & Watch Area Models and DTOs for Mắt Phố
 Phase 4: Quản lý camera, thùng rác 30 ngày, thăm dò RTSP & Stream HLS
 """
 
-from typing import Optional, List, Any
-from pydantic import BaseModel, Field
-from .common import CameraStatus
+from typing import Optional, List, Any, Literal
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+from .common import CameraStatus, AIMode
+
+
+DayOfWeekLiteral = Literal["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+
+
+class AIScheduleItemModel(BaseModel):
+    from_time: str = Field(
+        ...,
+        alias="from",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$",
+        description="Giờ bắt đầu nghỉ theo định dạng 24h (HH:mm hoặc HH:mm:ss)",
+    )
+    to_time: str = Field(
+        ...,
+        alias="to",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$",
+        description="Giờ kết thúc nghỉ theo định dạng 24h (HH:mm hoặc HH:mm:ss)",
+    )
+    days: List[int] = Field(
+        ...,
+        min_length=1,
+        max_length=7,
+        description="Các thứ trong tuần theo chuẩn ISO-8601: 1 = Thứ Hai ... 7 = Chủ Nhật",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("to_time")
+    @classmethod
+    def validate_different_times(cls, v: str, info) -> str:
+        start = info.data.get("from_time")
+        if start and start[:5] == v[:5]:
+            raise ValueError("Giờ kết thúc ('to') không được trùng với giờ bắt đầu ('from').")
+        return v
+
+    @field_validator("days")
+    @classmethod
+    def validate_days_iso(cls, v: List[int]) -> List[int]:
+        for d in v:
+            if not (1 <= d <= 7):
+                raise ValueError("Mỗi ngày trong 'days' phải nằm trong khoảng từ 1 (Thứ 2) đến 7 (Chủ nhật).")
+        if len(v) != len(set(v)):
+            raise ValueError("Các ngày trong mảng 'days' không được trùng lặp.")
+        return sorted(v)
+
+
+class AIScheduleSlotModel(BaseModel):
+    slot_id: Optional[str] = Field(default=None, description="Mã định danh khung giờ nghỉ (slot_1, slot_2)")
+    start_time: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="Giờ bắt đầu nghỉ (HH:MM)")
+    end_time: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="Giờ kết thúc nghỉ (HH:MM)")
+    days: List[DayOfWeekLiteral] = Field(..., min_length=1, max_length=7, description="Các thứ áp dụng: T2..T7, CN")
+
+    @field_validator("end_time")
+    @classmethod
+    def validate_start_end_different(cls, v: str, info) -> str:
+        start = info.data.get("start_time")
+        if start and start == v:
+            raise ValueError("Giờ kết thúc (end_time) không được trùng với giờ bắt đầu (start_time).")
+        return v
+
+
+class CameraAIConfigUpdateRequest(BaseModel):
+    ai_mode: AIMode = Field(..., description="ALWAYS | SCHEDULE | OFF")
+    schedules: Optional[List[AIScheduleSlotModel]] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Tối đa 2 khung giờ nghỉ AI (chỉ áp dụng khi ai_mode = SCHEDULE)",
+    )
 
 
 class WatchAreaModel(BaseModel):
@@ -30,6 +98,10 @@ class CameraModel(BaseModel):
     created_by: Optional[str] = Field(default="usr_system", description="UID người thêm camera")
     is_active: bool = Field(default=True, description="Bật/Tắt nạp luồng vào MediaMTX")
     is_ai_enabled: bool = Field(default=True, description="Bật/Tắt gửi frame vào FireWatch AI")
+    ai_schedule: List[AIScheduleItemModel] = Field(default_factory=list, description="Lịch nghỉ AI theo giờ (màn H7-H15)")
+    thumbnail_url: Optional[str] = Field(None, description="URL ảnh thumbnail mới nhất của camera")
+    ai_mode: AIMode = Field(default=AIMode.ALWAYS, description="Chế độ AI: ALWAYS | SCHEDULE | OFF (Màn H7-H15)")
+    ai_schedules: List[AIScheduleSlotModel] = Field(default_factory=list, description="Danh sách khung giờ nghỉ AI (Tối đa 2 khung)")
     status: CameraStatus = Field(default=CameraStatus.ONLINE, description="Trạng thái: ONLINE | OFFLINE | SIGNAL_LOST | CONNECTING | DISABLED | DELETED")
     is_deleted: bool = Field(default=False, description="Cờ xóa mềm (Soft Delete)")
     deleted_at: Optional[Any] = Field(None, description="Thời điểm đưa vào thùng rác")
@@ -47,6 +119,10 @@ class CameraCreateRequest(BaseModel):
     edge_device_id: Optional[str] = None
     rtsp_url: str
     watch_area: Optional[WatchAreaModel] = None
+    is_active: Optional[bool] = True
+    is_ai_enabled: Optional[bool] = True
+    ai_schedule: Optional[List[AIScheduleItemModel]] = None
+    thumbnail_url: Optional[str] = None
 
 
 class CameraUpdateRequest(BaseModel):
@@ -57,6 +133,19 @@ class CameraUpdateRequest(BaseModel):
     watch_area: Optional[WatchAreaModel] = None
     is_active: Optional[bool] = None
     is_ai_enabled: Optional[bool] = None
+    ai_schedule: Optional[List[AIScheduleItemModel]] = None
+    thumbnail_url: Optional[str] = None
+
+
+class CameraThumbnailUploadRequest(BaseModel):
+    image_base64: str = Field(..., description="Chuỗi base64 của ảnh thumbnail (PNG hoặc JPEG)")
+
+
+class CameraThumbnailResponse(BaseModel):
+    status: str = "ok"
+    cam_id: str
+    thumbnail_url: str
+    updated_at: str
 
 
 class CameraProbeRequest(BaseModel):

@@ -252,6 +252,12 @@ async def edge_websocket_endpoint(
                         req_id = payload.get("request_id")
                         if req_id:
                             ws_manager.resolve_edge_response(req_id, payload.get("data") or payload)
+                    elif msg_type == "CAMERA_AI_CONFIG_ACK":
+                        cam_id = payload.get("cam_id")
+                        logger.info(
+                            f"Edge {req_edge_id} applied AI config for {cam_id}: "
+                            f"ai_mode={payload.get('ai_mode')}, should_ai_scan_now={payload.get('should_ai_scan_now')}"
+                        )
                 except Exception as ex:
                     logger.debug(f"Edge message processing exception: {ex}")
     except WebSocketDisconnect:

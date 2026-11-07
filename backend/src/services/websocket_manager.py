@@ -247,12 +247,13 @@ class WebSocketConnectionManager:
         self,
         group_id: str,
         alert_id: str,
-        status: str,
+        status: Optional[str] = None,
         escalation_level: int = 1,
         resolved_by_name: Optional[str] = None,
         resolved_at: Optional[str] = None,
+        alert_payload: Optional[Dict[str, Any]] = None,
     ):
-        """Broadcast alert resolution / cancellation to silence siren across clients."""
+        """Broadcast alert resolution / update to refresh client telemetry and silence sirens if resolved."""
         msg = {
             "type": "FIRE_ALERT_UPDATED",
             "alert_id": alert_id,
@@ -261,7 +262,36 @@ class WebSocketConnectionManager:
             "resolved_by_name": resolved_by_name,
             "resolved_at": resolved_at,
         }
+        if alert_payload:
+            msg.update(alert_payload)
         await self.broadcast_to_room(f"group_{group_id}", msg)
+
+    async def broadcast_alert_snapshot_ready(
+        self,
+        group_id: str,
+        alert_id: str,
+        event_id: Optional[str] = None,
+        cam_id: Optional[str] = None,
+        still_url: str = "",
+        boxes: Optional[List[Dict[str, Any]]] = None,
+        frame_w: int = 1920,
+        frame_h: int = 1080,
+    ):
+        """Broadcast that Phase 2 snapshot image upload has completed and is ready for history display."""
+        msg = {
+            "type": "FIRE_ALERT_SNAPSHOT_READY",
+            "alert_id": alert_id,
+            "event_id": event_id or alert_id,
+            "cam_id": cam_id,
+            "still_url": still_url,
+            "fire_image_url": still_url,
+            "boxes": boxes or [],
+            "frame_w": frame_w,
+            "frame_h": frame_h,
+        }
+        await self.broadcast_to_room(f"group_{group_id}", msg)
+        if cam_id:
+            await self.broadcast_to_room(f"camera_{cam_id}", msg)
 
 
 _ws_manager_instance: Optional[WebSocketConnectionManager] = None

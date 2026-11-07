@@ -2,7 +2,7 @@
 Alert Repository & Incident Aggregation Engine for Mắt Phố (Phase 6)
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -14,6 +14,9 @@ from ...models.fire_alert import (
     FireAlertModel,
     StepTimelineModel,
     TimelineSnapshotModel,
+    AIFireEventPayload,
+    AISnapshotUploadPayload,
+    AIEventBoxModel,
 )
 from ...models.audit_log import AuditLogModel
 from ...models.common import (
@@ -130,25 +133,26 @@ class AlertRepository(BaseRepository):
             return logs[:limit]
 
     # =========================================================================
-    # FIRE ALERTS & INCIDENT AGGREGATION ENGINE (90s Debounce)
+    # FIRE ALERTS & INCIDENT AGGREGATION ENGINE (Two-Phase: Signal + 1 Snapshot)
     # =========================================================================
 
-    def save_fire_incident(
+    def upsert_fire_incident_signal(
         self,
-        cam_id: str,
-        class_name: str,
-        confidence: float,
-        bbox: List[float],
-        image_data: Optional[str] = None,
-    ) -> FireAlertModel:
+        payload: AIFireEventPayload,
+    ) -> Tuple[FireAlertModel, bool]:
         """
-        AI Webhook ingestion with 90-second incident debouncing:
+        Fast Phase 1 ingestion (<30ms, no snapshot upload waiting):
         1. Look up camera info.
-        2. Check for active incident on this camera created in the last 90s.
-        3. If found: append snapshot to timeline_snapshots (up to 60) and update steps.
-        4. If not found: upload initial snapshot and create new fire_alerts document.
+        2. Format boxes (xyxy, xyxyn, cls, conf), compute primary_bbox, sign, max_conf.
+        3. Upsert by event_id (or 90s debounce if event_id omitted):
+           - If existing: update fields, status, verification, vlm, verifier. Returns (alert, False).
+           - If new: create alert with snapshot_status="PENDING". Returns (alert, True).
         """
-        cam = self.camera_repo.get_camera(cam_id) if cam_id else None
+        cam_id = payload.cam_id or payload.camera_id
+        if not cam_id or str(cam_id).strip().lower() in ("null", "none", ""):
+            raise NotFoundException("Mã camera (cam_id) không hợp lệ hoặc bị thiếu.", code="CAMERA_NOT_FOUND")
+
+        cam = self.camera_repo.get_camera(cam_id)
         if not cam:
             raise NotFoundException(f"Không tìm thấy camera tương ứng ({cam_id}).", code="CAMERA_NOT_FOUND")
 
@@ -159,132 +163,224 @@ class AlertRepository(BaseRepository):
         now = datetime.now(timezone.utc)
         debounce_cutoff = now - timedelta(seconds=90)
 
-        existing_alert_doc = None
-        # Try ordered stream with fallback
-        try:
-            ordered_stream = (
-                self.collection
-                .where(filter=FieldFilter("cam_id", "==", cam_id))
-                .order_by("created_at", direction=firestore.Query.DESCENDING)
-                .limit(10)
-                .stream()
-            )
-            for doc in ordered_stream:
-                d = doc.to_dict()
-                if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
-                    continue
-                c_at = d.get("created_at")
-                if not c_at:
-                    continue
-                if isinstance(c_at, str):
-                    try:
-                        c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
-                    except Exception:
-                        continue
-                if c_at >= debounce_cutoff:
-                    existing_alert_doc = doc
-                    break
-        except Exception:
-            fallback_stream = self.collection.where(filter=FieldFilter("cam_id", "==", cam_id)).stream()
-            for doc in fallback_stream:
-                d = doc.to_dict()
-                if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
-                    continue
-                c_at = d.get("created_at")
-                if not c_at:
-                    continue
-                if isinstance(c_at, str):
-                    try:
-                        c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
-                    except Exception:
-                        continue
-                if c_at >= debounce_cutoff:
-                    existing_alert_doc = doc
-                    break
+        # 1. Parse Boxes & Coordinates
+        formatted_boxes = []
+        has_fire = False
+        has_smoke = False
+        max_conf = payload.confidence if payload.confidence is not None else 0.8
+        primary_bbox = payload.bbox or []
 
+        fw = payload.frame_w or 1920
+        fh = payload.frame_h or 1080
+
+        if payload.boxes:
+            conf_candidates = []
+            for b in payload.boxes:
+                b_cls = str(b.cls).lower()
+                if "fire" in b_cls:
+                    has_fire = True
+                if "smoke" in b_cls:
+                    has_smoke = True
+                conf_candidates.append(b.conf)
+
+                # Compute normalized xyxyn if not provided
+                xyxyn = list(b.xyxyn)
+                if not xyxyn and len(b.xyxy) == 4 and fw > 0 and fh > 0:
+                    xyxyn = [
+                        round(b.xyxy[0] / fw, 4),
+                        round(b.xyxy[1] / fh, 4),
+                        round(b.xyxy[2] / fw, 4),
+                        round(b.xyxy[3] / fh, 4),
+                    ]
+
+                formatted_boxes.append({
+                    "cls": b_cls,
+                    "conf": b.conf,
+                    "xyxy": b.xyxy,
+                    "xyxyn": xyxyn,
+                })
+
+            if conf_candidates:
+                max_conf = max(conf_candidates)
+            # Pick best box for primary_bbox
+            best_b = max(payload.boxes, key=lambda x: x.conf)
+            primary_bbox = best_b.xyxyn or best_b.xyxy
+        else:
+            cls_name = (payload.class_name or "fire").lower()
+            if "fire" in cls_name:
+                has_fire = True
+            if "smoke" in cls_name:
+                has_smoke = True
+
+        if has_fire and has_smoke:
+            sign = SignType.BOTH
+        elif has_smoke:
+            sign = SignType.SMOKE
+        else:
+            sign = SignType.FIRE
+
+        # 2. VLM / Verifier description & verification status
+        summary = f"Phát hiện dấu hiệu {sign.value} tại {subgroup_name}"
+        detail = f"Hệ thống phát hiện {sign.value} với độ tin cậy {max_conf:.2f}."
+
+        if payload.vlm and payload.vlm.description_vi:
+            detail = payload.vlm.description_vi
+            summary = payload.vlm.description_vi[:100]
+
+        is_suppressed = (
+            payload.verification == "SUPPRESSED"
+            or (payload.verifier and payload.verifier.status == "REJECTED")
+        )
+
+        # 3. Locate Existing Alert by event_id or fallback 90s debounce
+        existing_alert_doc = None
+        event_id = payload.event_id
+
+        if event_id:
+            # Query by event_id or check direct document ID
+            try:
+                doc_by_id = self.collection.document(f"alt_{event_id}").get()
+                if doc_by_id.exists:
+                    existing_alert_doc = doc_by_id
+            except Exception:
+                pass
+
+            if not existing_alert_doc:
+                try:
+                    stream = self.collection.where(filter=FieldFilter("event_id", "==", event_id)).limit(1).stream()
+                    for doc in stream:
+                        existing_alert_doc = doc
+                        break
+                except Exception:
+                    pass
+
+        # Fallback to 90s camera debounce if event_id omitted or not yet matched
+        if not existing_alert_doc:
+            try:
+                ordered_stream = (
+                    self.collection
+                    .where(filter=FieldFilter("cam_id", "==", cam_id))
+                    .order_by("created_at", direction=firestore.Query.DESCENDING)
+                    .limit(5)
+                    .stream()
+                )
+                for doc in ordered_stream:
+                    d = doc.to_dict()
+                    if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
+                        continue
+                    c_at = d.get("created_at")
+                    if not c_at:
+                        continue
+                    if isinstance(c_at, str):
+                        try:
+                            c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
+                        except Exception:
+                            continue
+                    if c_at >= debounce_cutoff:
+                        existing_alert_doc = doc
+                        break
+            except Exception:
+                fallback_stream = self.collection.where(filter=FieldFilter("cam_id", "==", cam_id)).stream()
+                for doc in fallback_stream:
+                    d = doc.to_dict()
+                    if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
+                        continue
+                    c_at = d.get("created_at")
+                    if not c_at:
+                        continue
+                    if isinstance(c_at, str):
+                        try:
+                            c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
+                        except Exception:
+                            continue
+                    if c_at >= debounce_cutoff:
+                        existing_alert_doc = doc
+                        break
+
+        # 4. Handle Existing Alert (type == "updated" or repeat within debounce)
         if existing_alert_doc:
-            # Aggregate into existing incident
             alert_id = existing_alert_doc.id
             alert_dict = existing_alert_doc.to_dict()
 
-            timeline_snapshots = alert_dict.get("timeline_snapshots", [])
-            if len(timeline_snapshots) < 60 and image_data:
-                snap_id = f"snap_{int(now.timestamp())}"
-                _, download_url = self.storage.upload_fire_snapshot(
-                    group_id=group_id,
-                    cam_id=cam_id,
-                    alert_id=alert_id,
-                    image_data=image_data,
-                    filename=f"timeline/{snap_id}.jpg",
-                )
-                new_snapshot = {
-                    "snapshot_id": snap_id,
-                    "image_url": download_url,
-                    "confidence": confidence,
-                    "timestamp": current_utc_iso(),
-                    "bbox": bbox,
-                }
-                timeline_snapshots.append(new_snapshot)
+            update_data: Dict[str, Any] = {
+                "updated_at": datetime.now(timezone.utc),
+                "last_seen_ts": payload.last_seen_ts or current_utc_iso(),
+            }
+            if payload.status:
+                update_data["ai_status"] = payload.status
+            if payload.severity:
+                update_data["severity"] = payload.severity
+            if formatted_boxes:
+                update_data["boxes"] = formatted_boxes
+                update_data["bbox"] = primary_bbox
+            if max_conf > alert_dict.get("confidence", 0.0):
+                update_data["confidence"] = max_conf
+            if payload.luot_xac_minh:
+                update_data["check_count"] = payload.luot_xac_minh
+            if payload.vlm:
+                update_data["vlm"] = payload.vlm.model_dump()
+                if payload.vlm.description_vi:
+                    update_data["detail"] = payload.vlm.description_vi
+            if payload.verifier:
+                update_data["verifier"] = payload.verifier.model_dump()
+                update_data["needs_human_check"] = payload.verifier.needs_human_check
 
-                self.collection.document(alert_id).update({
-                    "timeline_snapshots": timeline_snapshots,
-                    "confidence": max(alert_dict.get("confidence", 0.0), confidence),
-                    "updated_at": datetime.now(timezone.utc),
-                })
-                alert_dict["timeline_snapshots"] = timeline_snapshots
-                alert_dict["confidence"] = max(alert_dict.get("confidence", 0.0), confidence)
+            if is_suppressed:
+                update_data["status"] = AlertStatus.SUPPRESSED.value
+                update_data["verification"] = AlertVerification.SUPPRESSED.value
+            elif payload.verification == "VERIFIED":
+                update_data["verification"] = AlertVerification.VERIFIED.value
 
-            return self._parse_alert(alert_dict)
+            self.collection.document(alert_id).update(update_data)
+            alert_dict.update(update_data)
+            return self._parse_alert(alert_dict), False
 
-        # Create New Incident
-        alert_id = generate_semantic_id("alt")
-        fire_image_url = ""
-        if image_data:
-            _, fire_image_url = self.storage.upload_fire_snapshot(
-                group_id=group_id,
-                cam_id=cam_id,
-                alert_id=alert_id,
-                image_data=image_data,
-                filename="initial_detected.jpg",
-            )
-        else:
-            fire_image_url = f"https://firebasestorage.googleapis.com/v0/b/matpho-c7e77.firebasestorage.app/o/fire_alerts%2F{group_id}%2F{cam_id}%2F{alert_id}%2Finitial_detected.jpg?alt=media"
+        # 5. Handle New Alert (type == "created")
+        alert_id = f"alt_{event_id}" if event_id else generate_semantic_id("alt")
 
         steps = [
             StepTimelineModel(kind="DETECTED", at=current_utc_iso(), label="Camera phát hiện dấu hiệu ngọn lửa"),
-            StepTimelineModel(kind="IMAGE_SENT", at=current_utc_iso(), label="FireWatch gửi snapshot về FastAPI Gateway"),
-            StepTimelineModel(kind="AI_VERIFIED", at=current_utc_iso(), label=f"Mô hình ONNX & VotingEngine xác nhận độ tin cậy {int(confidence*100)}%"),
+            StepTimelineModel(kind="IMAGE_SENT", at=current_utc_iso(), label="FireWatch gửi tín hiệu về FastAPI Gateway"),
+            StepTimelineModel(kind="AI_VERIFIED", at=current_utc_iso(), label=f"Mô hình FireWatch xác nhận độ tin cậy {int(max_conf*100)}%"),
             StepTimelineModel(kind="ALERT_TRIGGERED", at=current_utc_iso(), label="Kích hoạt còi hú cấp 1 tới Leader & Member Manager"),
         ]
 
-        initial_snapshot = TimelineSnapshotModel(
-            snapshot_id=f"snap_{int(now.timestamp())}",
-            image_url=fire_image_url,
-            confidence=confidence,
-            timestamp=current_utc_iso(),
-            bbox=bbox,
-        )
-
         alert_data = {
             "alert_id": alert_id,
+            "event_id": event_id or alert_id,
             "group_id": group_id,
             "subgroup_id": subgroup_id,
             "subgroup_name": subgroup_name,
             "location_name": subgroup_name,
             "cam_id": cam_id,
             "cam_name": cam.cam_name,
-            "summary": f"Phát hiện dấu hiệu {class_name} tại {subgroup_name}",
-            "detail": f"Mô hình YOLO26n ONNX phát hiện {class_name} với độ tin cậy {confidence:.2f}.",
+            "summary": summary,
+            "detail": detail,
             "call_script": f"Cháy tại {subgroup_name}, cơ sở {cam.cam_name}",
-            "sign": SignType.BOTH.value if class_name == "both" else (SignType.SMOKE.value if class_name == "smoke" else SignType.FIRE.value),
-            "check_count": 2,
-            "fire_image_url": fire_image_url,
-            "still_url": fire_image_url,
-            "confidence": confidence,
-            "status": AlertStatus.NEW.value,
-            "verification": AlertVerification.VERIFIED.value,
+            "sign": sign.value,
+            "check_count": payload.luot_xac_minh or 1,
+            "fire_image_url": "",
+            "still_url": "",
+            "snapshot_status": "PENDING",
+            "confidence": max_conf,
+            "status": AlertStatus.SUPPRESSED.value if is_suppressed else AlertStatus.NEW.value,
+            "verification": AlertVerification.SUPPRESSED.value if is_suppressed else (
+                AlertVerification.VERIFIED.value if payload.verification == "VERIFIED" else AlertVerification.UNVERIFIED.value
+            ),
+            "ai_status": payload.status or "open",
+            "severity": payload.severity or "WARNING",
+            "fire_type": payload.fire_type,
+            "started_at": payload.started_at or current_utc_iso(),
+            "last_seen_ts": payload.last_seen_ts or current_utc_iso(),
+            "frame_ts": payload.frame_ts or current_utc_iso(),
+            "frame_w": fw,
+            "frame_h": fh,
+            "boxes": formatted_boxes,
+            "bbox": primary_bbox,
+            "vlm": payload.vlm.model_dump() if payload.vlm else None,
+            "verifier": payload.verifier.model_dump() if payload.verifier else None,
             "steps": [s.model_dump() for s in steps],
-            "timeline_snapshots": [initial_snapshot.model_dump()],
+            "timeline_snapshots": [],
             "called_114_at": None,
             "escalation_level": 0,
             "next_escalation_at": None,
@@ -307,10 +403,135 @@ class AlertRepository(BaseRepository):
             actor_id="system_ai_firewatch",
             action=AuditAction.ALERT_TRIGGERED,
             target_entity=f"alert:{alert_id}",
-            details={"cam_id": cam_id, "confidence": confidence, "sign": class_name},
+            details={"cam_id": cam_id, "confidence": max_conf, "sign": sign.value, "event_id": event_id},
         )
 
-        return self._parse_alert(alert_data)
+        return self._parse_alert(alert_data), True
+
+    def attach_incident_snapshot(
+        self,
+        event_id: str,
+        cam_id: Optional[str] = None,
+        snapshot_base64: str = "",
+        frame_ts: Optional[Any] = None,
+        boxes: Optional[List[Any]] = None,
+        frame_w: Optional[int] = 1920,
+        frame_h: Optional[int] = 1080,
+    ) -> Optional[FireAlertModel]:
+        """
+        Phase 2 background ingestion of history snapshot (1 single image per incident):
+        1. Find alert by event_id (or alert_id).
+        2. If alert already has snapshot_status == "READY" and fire_image_url != "", skip upload.
+        3. Upload snapshot to Firebase Storage.
+        4. Update Firestore with fire_image_url, still_url, snapshot_status="READY", and single snapshot in timeline_snapshots.
+        """
+        if not snapshot_base64:
+            return None
+
+        # Locate alert
+        alert_doc = None
+        # Try direct alt_{event_id} or event_id
+        for candidate_id in (f"alt_{event_id}", event_id):
+            try:
+                doc = self.collection.document(candidate_id).get()
+                if doc.exists:
+                    alert_doc = doc
+                    break
+            except Exception:
+                pass
+
+        if not alert_doc:
+            try:
+                stream = self.collection.where(filter=FieldFilter("event_id", "==", event_id)).limit(1).stream()
+                for doc in stream:
+                    alert_doc = doc
+                    break
+            except Exception:
+                pass
+
+        if not alert_doc:
+            return None
+
+        alert_id = alert_doc.id
+        alert_dict = alert_doc.to_dict()
+
+        # If already ready, avoid redundant upload
+        if alert_dict.get("snapshot_status") == "READY" and alert_dict.get("fire_image_url"):
+            return self._parse_alert(alert_dict)
+
+        group_id = alert_dict.get("group_id", "grp_default")
+        alert_cam_id = alert_dict.get("cam_id") or cam_id or "cam_unknown"
+
+        # Upload single history snapshot
+        _, download_url = self.storage.upload_fire_snapshot(
+            group_id=group_id,
+            cam_id=alert_cam_id,
+            alert_id=alert_id,
+            image_data=snapshot_base64,
+            filename="history_snapshot.jpg",
+        )
+
+        # Build single snapshot timeline entry
+        current_boxes = boxes if boxes is not None else alert_dict.get("boxes", [])
+        current_fw = frame_w or alert_dict.get("frame_w", 1920)
+        current_fh = frame_h or alert_dict.get("frame_h", 1080)
+
+        single_snapshot = [{
+            "snapshot_id": f"snap_{alert_id}",
+            "image_url": download_url,
+            "confidence": alert_dict.get("confidence", 0.9),
+            "timestamp": str(frame_ts or current_utc_iso()),
+            "bbox": alert_dict.get("bbox", []),
+            "boxes": current_boxes,
+            "frame_w": current_fw,
+            "frame_h": current_fh,
+        }]
+
+        update_payload: Dict[str, Any] = {
+            "fire_image_url": download_url,
+            "still_url": download_url,
+            "snapshot_status": "READY",
+            "timeline_snapshots": single_snapshot,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if boxes:
+            update_payload["boxes"] = boxes
+        if frame_w:
+            update_payload["frame_w"] = frame_w
+        if frame_h:
+            update_payload["frame_h"] = frame_h
+
+        self.collection.document(alert_id).update(update_payload)
+        alert_dict.update(update_payload)
+        return self._parse_alert(alert_dict)
+
+    def save_fire_incident(
+        self,
+        cam_id: str,
+        class_name: str,
+        confidence: float,
+        bbox: List[float],
+        image_data: Optional[str] = None,
+    ) -> FireAlertModel:
+        """Backward-compatible wrapper combining Phase 1 signal + Phase 2 snapshot upload."""
+        payload = AIFireEventPayload(
+            cam_id=cam_id,
+            class_name=class_name,
+            confidence=confidence,
+            bbox=bbox,
+            snapshot_base64=image_data,
+        )
+        alert_record, _ = self.upsert_fire_incident_signal(payload)
+        if image_data:
+            updated = self.attach_incident_snapshot(
+                event_id=alert_record.event_id or alert_record.alert_id,
+                cam_id=cam_id,
+                snapshot_base64=image_data,
+                boxes=[{"cls": class_name, "conf": confidence, "xyxy": bbox, "xyxyn": bbox}],
+            )
+            return updated or alert_record
+        return alert_record
+
 
     def resolve_fire_incident(self, alert_id: str, resolved_by: str, resolution_note: Optional[str] = None) -> bool:
         alert_ref = self.collection.document(alert_id)

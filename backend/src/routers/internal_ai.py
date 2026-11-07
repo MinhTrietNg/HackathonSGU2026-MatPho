@@ -11,10 +11,14 @@ from fastapi import APIRouter, Depends, status
 from ..core.security import verify_internal_secret
 from ..core.exceptions import NotFoundException
 from ..core.formatters import format_iso_utc
+from ..core.ai_schedule import should_ai_scan_now
 from ..models.fire_alert import (
     AIFireEventPayload,
+    AISnapshotUploadPayload,
     AIVerifyingPayload,
     AISuppressedPayload,
+    AlertStatus,
+    AlertVerification,
 )
 from ..services.repositories.alert_repo import get_alert_repository
 from ..services.repositories.camera_repo import get_camera_repository
@@ -78,36 +82,70 @@ async def receive_ai_fire_events(
     authorized: bool = Depends(verify_internal_secret),
 ):
     """
-    Webhook endpoint for Edge AI Service to push fire detection results.
-    1. Saves event into Cloud Firestore (debounced 90s) & uploads snapshot to Storage.
-    2. Starts Redis Two-Tier Escalation Timer (ADR 0011).
-    3. Broadcasts Level 0 WebSocket alert to Leaders & Managers.
-    4. Dispatches Level 0 FCM Data Message simultaneously.
+    Phase 1 Fast Signal Webhook (<30ms):
+    Receives lightweight fire signal JSON (~0.6KB) from Edge AI / EAG.
+    1. Upserts event into Cloud Firestore (indexed by event_id or debounced 90s).
+    2. If SUPPRESSED or REJECTED: cancels Redis escalation timer and notifies Frontend.
+    3. If active fire: starts Redis Two-Tier Escalation Timer (ADR 0011) and broadcasts Level 0 alert.
+    4. If snapshot_base64 is present, queues Phase 2 background storage upload.
     """
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
     user_repo = get_user_repository()
+    camera_repo = get_camera_repository()
+    esc_svc = get_escalation_service()
+    ws = get_websocket_manager()
+    fcm = get_fcm_service()
 
-    if not payload.cam_id or str(payload.cam_id).strip().lower() in ("null", "none", ""):
-        raise NotFoundException("Mã camera (cam_id) không hợp lệ hoặc không tồn tại.", code="CAMERA_NOT_FOUND")
+    target_cam_id = payload.cam_id or payload.camera_id
+    if not target_cam_id or str(target_cam_id).strip().lower() in ("null", "none", ""):
+        raise NotFoundException("Mã camera (cam_id / camera_id) không hợp lệ hoặc bị thiếu.", code="CAMERA_NOT_FOUND")
 
-    alert_record = alert_repo.save_fire_incident(
-        cam_id=payload.cam_id,
-        class_name=payload.class_name,
-        confidence=payload.confidence,
-        bbox=payload.bbox,
-        image_data=payload.image_base64,
-    )
+    cam_obj = camera_repo.get_camera(target_cam_id)
+    if cam_obj:
+        mode_val = cam_obj.ai_mode.value if hasattr(cam_obj.ai_mode, "value") else str(cam_obj.ai_mode or "ALWAYS")
+        if not cam_obj.is_ai_enabled or not should_ai_scan_now(mode_val, cam_obj.ai_schedules):
+            return {
+                "status": "ignored_by_ai_schedule",
+                "cam_id": target_cam_id,
+                "ai_mode": mode_val,
+                "reason": "Camera AI đang tắt hoặc đang trong khung giờ nghỉ theo lịch (H7-H15).",
+            }
+
+    # Ingest signal into Firestore (fast upsert)
+    alert_record, is_new = alert_repo.upsert_fire_incident_signal(payload)
     group_id = alert_record.group_id
     cam_name = alert_record.cam_name
     location_name = alert_record.location_name or alert_record.subgroup_name
-    still_url = alert_record.still_url or alert_record.fire_image_url
-
-    # 2. Start Redis Two-Tier Escalation Timer (ADR 0011) ONLY if newly opened alert
     status_str = alert_record.status.value if hasattr(alert_record.status, "value") else str(alert_record.status)
-    esc_svc = get_escalation_service()
+    verification_str = alert_record.verification.value if hasattr(alert_record.verification, "value") else str(alert_record.verification)
+
+    # Check if this event was suppressed or rejected
+    is_suppressed = (
+        status_str == AlertStatus.SUPPRESSED.value
+        or verification_str == AlertVerification.SUPPRESSED.value
+        or (payload.verifier and payload.verifier.status == "REJECTED")
+    )
+
+    if is_suppressed:
+        esc_svc.cancel_timer(alert_record.alert_id)
+        await ws.broadcast_fire_alert_suppressed(
+            cam_id=target_cam_id,
+            alert_id=alert_record.alert_id,
+            summary=alert_record.summary,
+            detail=alert_record.detail,
+            group_id=group_id,
+        )
+        return {
+            "status": "accepted",
+            "alert_id": alert_record.alert_id,
+            "event_id": payload.event_id or alert_record.event_id,
+            "verification": "SUPPRESSED",
+            "type": payload.type,
+        }
+
     is_new_timer = False
-    if status_str == "NEW":
+    if is_new:
         if not esc_svc.is_timer_active(alert_record.alert_id):
             esc_svc.start_timer(
                 alert_id=alert_record.alert_id,
@@ -117,54 +155,136 @@ async def receive_ai_fire_events(
             )
             is_new_timer = True
 
-    # 3 & 4. Concurrent Broadcast: WebSocket Level 0 & FCM Push (Escalation Level 0: Leaders & Managers)
-    ws = get_websocket_manager()
-    fcm = get_fcm_service()
+        ws_broadcast_coro = ws.broadcast_fire_alert(
+            group_id=group_id,
+            alert_payload={
+                "alert_id": alert_record.alert_id,
+                "event_id": payload.event_id or alert_record.event_id,
+                "cam_id": target_cam_id,
+                "cam_name": cam_name,
+                "location_name": location_name,
+                "sign": alert_record.sign.value if hasattr(alert_record.sign, "value") else str(alert_record.sign),
+                "confidence": payload.confidence,
+                "still_url": alert_record.still_url or alert_record.fire_image_url,
+                "bbox": payload.bbox,
+                "boxes": [b.model_dump() for b in payload.boxes] if payload.boxes else [],
+                "frame_w": payload.frame_w,
+                "frame_h": payload.frame_h,
+                "summary": alert_record.summary,
+                "detail": alert_record.detail,
+                "verification": verification_str,
+                "detected_at": format_iso_utc(alert_record.detected_at) or (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"),
+            },
+            escalation_level=0,
+        )
 
-    ws_broadcast_coro = ws.broadcast_fire_alert(
-        group_id=group_id,
-        alert_payload={
-            "alert_id": alert_record.alert_id,
-            "cam_id": payload.cam_id,
-            "cam_name": cam_name,
-            "location_name": location_name,
-            "sign": alert_record.sign.value if hasattr(alert_record.sign, "value") else str(alert_record.sign),
-            "confidence": payload.confidence,
-            "still_url": still_url,
-            "bbox": payload.bbox,
-            "summary": alert_record.summary,
-            "detail": alert_record.detail,
-            "verification": alert_record.verification.value if hasattr(alert_record.verification, "value") else str(alert_record.verification),
-            "detected_at": format_iso_utc(alert_record.detected_at) or (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"),
-        },
-        escalation_level=0,
-    )
+        async def dispatch_fcm_async():
+            if not is_new_timer:
+                return
+            members = group_repo.list_members(group_id)
+            leader_tokens = []
+            for m in members:
+                if m.role in ("LEADER", "MEMBER_MANAGER"):
+                    u = user_repo.get_user_by_id(m.user_id)
+                    if u and u.fcm_tokens:
+                        leader_tokens.extend(u.fcm_tokens)
 
-    async def dispatch_fcm_async():
-        # Only dispatch FCM push for new incident creation to avoid alert fatigue
-        if not is_new_timer:
-            return
-        members = group_repo.list_members(group_id)
-        leader_tokens = []
-        for m in members:
-            if m.role in ("LEADER", "MEMBER_MANAGER"):
-                u = user_repo.get_user_by_id(m.user_id)
-                if u and u.fcm_tokens:
-                    leader_tokens.extend(u.fcm_tokens)
+            if leader_tokens:
+                await asyncio.to_thread(
+                    fcm.send_fire_alert_push,
+                    fcm_tokens=leader_tokens,
+                    alert_id=alert_record.alert_id,
+                    escalation_level=0,
+                )
 
-        if leader_tokens:
-            await asyncio.to_thread(
-                fcm.send_fire_alert_push,
-                fcm_tokens=leader_tokens,
-                alert_id=alert_record.alert_id,
-                escalation_level=0,
+        await asyncio.gather(ws_broadcast_coro, dispatch_fcm_async(), return_exceptions=True)
+    else:
+        # Incident updated: notify subscribers via WebSocket
+        await ws.broadcast_fire_alert_updated(
+            group_id=group_id,
+            alert_id=alert_record.alert_id,
+            status=status_str,
+            escalation_level=0,
+            alert_payload={
+                "event_id": payload.event_id or alert_record.event_id,
+                "cam_id": target_cam_id,
+                "verification": verification_str,
+                "vlm": payload.vlm.model_dump() if payload.vlm else None,
+                "verifier": payload.verifier.model_dump() if payload.verifier else None,
+                "boxes": [b.model_dump() for b in payload.boxes] if payload.boxes else [],
+                "last_seen_ts": payload.last_seen_ts,
+                "summary": alert_record.summary,
+                "detail": alert_record.detail,
+            },
+        )
+
+    # If snapshot_base64 is present directly in signal payload, upload in background thread
+    raw_b64 = payload.snapshot_base64 or payload.image_base64
+    if raw_b64 and not is_suppressed:
+        box_dicts = [b.model_dump() for b in payload.boxes] if payload.boxes else []
+        asyncio.create_task(
+            asyncio.to_thread(
+                alert_repo.attach_incident_snapshot,
+                event_id=payload.event_id or alert_record.alert_id,
+                cam_id=target_cam_id,
+                snapshot_base64=raw_b64,
+                frame_ts=payload.frame_ts or payload.last_seen_ts,
+                boxes=box_dicts,
+                frame_w=payload.frame_w or 1920,
+                frame_h=payload.frame_h or 1080,
             )
-
-    # Dispatch both simultaneously for <500ms latency
-    await asyncio.gather(ws_broadcast_coro, dispatch_fcm_async(), return_exceptions=True)
+        )
 
     return {
         "status": "accepted",
         "alert_id": alert_record.alert_id,
+        "event_id": payload.event_id or alert_record.event_id,
         "escalation_level": 0,
+        "type": payload.type,
+        "verification": verification_str,
+    }
+
+
+@router.post("/internal/ai/fire-events/{event_id}/snapshot", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/api/v1/internal/ai/fire-events/{event_id}/snapshot", status_code=status.HTTP_202_ACCEPTED)
+async def upload_ai_snapshot(
+    event_id: str,
+    payload: AISnapshotUploadPayload,
+    authorized: bool = Depends(verify_internal_secret),
+):
+    """
+    Phase 2 Background Upload Endpoint:
+    EAG forwards the single clean JPEG snapshot (snapshot_base64 <= 200KB) to Cloud Backend.
+    Backend stores it in Firebase Storage, marks snapshot_status="READY", and notifies Frontend via WS.
+    """
+    alert_repo = get_alert_repository()
+    box_dicts = [b.model_dump() for b in payload.boxes] if payload.boxes else []
+
+    updated_alert = alert_repo.attach_incident_snapshot(
+        event_id=event_id,
+        cam_id=payload.cam_id or payload.camera_id,
+        snapshot_base64=payload.snapshot_base64,
+        frame_ts=payload.frame_ts,
+        boxes=box_dicts,
+        frame_w=payload.frame_w or 1920,
+        frame_h=payload.frame_h or 1080,
+    )
+
+    ws = get_websocket_manager()
+    await ws.broadcast_alert_snapshot_ready(
+        group_id=updated_alert.group_id,
+        alert_id=updated_alert.alert_id,
+        event_id=event_id,
+        cam_id=payload.cam_id or payload.camera_id,
+        still_url=updated_alert.still_url or updated_alert.fire_image_url,
+        boxes=box_dicts,
+        frame_w=payload.frame_w or 1920,
+        frame_h=payload.frame_h or 1080,
+    )
+
+    return {
+        "status": "snapshot_uploaded",
+        "alert_id": updated_alert.alert_id,
+        "event_id": event_id,
+        "still_url": updated_alert.still_url or updated_alert.fire_image_url,
     }

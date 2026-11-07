@@ -383,10 +383,15 @@ async def get_optional_current_user(
 
 def verify_internal_secret(
     x_internal_secret: Optional[str] = Header(None, alias="X-Internal-Secret"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ) -> bool:
-    """Verifies internal secret key for Edge AI / FireWatch Webhooks."""
+    """Verifies internal secret key for Edge AI / FireWatch Webhooks (supports X-Internal-Secret and Bearer token)."""
     secret = settings.INTERNAL_API_SECRET_KEY
-    if not x_internal_secret or x_internal_secret != secret:
-        raise UnauthorizedException("Mã bảo mật nội bộ không hợp lệ hoặc bị thiếu.", code="INVALID_INTERNAL_SECRET")
-    return True
+    if x_internal_secret and x_internal_secret == secret:
+        return True
+    if authorization:
+        bearer_token = authorization.split(" ", 1)[1] if authorization.startswith("Bearer ") else authorization
+        if bearer_token == secret:
+            return True
+    raise UnauthorizedException("Mã bảo mật nội bộ không hợp lệ hoặc bị thiếu.", code="INVALID_INTERNAL_SECRET")
 

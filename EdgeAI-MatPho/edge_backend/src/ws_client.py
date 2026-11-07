@@ -82,7 +82,10 @@ class OutboundCloudWSClient:
         if not events:
             return 0
 
-        headers = {"X-Internal-Secret": self.secret}
+        headers = {
+            "Authorization": f"Bearer {self.secret}",
+            "X-Internal-Secret": self.secret,
+        }
         async with httpx.AsyncClient(timeout=8.0) as client:
             for ev in events:
                 try:

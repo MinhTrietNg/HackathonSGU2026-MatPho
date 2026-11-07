@@ -15,8 +15,12 @@ from __future__ import annotations
 import os
 import json
 import time
+import uuid
+import base64
 import asyncio
 import logging
+import httpx
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List, Union
 
@@ -40,10 +44,23 @@ INTERNAL_API_SECRET_KEY = os.getenv(
     "INTERNAL_API_SECRET_KEY", "secure_internal_key_for_ai_and_worker_communication"
 )
 MEDIAMTX_HLS_URL = os.getenv("MEDIAMTX_HLS_URL", "http://localhost:8888").rstrip("/")
+CLOUD_BACKEND_API_URL = os.getenv(
+    "CLOUD_BACKEND_API_URL", "http://localhost:8000"
+).rstrip("/")
 
 
-def verify_internal_secret(x_internal_secret: Optional[str] = Header(None)) -> bool:
-    if x_internal_secret and x_internal_secret != INTERNAL_API_SECRET_KEY:
+def verify_internal_secret(
+    x_internal_secret: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+) -> bool:
+    token = None
+    if x_internal_secret:
+        token = x_internal_secret
+    elif authorization:
+        parts = authorization.split(" ", 1)
+        token = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else parts[0]
+
+    if token is not None and token != INTERNAL_API_SECRET_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid internal secret key",
@@ -62,9 +79,91 @@ class EdgeControllerState:
         self.idle_task: Optional[asyncio.Task] = None
         self.watchdog_task: Optional[asyncio.Task] = None
         self.stream_last_requested: Dict[str, float] = {}
+        self.uploaded_snapshot_events: set[str] = set()
+        self.ws_task: Optional[asyncio.Task] = None
+        self.log_task: Optional[asyncio.Task] = None
+        self.idle_task: Optional[asyncio.Task] = None
+        self.watchdog_task: Optional[asyncio.Task] = None
+        self.stream_last_requested: Dict[str, float] = {}
 
 
 state = EdgeControllerState()
+
+VN_TZ = timezone(timedelta(hours=7))
+WEEKDAY_TO_VN: Dict[int, str] = {
+    0: "T2",
+    1: "T3",
+    2: "T4",
+    3: "T5",
+    4: "T6",
+    5: "T7",
+    6: "CN",
+}
+
+
+def compute_should_ai_scan_now(
+    ai_mode: Any,
+    schedules: Optional[List[Dict[str, Any]]] = None,
+    now_vn: Optional[datetime] = None,
+) -> bool:
+    """
+    Evaluate whether FireWatch AI should currently connect and scan the camera's RTSP stream.
+      - ALWAYS / True -> True (connect RTSP)
+      - OFF / False   -> False (disconnect RTSP from AI immediately to save CPU/GPU)
+      - SCHEDULE      -> False if current Asia/Ho_Chi_Minh time falls in any rest slot, else True
+    Supports both legacy {start_time, end_time, days: ["T2".."CN"]} and frontend {from, to, days: [1..7]}.
+    """
+    if isinstance(ai_mode, bool):
+        if not ai_mode:
+            return False
+        mode = "SCHEDULE" if schedules else "ALWAYS"
+    else:
+        mode = str(ai_mode or "ALWAYS").upper()
+
+    if mode in ("OFF", "FALSE", "DISABLED"):
+        return False
+    if mode == "SCHEDULE" and schedules:
+        now = now_vn or datetime.now(VN_TZ)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=VN_TZ)
+        else:
+            now = now.astimezone(VN_TZ)
+
+        curr_iso_day = now.isoweekday()  # 1 = Monday ... 7 = Sunday
+        prev_iso_day = 7 if curr_iso_day == 1 else curr_iso_day - 1
+        curr_vn_day = WEEKDAY_TO_VN[now.weekday()]
+        prev_vn_day = WEEKDAY_TO_VN[(now.weekday() - 1) % 7]
+        curr_hm = now.strftime("%H:%M")
+
+        for slot in schedules:
+            if not isinstance(slot, dict):
+                continue
+            start = slot.get("from") or slot.get("start_time") or ""
+            end = slot.get("to") or slot.get("end_time") or ""
+            days = slot.get("days") or []
+            if not start or not end or not days:
+                continue
+
+            # Check matching days for current and previous day (for overnight slots)
+            match_curr = (
+                curr_iso_day in days
+                or str(curr_iso_day) in days
+                or curr_vn_day in days
+            )
+            match_prev = (
+                prev_iso_day in days
+                or str(prev_iso_day) in days
+                or prev_vn_day in days
+            )
+
+            if start <= end:
+                if match_curr and start <= curr_hm < end:
+                    return False
+            else:
+                # Overnight slot: e.g. 22:00 -> 06:00
+                if (match_curr and curr_hm >= start) or (match_prev and curr_hm < end):
+                    return False
+    return True
 
 
 def get_current_public_hls_url() -> str:
@@ -208,6 +307,17 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {"type": "COMMAND_ERROR", "message": "Missing cam_id or rtsp_url"}
 
         is_active = bool(payload.get("is_active", True))
+        is_ai_enabled = payload.get("is_ai_enabled")
+        ai_schedule = payload.get("ai_schedule") or payload.get("schedules") or payload.get("ai_schedules") or []
+        ai_mode = payload.get("ai_mode")
+        if ai_mode is None:
+            if is_ai_enabled is False:
+                ai_mode = "OFF"
+            elif len(ai_schedule) > 0:
+                ai_mode = "SCHEDULE"
+            else:
+                ai_mode = "ALWAYS"
+
         safe_source = resolve_safe_source_url(cam_id, rtsp_url)
         await state.db.upsert_camera(
             cam_id=cam_id,
@@ -215,6 +325,8 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             cam_name=payload.get("cam_name", cam_id),
             watch_area=payload.get("watch_area"),
             is_active=is_active,
+            ai_mode=ai_mode,
+            ai_schedules=ai_schedule,
         )
         state.manager.stop(cam_id)
         if is_active:
@@ -228,6 +340,45 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             "cam_id": cam_id,
             "status": "ONLINE" if is_active else "DISABLED",
             **urls,
+        }
+
+    if action == "SET_CAMERA_AI_CONFIG":
+        cam_id = payload.get("cam_id")
+        if not cam_id:
+            return {"type": "COMMAND_ERROR", "message": "Missing cam_id"}
+        ai_mode = (payload.get("ai_mode") or "ALWAYS").upper()
+        schedules = payload.get("schedules") or []
+        updated = await state.db.update_camera_ai_config(
+            cam_id=cam_id,
+            ai_mode=ai_mode,
+            ai_schedules=schedules,
+        )
+        if not updated:
+            # If camera wasn't in local SQLite yet, create a placeholder entry so AI config is persisted
+            fallback_src = state.settings.url_for(state.settings.source_path_template, cam_id)
+            await state.db.upsert_camera(
+                cam_id=cam_id,
+                rtsp_url=resolve_safe_source_url(cam_id, fallback_src),
+                cam_name=payload.get("cam_name", cam_id),
+                is_active=True,
+                ai_mode=ai_mode,
+                ai_schedules=schedules,
+            )
+        should_scan = compute_should_ai_scan_now(ai_mode, schedules)
+        stream_action = "CONNECT_AI_RTSP" if should_scan else "DISCONNECT_AI_RTSP"
+        logger.info(
+            "[cam_id=%s] Applied SET_CAMERA_AI_CONFIG: ai_mode=%s should_ai_scan_now=%s (%s)",
+            cam_id,
+            ai_mode,
+            should_scan,
+            stream_action,
+        )
+        return {
+            "type": "CAMERA_AI_CONFIG_ACK",
+            "cam_id": cam_id,
+            "ai_mode": ai_mode,
+            "should_ai_scan_now": should_scan,
+            "stream_action": stream_action,
         }
 
     if action == "REMOVE_CAMERA":
@@ -389,6 +540,11 @@ class OfflineEventRequest(BaseModel):
     payload: Dict[str, Any]
 
 
+class EdgeAIConfigRequest(BaseModel):
+    ai_mode: str = Field(..., description="ALWAYS | SCHEDULE | OFF")
+    schedules: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+
+
 @app.get("/health")
 @app.get("/api/v1/edge/health")
 async def health_check():
@@ -425,14 +581,50 @@ async def probe_lan_camera(
 
 @app.get("/api/v1/edge/cameras")
 async def list_edge_cameras():
-    """Return local cameras persisted in SQLite along with live stream status & HLS/RTSP URLs."""
+    """Return local cameras persisted in SQLite along with live stream status, AI scan flag & HLS/RTSP URLs."""
     cams = await state.db.list_cameras()
     live_status = state.manager.status()
     for c in cams:
         c["rtsp_url"] = redact_url(c["rtsp_url"])
         c["stream_stats"] = live_status.get(c["cam_id"])
+        ai_mode = c.get("ai_mode", "ALWAYS")
+        ai_schedules = c.get("ai_schedules", [])
+        c["should_ai_scan_now"] = bool(c.get("is_active", True)) and compute_should_ai_scan_now(
+            ai_mode, ai_schedules
+        )
         c.update(build_stream_urls(c["cam_id"]))
     return {"cameras": cams}
+
+
+@app.put("/api/v1/edge/cameras/{cam_id}/ai-config")
+async def update_edge_camera_ai_config_http(
+    cam_id: str,
+    req: EdgeAIConfigRequest,
+    _auth: bool = Depends(verify_internal_secret),
+):
+    """Directly update AI mode & rest schedule for a camera on the Edge Node."""
+    ai_mode = (req.ai_mode or "ALWAYS").upper()
+    schedules = req.schedules or []
+    updated = await state.db.update_camera_ai_config(cam_id, ai_mode, schedules)
+    if not updated:
+        fallback_src = state.settings.url_for(state.settings.source_path_template, cam_id)
+        await state.db.upsert_camera(
+            cam_id=cam_id,
+            rtsp_url=resolve_safe_source_url(cam_id, fallback_src),
+            cam_name=cam_id,
+            is_active=True,
+            ai_mode=ai_mode,
+            ai_schedules=schedules,
+        )
+    should_scan = compute_should_ai_scan_now(ai_mode, schedules)
+    return {
+        "status": "updated",
+        "cam_id": cam_id,
+        "ai_mode": ai_mode,
+        "schedules": schedules,
+        "should_ai_scan_now": should_scan,
+        "stream_action": "CONNECT_AI_RTSP" if should_scan else "DISCONNECT_AI_RTSP",
+    }
 
 
 @app.post("/api/v1/edge/cameras", status_code=status.HTTP_201_CREATED)
@@ -530,4 +722,125 @@ async def get_gateway_info():
         "public_webrtc_base_url": base_webrtc,
         "stream_mode": state.settings.stream_mode,
         "live_idle_ttl_s": state.settings.live_idle_ttl_s,
+    }
+
+
+async def resolve_edge_cam_id(raw_camera_id: Optional[str]) -> str:
+    """Map AI raw camera identifier (e.g. 'ham-b1-cam03') to registered cam_id in Edge DB."""
+    if not raw_camera_id:
+        return "cam_unknown"
+    cams = await state.db.list_cameras()
+    for c in cams:
+        if c["cam_id"] == raw_camera_id:
+            return c["cam_id"]
+        if c.get("cam_name") and c["cam_name"].lower() == raw_camera_id.lower():
+            return c["cam_id"]
+        # Substring match
+        if raw_camera_id.lower() in c["cam_id"].lower() or (c.get("cam_name") and raw_camera_id.lower() in c["cam_name"].lower()):
+            return c["cam_id"]
+    return raw_camera_id
+
+
+@app.post("/api/v1/edge/ai-events", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/api/v1/internal/ai/fire-events", status_code=status.HTTP_202_ACCEPTED)
+async def relay_ai_fire_event(
+    payload: Dict[str, Any],
+    _auth: bool = Depends(verify_internal_secret),
+):
+    """
+    Two-Phase EAG Fire Event Relay:
+    1. Maps AI raw camera_id -> registered cam_id and injects 'cam_id' to payload.
+    2. Phase 1 (Fast Signal < 30ms): Strips snapshot_base64, forwards lightweight JSON (~0.6KB)
+       immediately to Cloud Backend to trigger sirens & Redis escalation timer without waiting for image upload.
+       If Cloud WAN is unreachable, enqueues to SQLite offline_events_queue.
+    3. Phase 2 (Single Snapshot History): Launches background task to upload the single clean JPEG
+       snapshot to Cloud Storage endpoint '/api/v1/internal/ai/fire-events/{event_id}/snapshot'.
+       Once uploaded, marks event_id in uploaded_snapshot_events so subsequent updates do not duplicate upload.
+    """
+    raw_cam_id = payload.get("camera_id") or payload.get("cam_id") or "cam_unknown"
+    resolved_cam_id = await resolve_edge_cam_id(raw_cam_id)
+    payload["cam_id"] = resolved_cam_id
+    if not payload.get("camera_id"):
+        payload["camera_id"] = raw_cam_id
+
+    event_id = payload.get("event_id") or f"evt_{uuid.uuid4().hex[:12]}"
+    payload["event_id"] = event_id
+
+    # Extract snapshot
+    snapshot_b64 = payload.pop("snapshot_base64", None) or payload.pop("image_base64", None)
+    if not snapshot_b64 and payload.get("snapshot_path"):
+        snap_path = payload.get("snapshot_path")
+        if os.path.exists(snap_path):
+            try:
+                with open(snap_path, "rb") as f:
+                    snapshot_b64 = base64.b64encode(f.read()).decode("utf-8")
+            except Exception as exc:
+                logger.warning("Failed to read snapshot file %s: %s", snap_path, exc)
+
+    # 1. Phase 1: Fast Signal Forwarding
+    cloud_url = f"{CLOUD_BACKEND_API_URL}/api/v1/internal/ai/fire-events"
+    headers = {
+        "Authorization": f"Bearer {INTERNAL_API_SECRET_KEY}",
+        "X-Internal-Secret": INTERNAL_API_SECRET_KEY,
+    }
+
+    forward_success = False
+    cloud_response_data = {}
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.post(cloud_url, json=payload, headers=headers)
+            if resp.status_code in (200, 201, 202):
+                forward_success = True
+                try:
+                    val = resp.json()
+                    cloud_response_data = await val if asyncio.iscoroutine(val) else val
+                except Exception:
+                    cloud_response_data = {}
+            else:
+                logger.warning("Cloud backend returned %d on fast signal forward", resp.status_code)
+    except Exception as exc:
+        logger.warning("Cloud backend unreachable for fast signal (%s). Storing to local SQLite queue...", exc)
+
+    if not forward_success:
+        queue_id = await state.db.enqueue_offline_event(resolved_cam_id, "FIRE_SIGNAL", payload)
+        logger.info("Enqueued fire signal offline: queue_id=%d, event_id=%s", queue_id, event_id)
+
+    # 2. Phase 2: Background Snapshot Upload (Single Image per incident)
+    if snapshot_b64 and event_id not in state.uploaded_snapshot_events:
+        boxes_data = payload.get("boxes", [])
+        fw = payload.get("frame_w", 1920)
+        fh = payload.get("frame_h", 1080)
+        f_ts = payload.get("frame_ts") or payload.get("last_seen_ts")
+
+        async def _upload_snapshot_task():
+            try:
+                snap_upload_url = f"{CLOUD_BACKEND_API_URL}/api/v1/internal/ai/fire-events/{event_id}/snapshot"
+                snap_body = {
+                    "event_id": event_id,
+                    "cam_id": resolved_cam_id,
+                    "camera_id": raw_cam_id,
+                    "frame_ts": f_ts,
+                    "frame_w": fw,
+                    "frame_h": fh,
+                    "boxes": boxes_data,
+                    "snapshot_base64": snapshot_b64,
+                }
+                async with httpx.AsyncClient(timeout=15.0) as cl:
+                    res = await cl.post(snap_upload_url, json=snap_body, headers=headers)
+                    if res.status_code in (200, 201, 202):
+                        state.uploaded_snapshot_events.add(event_id)
+                        logger.info("Phase 2 snapshot uploaded successfully for %s", event_id)
+                    else:
+                        logger.warning("Phase 2 snapshot upload returned %d for %s", res.status_code, event_id)
+            except Exception as e:
+                logger.warning("Phase 2 snapshot upload failed for %s: %s", event_id, e)
+
+        asyncio.create_task(_upload_snapshot_task())
+
+    return {
+        "status": "accepted",
+        "cam_id": resolved_cam_id,
+        "event_id": event_id,
+        "relay_signal": "forwarded" if forward_success else "queued_offline",
+        "cloud_response": cloud_response_data,
     }

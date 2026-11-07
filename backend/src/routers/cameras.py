@@ -16,8 +16,9 @@ from ..core.exceptions import (
     PermissionDeniedException,
 )
 from ..core.formatters import format_iso_utc
+from ..core.ai_schedule import should_ai_scan_now, format_ai_status_text
 from ..models.user import UserModel
-from ..models.common import UserRole, CameraStatus
+from ..models.common import UserRole, CameraStatus, AIMode
 from ..models.camera import (
     CameraModel,
     CameraCreateRequest,
@@ -26,11 +27,17 @@ from ..models.camera import (
     CameraProbeResponse,
     CameraStreamResponse,
     WatchAreaModel,
+    AIScheduleSlotModel,
+    AIScheduleItemModel,
+    CameraAIConfigUpdateRequest,
+    CameraThumbnailUploadRequest,
+    CameraThumbnailResponse,
 )
 from ..services.repositories.camera_repo import get_camera_repo
 from ..services.repositories.group_repo import get_group_repo
 from ..services.camera_probe_service import get_camera_probe_service
 from ..services.mediamtx_service import get_mediamtx_service
+from ..services.storage_service import get_storage_service
 
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
@@ -178,6 +185,9 @@ def create_camera(
         "last_seen_at": format_iso_utc(camera.last_seen_at),
         "live_stream_url": hls_url,
         "watch_area": camera.watch_area.model_dump() if camera.watch_area else None,
+        "is_ai_enabled": camera.is_ai_enabled,
+        "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (camera.ai_schedule or [])],
+        "thumbnail_url": camera.thumbnail_url,
         "created_at": format_iso_utc(camera.created_at),
     }
 
@@ -228,6 +238,9 @@ def list_cameras(
             "last_seen_at": format_iso_utc(cam.last_seen_at),
             "live_stream_url": hls_url,
             "watch_area": cam.watch_area.model_dump() if cam.watch_area else None,
+            "is_ai_enabled": cam.is_ai_enabled,
+            "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (cam.ai_schedule or [])],
+            "thumbnail_url": cam.thumbnail_url,
         })
     return results
 
@@ -259,6 +272,261 @@ def list_trash_cameras(
         }
         for c in trash_cams
     ]
+
+
+# ==============================================================================
+# 2B. AI SETTINGS BY CAMERA & SCHEDULE (Figma H7 -> H15)
+# ==============================================================================
+
+@router.get("/ai-settings", summary="List AI settings per camera across groups (Figma H7, H8, H9)")
+def list_camera_ai_settings(
+    group_id: Optional[str] = Query(None, description="Lọc theo 1 nhóm cụ thể nếu muốn"),
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Returns grouped camera AI settings for screens H7, H8, H9:
+    - Filter tabs (chips) for all groups the user belongs to.
+    - For each group: access_mode ('Editable' for LEADER, 'Locked' for members with lock banner).
+    - For each camera: ai_mode, schedules, is_ai_currently_scanning, and formatted status_text.
+    """
+    group_repo = get_group_repo()
+    camera_repo = get_camera_repo()
+
+    group_tuples = group_repo.list_groups_for_user(current_user.user_id)
+    filter_tabs: List[Dict[str, Any]] = []
+    groups_payload: List[Dict[str, Any]] = []
+
+    for idx, (grp, role, _) in enumerate(group_tuples):
+        role_val = role.value if hasattr(role, "value") else str(role)
+        is_leader = role_val == UserRole.LEADER.value
+
+        # Resolve leader full name for Locked banner on H8
+        leader_name = "Chủ nhóm"
+        members = group_repo.list_members(grp.group_id)
+        for m in members:
+            m_role = m.role.value if hasattr(m.role, "value") else str(m.role)
+            if m_role == UserRole.LEADER.value:
+                leader_name = m.nickname if m.nickname and m.nickname != "Trưởng Nhóm" else m.full_name
+                break
+
+        is_selected = (group_id == grp.group_id) if group_id else (idx == 0)
+        filter_tabs.append({
+            "group_id": grp.group_id,
+            "group_name": grp.group_name,
+            "my_role": role_val,
+            "role_badge": None if is_leader else "thành viên",
+            "is_selected": is_selected,
+        })
+
+        if group_id and grp.group_id != group_id:
+            continue
+
+        cams = camera_repo.list_cameras_by_group(grp.group_id)
+        active_ai_count = 0
+        cam_items: List[Dict[str, Any]] = []
+
+        for c in cams:
+            mode_val = c.ai_mode.value if hasattr(c.ai_mode, "value") else str(c.ai_mode or "ALWAYS")
+            raw_slots = [
+                (s.model_dump() if hasattr(s, "model_dump") else dict(s))
+                for s in (c.ai_schedules or [])
+            ]
+            scanning_now = should_ai_scan_now(mode_val, raw_slots)
+            if mode_val != AIMode.OFF.value:
+                active_ai_count += 1
+
+            cam_items.append({
+                "cam_id": c.cam_id,
+                "cam_name": c.cam_name,
+                "subgroup_id": c.subgroup_id,
+                "subgroup_name": c.subgroup_name,
+                "access": "Editable" if is_leader else "Locked",
+                "ai_mode": mode_val,
+                "is_ai_enabled": c.is_ai_enabled,
+                "is_ai_currently_scanning": scanning_now,
+                "status_text": format_ai_status_text(mode_val, raw_slots, is_editable=is_leader),
+                "schedules": raw_slots,
+            })
+
+        total_cams = len(cam_items)
+        groups_payload.append({
+            "group_id": grp.group_id,
+            "group_name": grp.group_name,
+            "my_role": role_val,
+            "access_mode": "Editable" if is_leader else "Locked",
+            "leader_id": grp.leader_id,
+            "leader_name": leader_name,
+            "lock_banner": None if is_leader else {
+                "title": "Chỉ chủ nhóm được đổi cài đặt AI",
+                "subtitle": f"Muốn đổi, nhắn {leader_name} (chủ nhóm).",
+            },
+            "ai_summary_badge": f"{active_ai_count}/{total_cams} bật AI",
+            "cameras": cam_items,
+        })
+
+    return {
+        "filter_tabs": filter_tabs,
+        "groups": groups_payload,
+    }
+
+
+@router.get("/{cam_id}/ai-config", summary="Get camera AI detection & schedule config (Figma H10-H15)")
+def get_camera_ai_config(
+    cam_id: str,
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Get detailed AI mode and rest schedule slots for a single camera (Figma H10-H15).
+    """
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam or cam.is_deleted:
+        raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    group_repo = get_group_repo()
+    member = group_repo.get_member(cam.group_id, current_user.user_id)
+    if not member:
+        raise PermissionDeniedException("Bạn không phải thành viên của nhóm sở hữu camera này.")
+
+    grp = group_repo.get_group(cam.group_id)
+    group_name = grp.group_name if grp else "Nhóm"
+    role_val = member.role.value if hasattr(member.role, "value") else str(member.role)
+    can_edit = role_val == UserRole.LEADER.value
+
+    mode_val = cam.ai_mode.value if hasattr(cam.ai_mode, "value") else str(cam.ai_mode or "ALWAYS")
+    raw_slots = [
+        (s.model_dump() if hasattr(s, "model_dump") else dict(s))
+        for s in (cam.ai_schedules or [])
+    ]
+    scanning_now = should_ai_scan_now(mode_val, raw_slots)
+
+    return {
+        "cam_id": cam.cam_id,
+        "cam_name": cam.cam_name,
+        "group_id": cam.group_id,
+        "group_name": group_name,
+        "subgroup_id": cam.subgroup_id,
+        "subgroup_name": cam.subgroup_name,
+        "can_edit": can_edit,
+        "ai_mode": mode_val,
+        "is_ai_enabled": cam.is_ai_enabled,
+        "is_ai_currently_scanning": scanning_now,
+        "status_text": format_ai_status_text(mode_val, raw_slots, is_editable=can_edit),
+        "max_schedules": 2,
+        "schedules": raw_slots,
+        "off_warning": (
+            "Có cháy ở đây sẽ không ai được báo. Chỉ nên tắt khi camera bị che hoặc đang sửa."
+            if mode_val == AIMode.OFF.value
+            else None
+        ),
+        "updated_at": format_iso_utc(cam.updated_at),
+    }
+
+
+@router.put("/{cam_id}/ai-config", summary="Update camera AI detection & schedule config (Figma H10-H15)")
+@router.patch("/{cam_id}/ai-config", summary="Update camera AI detection & schedule config (Patch)")
+def update_camera_ai_config(
+    cam_id: str,
+    payload: CameraAIConfigUpdateRequest,
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Save per-camera AI mode (ALWAYS | SCHEDULE | OFF) and up to 2 rest schedule slots (Figma H10-H15).
+    RBAC: STRICTLY ONLY LEADER (Screen H8: 'Chỉ chủ nhóm được đổi cài đặt AI').
+    Simultaneously pushes `SET_CAMERA_AI_CONFIG` down to the Edge Gateway (`edge-backend` -> `firewatch-ai`)
+    to immediately connect or disconnect the RTSP input stream to the AI worker.
+    """
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam or cam.is_deleted:
+        raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    group_repo = get_group_repo()
+    member = group_repo.get_member(cam.group_id, current_user.user_id)
+    if not member:
+        raise PermissionDeniedException("Bạn không phải thành viên của nhóm sở hữu camera này.")
+
+    role_val = member.role.value if hasattr(member.role, "value") else str(member.role)
+    if role_val != UserRole.LEADER.value:
+        raise PermissionDeniedException("Chỉ chủ nhóm được đổi cài đặt AI.")
+
+    mode_val = payload.ai_mode.value if hasattr(payload.ai_mode, "value") else str(payload.ai_mode).upper()
+    slots = payload.schedules or []
+    if mode_val == AIMode.SCHEDULE.value and len(slots) == 0:
+        from ..core.exceptions import ValidationException
+        raise ValidationException("Chế độ nghỉ theo giờ (SCHEDULE) cần ít nhất 1 khung giờ nghỉ.")
+
+    updated = camera_repo.update_camera_ai_config(
+        cam_id=cam_id,
+        actor_id=current_user.user_id,
+        ai_mode=payload.ai_mode,
+        schedules=slots,
+    )
+    if not updated:
+        raise NotFoundException("Không thể cập nhật cài đặt AI của camera.", code="UPDATE_FAILED")
+
+    raw_slots = [
+        (s.model_dump() if hasattr(s, "model_dump") else dict(s))
+        for s in (updated.ai_schedules or [])
+    ]
+    scanning_now = should_ai_scan_now(mode_val, raw_slots)
+    stream_action = "CONNECT_AI_RTSP" if scanning_now else "DISCONNECT_AI_RTSP"
+
+    # Dispatch command to Edge Gateway over Outbound WebSocket & Broadcast to Group Room
+    edge_cmd_dispatched = False
+    try:
+        from ..services.websocket_manager import get_websocket_manager
+        import asyncio
+        ws_mgr = get_websocket_manager()
+        target_edge_id = getattr(updated, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
+        edge_msg = {
+            "action": "SET_CAMERA_AI_CONFIG",
+            "cam_id": updated.cam_id,
+            "ai_mode": mode_val,
+            "is_ai_enabled": updated.is_ai_enabled,
+            "should_ai_scan_now": scanning_now,
+            "stream_action": stream_action,
+            "schedules": raw_slots,
+            "timestamp": datetime.now(timezone.utc).timestamp(),
+        }
+        group_event = {
+            "type": "CAMERA_AI_CONFIG_UPDATED",
+            "cam_id": updated.cam_id,
+            "group_id": updated.group_id,
+            "ai_mode": mode_val,
+            "is_ai_currently_scanning": scanning_now,
+            "status_text": format_ai_status_text(mode_val, raw_slots, is_editable=True),
+            "schedules": raw_slots,
+        }
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(ws_mgr.send_to_edge(target_edge_id, edge_msg))
+                loop.create_task(ws_mgr.broadcast_to_room(f"group_{updated.group_id}", group_event))
+                edge_cmd_dispatched = True
+        except RuntimeError:
+            pass
+    except Exception:
+        pass
+
+    return {
+        "status": "updated",
+        "cam_id": updated.cam_id,
+        "cam_name": updated.cam_name,
+        "group_id": updated.group_id,
+        "ai_mode": mode_val,
+        "is_ai_enabled": updated.is_ai_enabled,
+        "is_ai_currently_scanning": scanning_now,
+        "status_text": format_ai_status_text(mode_val, raw_slots, is_editable=True),
+        "schedules": raw_slots,
+        "edge_command": {
+            "dispatched": True,
+            "action": "SET_CAMERA_AI_CONFIG",
+            "stream_action": stream_action,
+            "ws_queued": edge_cmd_dispatched,
+        },
+        "updated_at": format_iso_utc(updated.updated_at),
+    }
 
 
 @router.get("/{cam_id}", summary="Get camera detail")
@@ -312,6 +580,9 @@ def get_camera_detail(
         "live_stream_url": hls_url,
         "watch_area": cam.watch_area.model_dump() if cam.watch_area else None,
         "notified_names": notified_names,
+        "is_ai_enabled": cam.is_ai_enabled,
+        "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (cam.ai_schedule or [])],
+        "thumbnail_url": cam.thumbnail_url,
     }
 
 
@@ -468,6 +739,9 @@ def reconnect_camera(
         "last_seen_at": format_iso_utc(cam.last_seen_at),
         "live_stream_url": build_hls_url(cam.cam_id, request),
         "watch_area": cam.watch_area.model_dump() if cam.watch_area else None,
+        "is_ai_enabled": cam.is_ai_enabled,
+        "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (cam.ai_schedule or [])],
+        "thumbnail_url": cam.thumbnail_url,
     }
 
 
@@ -525,6 +799,8 @@ def update_camera(
         is_active=payload.is_active,
         is_ai_enabled=payload.is_ai_enabled,
         rtsp_url=payload.rtsp_url,
+        ai_schedule=payload.ai_schedule,
+        thumbnail_url=payload.thumbnail_url,
     )
     if not updated:
         raise NotFoundException("Không thể cập nhật camera.", code="UPDATE_FAILED")
@@ -532,6 +808,13 @@ def update_camera(
     if payload.rtsp_url:
         mtx = get_mediamtx_service()
         mtx.add_path(cam_id, payload.rtsp_url)
+
+    serialized_schedule = [
+        s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s
+        for s in (updated.ai_schedule or [])
+    ]
+    scanning_now = should_ai_scan_now(updated.is_ai_enabled, serialized_schedule)
+    stream_action = "CONNECT_AI_RTSP" if scanning_now else "DISCONNECT_AI_RTSP"
 
     try:
         from ..services.websocket_manager import get_websocket_manager
@@ -545,6 +828,10 @@ def update_camera(
             "rtsp_url": updated.rtsp_url,
             "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
             "is_active": updated.is_active,
+            "is_ai_enabled": updated.is_ai_enabled,
+            "ai_schedule": serialized_schedule,
+            "should_ai_scan_now": scanning_now,
+            "stream_action": stream_action,
         }
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -562,6 +849,8 @@ def update_camera(
         "status": updated.status.value if hasattr(updated.status, "value") else str(updated.status),
         "is_active": updated.is_active,
         "is_ai_enabled": updated.is_ai_enabled,
+        "ai_schedule": serialized_schedule,
+        "thumbnail_url": updated.thumbnail_url,
         "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
         "live_stream_url": build_hls_url(updated.cam_id, request),
     }
@@ -735,3 +1024,71 @@ def simulate_camera_offline(
         "status": "OFFLINE",
         "message": "Đã giả lập camera mất tín hiệu thành công",
     }
+
+
+# ==============================================================================
+# 5. CAMERA THUMBNAIL SNAPSHOT-ON-EXIT
+# ==============================================================================
+
+@router.post("/{cam_id}/thumbnail", response_model=CameraThumbnailResponse, summary="Upload camera snapshot-on-exit thumbnail")
+def upload_camera_thumbnail(
+    cam_id: str,
+    payload: CameraThumbnailUploadRequest,
+    current_user: UserModel = Depends(get_current_user),
+) -> CameraThumbnailResponse:
+    """
+    Receive Base64 PNG/JPEG snapshot-on-exit from Flutter mobile app,
+    upload to Firebase Storage CDN with cache-buster ?v=<timestamp>,
+    and update camera record in Firestore.
+    RBAC: LEADER, MEMBER_MANAGER, or assigned MEMBER. NOTIFIER is forbidden (403).
+    """
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam or cam.is_deleted:
+        raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
+
+    group_repo = get_group_repo()
+    member = group_repo.get_member(cam.group_id, current_user.user_id)
+    if not member:
+        raise PermissionDeniedException("Bạn không phải thành viên của nhóm sở hữu camera này.")
+
+    if member.role == UserRole.NOTIFIER:
+        raise PermissionDeniedException("Thành viên vai trò Người nhận tin không có quyền tải lên thumbnail camera.")
+
+    if member.role == UserRole.MEMBER and member.camera_ids is not None:
+        if cam.cam_id not in member.camera_ids:
+            raise PermissionDeniedException("Bạn chưa được phân quyền truy cập camera này.")
+
+    raw_b64 = payload.image_base64.strip()
+    if not raw_b64:
+        from ..core.exceptions import ValidationException
+        raise ValidationException("Dữ liệu ảnh không được để trống.", code="INVALID_IMAGE")
+
+    content_type = "image/png"
+    if raw_b64.startswith("data:image/"):
+        header, raw_b64 = raw_b64.split(",", 1)
+        if "jpeg" in header or "jpg" in header:
+            content_type = "image/jpeg"
+        elif "png" in header:
+            content_type = "image/png"
+
+    storage_svc = get_storage_service()
+    try:
+        _, download_url = storage_svc.upload_camera_thumbnail(
+            cam_id=cam.cam_id,
+            image_data=raw_b64,
+            content_type=content_type,
+        )
+    except Exception as e:
+        from ..core.exceptions import ValidationException
+        raise ValidationException(f"Dữ liệu ảnh không hợp lệ hoặc lỗi giải mã: {e}", code="INVALID_IMAGE")
+
+    updated_cam = camera_repo.update_camera_thumbnail(cam.cam_id, download_url)
+    now_iso = format_iso_utc(datetime.now(timezone.utc))
+
+    return CameraThumbnailResponse(
+        status="ok",
+        cam_id=cam.cam_id,
+        thumbnail_url=download_url,
+        updated_at=now_iso,
+    )

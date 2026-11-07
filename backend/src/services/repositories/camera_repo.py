@@ -13,12 +13,14 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from .base_repo import BaseFirestoreRepository
 from ...models.common import (
     CameraStatus,
+    AIMode,
     AuditAction,
     generate_semantic_id,
 )
 from ...models.camera import (
     CameraModel,
     WatchAreaModel,
+    AIScheduleSlotModel,
 )
 
 logger = logging.getLogger("backend.repository.camera")
@@ -82,6 +84,10 @@ class CameraRepository(BaseFirestoreRepository):
             "created_by": created_by,
             "is_active": True,
             "is_ai_enabled": True,
+            "ai_schedule": [],
+            "thumbnail_url": None,
+            "ai_mode": AIMode.ALWAYS.value,
+            "ai_schedules": [],
             "status": CameraStatus.ONLINE.value,
             "is_deleted": False,
             "deleted_at": None,
@@ -239,6 +245,8 @@ class CameraRepository(BaseFirestoreRepository):
         is_active: Optional[bool] = None,
         is_ai_enabled: Optional[bool] = None,
         rtsp_url: Optional[str] = None,
+        ai_schedule: Optional[List[Any]] = None,
+        thumbnail_url: Optional[str] = None,
     ) -> Optional[CameraModel]:
         """Update camera configuration and adjust subgroup counters if moved."""
         cam = self.get_camera(cam_id)
@@ -264,6 +272,24 @@ class CameraRepository(BaseFirestoreRepository):
                 updates["status"] = CameraStatus.ONLINE.value
         if is_ai_enabled is not None:
             updates["is_ai_enabled"] = is_ai_enabled
+        if thumbnail_url is not None:
+            updates["thumbnail_url"] = thumbnail_url
+        if ai_schedule is not None:
+            serialized_schedule = []
+            for item in ai_schedule:
+                if hasattr(item, "model_dump"):
+                    serialized_schedule.append(item.model_dump(by_alias=True))
+                elif isinstance(item, dict):
+                    serialized_schedule.append(item)
+            updates["ai_schedule"] = serialized_schedule
+
+            # Bi-directional sync with ai_mode & ai_schedules
+            if is_ai_enabled is False:
+                updates["ai_mode"] = AIMode.OFF.value
+            elif len(serialized_schedule) > 0:
+                updates["ai_mode"] = AIMode.SCHEDULE.value
+            else:
+                updates["ai_mode"] = AIMode.ALWAYS.value
 
         # Subgroup reassignment
         if subgroup_id is not None and subgroup_id != cam.subgroup_id:
@@ -300,6 +326,70 @@ class CameraRepository(BaseFirestoreRepository):
             action=AuditAction.UPDATE_CAMERA,
             target_entity=f"camera:{cam_id}",
             details={"cam_name": cam_name or cam.cam_name},
+        )
+        return self.get_camera(cam_id)
+
+    def update_camera_thumbnail(
+        self,
+        cam_id: str,
+        thumbnail_url: str,
+    ) -> Optional[CameraModel]:
+        """Update thumbnail_url for camera upon snapshot-on-exit upload."""
+        cam = self.get_camera(cam_id)
+        if not cam or cam.is_deleted:
+            return None
+        now_dt = datetime.now(timezone.utc)
+        updates = {
+            "thumbnail_url": thumbnail_url,
+            "updated_at": now_dt,
+        }
+        self.db.collection("cameras").document(cam_id).update(updates)
+        return self.get_camera(cam_id)
+
+    def update_camera_ai_config(
+        self,
+        cam_id: str,
+        actor_id: str,
+        ai_mode: AIMode,
+        schedules: Optional[List[AIScheduleSlotModel]] = None,
+    ) -> Optional[CameraModel]:
+        """
+        Update per-camera AI detection mode and up to 2 rest schedule slots (Figma H10-H15).
+        """
+        cam = self.get_camera(cam_id)
+        if not cam or cam.is_deleted:
+            return None
+
+        now_dt = datetime.now(timezone.utc)
+        mode_val = ai_mode.value if hasattr(ai_mode, "value") else str(ai_mode).upper()
+
+        serialized_slots: List[Dict[str, Any]] = []
+        if mode_val == AIMode.SCHEDULE.value and schedules:
+            for idx, slot in enumerate(schedules[:2], start=1):
+                s_dict = slot.model_dump() if hasattr(slot, "model_dump") else dict(slot)
+                if not s_dict.get("slot_id"):
+                    s_dict["slot_id"] = f"slot_{idx}"
+                serialized_slots.append(s_dict)
+
+        is_ai_enabled = mode_val != AIMode.OFF.value
+        updates: Dict[str, Any] = {
+            "ai_mode": mode_val,
+            "ai_schedules": serialized_slots,
+            "is_ai_enabled": is_ai_enabled,
+            "updated_at": now_dt,
+        }
+        self.db.collection("cameras").document(cam_id).update(updates)
+
+        self.create_audit_log(
+            group_id=cam.group_id,
+            actor_id=actor_id,
+            action=AuditAction.UPDATE_CAMERA_AI_CONFIG,
+            target_entity=f"camera:{cam_id}",
+            details={
+                "cam_name": cam.cam_name,
+                "ai_mode": mode_val,
+                "schedules_count": len(serialized_slots),
+            },
         )
         return self.get_camera(cam_id)
 

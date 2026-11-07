@@ -1,3 +1,4 @@
+HEAD
 # ==============================================================================
 # HACKATHON SGU 2026 - MATPHO REPOSITORY GITIGNORE (ROOT LEVEL)
 # Bảo vệ thông tin bí mật (Secrets), dọn sạch cache, và tối ưu dung lượng Git
@@ -176,3 +177,23 @@ $RECYCLE.BIN/
 *.swo
 *~
 .history/
+
+# Quy tắc chung cho cả repo. Quy tắc riêng của từng phần nằm trong thư mục của
+# phần đó (ví dụ FireWatchAI/.gitignore).
+
+# Môi trường
+.venv/
+__pycache__/
+*.pyc
+
+# Bí mật
+.env
+
+# Trọng số model và gói nén (dữ liệu, model)
+*.pt
+*.onnx
+*.zip
+
+# Kết quả chạy
+runs/
+origin/main

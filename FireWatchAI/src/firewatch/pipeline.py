@@ -25,6 +25,7 @@ import statistics
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -101,6 +102,10 @@ class PipelineHealth:
         self.error: str | None = None
         self.source_live = False
         self.heartbeat_interval_s = 1.0
+        self.verifier_stats: Callable[[], dict] | None = None
+        """Khối ``verifier`` của ``/health`` (``DieuPhoiXacMinh.thong_ke``), chỉ
+        được gán khi cờ ``verifier.ben_vung`` bật; ``None`` thì ``/health`` giữ
+        đúng các trường cũ."""
 
     def beat(self) -> None:
         with self._lock:
@@ -343,6 +348,8 @@ class Pipeline:
             phat_tao=lambda m, o, v: self._emit(store, summary, m.du_lieu, o, v),
             phat_cap_nhat=lambda m, o, v: self._cap_nhat(store, m.du_lieu, o, v),
             dong_ho=dong_ho)
+        if self.health is not None:
+            self.health.verifier_stats = self._dieu_phoi.thong_ke
         return self._dieu_phoi
 
     def _gui_nen(self, req: VerifyRequest, p: _PendingAlert) -> str:

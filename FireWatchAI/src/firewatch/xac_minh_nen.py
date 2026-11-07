@@ -34,7 +34,7 @@ import itertools
 import logging
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
@@ -50,6 +50,10 @@ DU_PHONG_S = 0.5
 """Trừ khỏi ngân sách còn lại khi đặt timeout lượt gọi, để kết quả kịp ghi."""
 TOI_THIEU_S = 1.0
 """Timeout lượt gọi nhỏ hơn mức này thì không gọi VLM nữa."""
+CUA_SO_THONG_KE_S = 600.0
+"""Cửa sổ trượt của thống kê trên ``/health`` (tỉ lệ kịp, p50 / p95)."""
+TRANG_THAI_CAU_DAO_EN = {"dong": "closed", "mo": "open", "nua_mo": "half_open"}
+"""Tên trạng thái cầu dao trong ``/health`` (API dùng tiếng Anh như event)."""
 
 
 # ------------------------------------------------------------------ đồng hồ
@@ -132,6 +136,17 @@ class DongHoThat:
                 log.exception("việc hẹn giờ của verifier lỗi")
 
 
+def _phan_vi(xs: list[float], q: float) -> float | None:
+    """Phân vị ``q`` của dãy đã sắp xếp, cùng cách tính với ``RunSummary``."""
+    if not xs:
+        return None
+    return xs[int(q * (len(xs) - 1))]
+
+
+def _ms(giay: float | None) -> int | None:
+    return None if giay is None else int(round(giay * 1000))
+
+
 # -------------------------------------------------------------- điều phối
 TrangThaiMuc = Literal["cho", "dang_goi", "xong"]
 
@@ -192,6 +207,10 @@ class DieuPhoiXacMinh:
         self._hang: OrderedDict[str, MucXacMinh] = OrderedDict()
         """Mục chờ worker, cũ nhất trước."""
         self._da_xong: set[str] = set()
+        self._ket_qua: deque[tuple[float, float | None]] = deque()
+        """(lúc có trạng thái cuối, độ trễ nếu VLM trả lời kịp) để thống kê."""
+        self.so_vlm_off = 0
+        """Số event đã phát ``VLM_OFF`` từ lúc khởi động."""
         self._dung = False
         self._worker = [threading.Thread(target=self._lam, name=f"verifier-{i}",
                                          daemon=True)
@@ -243,6 +262,36 @@ class DieuPhoiXacMinh:
         """Số mục đang chờ worker."""
         with self._cv:
             return len(self._hang)
+
+    def thong_ke(self) -> dict[str, Any]:
+        """Khối ``verifier`` của ``GET /health`` (chỉ khi cờ bật).
+
+        Returns
+        -------
+        dict
+            ``breaker`` (``closed`` / ``open`` / ``half_open``), ``breaker_opens``,
+            ``queued``, ``window_s``, ``requests_in_window`` (yêu cầu có trạng
+            thái cuối trong cửa sổ), ``answered_ratio_in_window`` (phần trong đó
+            VLM trả lời kịp ngân sách; ``None`` khi chưa có yêu cầu),
+            ``latency_p50_ms`` / ``latency_p95_ms`` của các câu trả lời kịp,
+            tính từ lúc Voting quyết (``None`` khi không có), ``vlm_off_total``.
+        """
+        with self._cv:
+            now = self._dong_ho.bay_gio()
+            while self._ket_qua and now - self._ket_qua[0][0] > CUA_SO_THONG_KE_S:
+                self._ket_qua.popleft()
+            n = len(self._ket_qua)
+            tre = sorted(t for _, t in self._ket_qua if t is not None)
+            queued, vlm_off = len(self._hang), self.so_vlm_off
+        return {"breaker": TRANG_THAI_CAU_DAO_EN[self.cau_dao.trang_thai],
+                "breaker_opens": self.cau_dao.so_lan_mo,
+                "queued": queued,
+                "window_s": int(CUA_SO_THONG_KE_S),
+                "requests_in_window": n,
+                "answered_ratio_in_window": round(len(tre) / n, 3) if n else None,
+                "latency_p50_ms": _ms(_phan_vi(tre, 0.5)),
+                "latency_p95_ms": _ms(_phan_vi(tre, 0.95)),
+                "vlm_off_total": vlm_off}
 
     def cho_xong(self, timeout_s: float) -> bool:
         """Chờ (giờ thật) tới khi mọi mục có trạng thái cuối; ``False`` nếu hết giờ."""
@@ -324,6 +373,7 @@ class DieuPhoiXacMinh:
     def _vlm_off(self, m: MucXacMinh, ly_do: str, loi: str) -> None:
         """``VLM_OFF`` ngay, không gọi VLM: VLM tắt hoặc cầu dao mở."""
         self._hang.pop(m.event_id, None)
+        self.so_vlm_off += 1
         self._ket_thuc(m, VerifyOutcome("UNVERIFIED", None, 0.0, 0, loi, ly_do),
                        VerifierInfo.tao("VLM_OFF", reason=ly_do))
 
@@ -335,6 +385,9 @@ class DieuPhoiXacMinh:
             ve.huy()
         self._muc.pop(m.event_id, None)
         self._da_xong.add(m.event_id)
+        self._ket_qua.append((self._dong_ho.bay_gio(),
+                              outcome.latency_s if outcome.result is not None
+                              else None))
         phat = self._phat_cap_nhat if m.da_tao else self._phat_tao
         m.da_tao = True
         self._goi(phat, m, outcome, info)

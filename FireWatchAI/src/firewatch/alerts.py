@@ -182,7 +182,9 @@ class WebhookSink:
         body = event.model_dump_json().encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.token:
+            # Hợp đồng với backend: cùng một token, gửi theo cả hai cách xác thực.
             headers["Authorization"] = f"Bearer {self.token}"
+            headers["X-Internal-Secret"] = self.token
         for attempt in range(self.retries + 1):
             try:
                 req = urllib.request.Request(self.url, data=body, headers=headers,

@@ -34,7 +34,7 @@ def _detector(imgsz: int = 640) -> Detector:
 
 
 def test_onnx_is_stale(tmp_path: Path):
-    pt, onnx = tmp_path / "best.pt", tmp_path / "best_640.onnx"
+    pt, onnx = tmp_path / "model.pt", tmp_path / "model_640.onnx"
     assert not onnx_is_stale(pt, onnx)
     _touch(pt, 1_000)
     assert not onnx_is_stale(pt, onnx)
@@ -46,7 +46,7 @@ def test_onnx_is_stale(tmp_path: Path):
 
 def test_replaced_weights_trigger_reexport(tmp_path: Path):
     _FakeYolo.calls = []
-    pt, onnx = tmp_path / "best.pt", tmp_path / "best_640.onnx"
+    pt, onnx = tmp_path / "model.pt", tmp_path / "model_640.onnx"
     _touch(pt, 1_000)
     _touch(onnx, 2_000, b"old")
     det = _detector()

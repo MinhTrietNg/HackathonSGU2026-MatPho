@@ -1,0 +1,16 @@
+# ==============================================================================
+# Mắt Phố - EdgeAI Docker Compose Local Override (docker-compose.override.yml)
+# Tự động nạp đè cấu hình khi test Edge trên máy local mà KHÔNG SỬA file .env
+# Cách dùng: Đổi tên thành `docker-compose.override.yml` và chạy `docker compose up`
+# ==============================================================================
+
+services:
+  edge-backend:
+    environment:
+      - CLOUD_BACKEND_API_URL=http://host.docker.internal:8000
+      - CLOUD_BACKEND_WS_URL=ws://host.docker.internal:8000/api/v1/internal/edge/ws
+      - EDGE_PUBLIC_HLS_URL=http://localhost:8888
+
+  firewatch-ai:
+    environment:
+      - CLOUD_BACKEND_API_URL=http://host.docker.internal:8000

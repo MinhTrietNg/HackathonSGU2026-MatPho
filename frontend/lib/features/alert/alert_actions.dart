@@ -1,0 +1,157 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/router/app_router.dart';
+import '../../core/widgets/mp_banner.dart';
+import '../../core/widgets/mp_toast.dart';
+import '../../data/errors.dart';
+import '../../data/providers.dart';
+import '../../data/services/phone_dialer.dart';
+import '../cameras/camera_state.dart'
+    show CameraDetail, cameraDetailProvider, noLiveViewNote;
+import '../cameras/monitor_toasts.dart';
+import 'alert_controller.dart' show AlertClosing, alertProvider;
+import 'pending_alert_actions.dart';
+
+export 'pending_alert_actions.dart' show AlertOutcome;
+
+Future<void> dial114(
+  BuildContext context,
+  WidgetRef ref,
+  String eventId,
+) async {
+  final repository = ref.read(alertRepositoryProvider);
+  if (!await callEmergency(context, ref)) return;
+  try {
+    await repository.recordCall114(eventId);
+  } on MpException {
+    // Only G1's mark is lost; the call itself went ahead.
+  }
+}
+
+Future<bool> callEmergency(BuildContext context, WidgetRef ref) async {
+  final opened = await ref.read(phoneDialerProvider).dial(emergencyNumber);
+  if (!opened && context.mounted) {
+    showMpToast(
+      context,
+      const MpToast(
+        title: 'Máy này không gọi được. Hãy gọi 114 bằng máy khác.',
+      ),
+    );
+  }
+  return opened;
+}
+
+class AlertToasts {
+  const AlertToasts();
+
+  void resolved(
+    BuildContext context, {
+    required String locationName,
+    VoidCallback? onUndo,
+  }) =>
+      showResolvedToastFor(context, locationName: locationName, onUndo: onUndo);
+
+  void falseAlarm(
+    BuildContext context, {
+    required String locationName,
+    required VoidCallback onUndo,
+  }) => showFalseAlarmToastFor(
+    context,
+    locationName: locationName,
+    onUndo: onUndo,
+  );
+}
+
+final alertToastsProvider = Provider<AlertToasts>((ref) => const AlertToasts());
+
+Future<void> closeAlert(
+  BuildContext context,
+  WidgetRef ref,
+  String eventId,
+  AlertOutcome outcome,
+) async {
+  final alert = ref.read(alertProvider(eventId)).value;
+  if (alert == null || alert.closing != AlertClosing.allowed) return;
+  final router = GoRouter.of(context);
+  final toasts = ref.read(alertToastsProvider);
+  final notifications = ref.read(notificationServiceProvider);
+  final pending = ref.read(pendingAlertActionsProvider.notifier);
+  final where = alert.event.locationName;
+  unawaited(notifications.clearFireAlert(eventId));
+  hideMpAlertBanner();
+  pending.schedule(eventId, outcome);
+  router.go(AppRoutes.monitor);
+  void undo() {
+    if (pending.cancel(eventId)) router.push(AppRoutes.alert(eventId));
+  }
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final host = router.routerDelegate.navigatorKey.currentContext;
+    if (host == null || !host.mounted) return;
+    switch (outcome) {
+      case AlertOutcome.resolved:
+        toasts.resolved(host, locationName: where, onUndo: undo);
+      case AlertOutcome.falseAlarm:
+        toasts.falseAlarm(host, locationName: where, onUndo: undo);
+    }
+  });
+}
+
+Future<void> openEventCamera(
+  BuildContext context,
+  WidgetRef ref,
+  String eventId,
+) async {
+  final router = GoRouter.of(context);
+  final event = await ref.read(alertRepositoryProvider).getAlert(eventId);
+  final provider = cameraDetailProvider(event.cameraId);
+  final hold = ref.listenManual(provider, (_, _) {});
+  final CameraDetail detail;
+  try {
+    detail = await ref.read(provider.future);
+  } finally {
+    hold.close();
+  }
+  if (!detail.group.myRole.canWatch) {
+    if (context.mounted) {
+      showMpToast(context, const MpToast(title: noLiveViewNote));
+    }
+    return;
+  }
+  final watch = AppRoutes.watch(event.cameraId);
+  if (!_inStack(router.routerDelegate.currentConfiguration.matches, watch)) {
+    router.go(watch);
+    return;
+  }
+  while (router.state.uri.path != watch && router.canPop()) {
+    router.pop();
+  }
+}
+
+bool _inStack(List<RouteMatchBase> matches, String location) {
+  for (final match in matches) {
+    final found = switch (match) {
+      ImperativeRouteMatch(matches: final pushed) => _inStack(
+        pushed.matches,
+        location,
+      ),
+      ShellRouteMatch(matches: final inner) => _inStack(inner, location),
+      _ => match.matchedLocation == location,
+    };
+    if (found) return true;
+  }
+  return false;
+}
+
+void popOrGo(BuildContext context, String location) {
+  final router = GoRouter.of(context);
+  if (router.canPop()) {
+    router.pop();
+  } else {
+    router.go(location);
+  }
+}

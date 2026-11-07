@@ -1,0 +1,39 @@
+# ==============================================================================
+# MediaMTX Configuration for AI Surveillance Platform (Backend Streaming Gateway)
+# ==============================================================================
+
+# Global logging
+logLevel: info
+logDestinations: [stdout]
+
+# Control REST API (Used by FastAPI Camera Manager for dynamic path CRUD)
+api: yes
+apiAddress: :9997
+
+# RTSP Server Configuration (Used for Camera Ingest & Probe)
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+# WebRTC / WHEP Server Configuration (Used by Frontend for Direct Live Playback)
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+
+# HLS enabled for Flutter Mobile App playback
+rtmp: no
+hls: yes
+hlsAddress: :8888
+
+# Internal Authentication & API Permissions
+# Allows the backend container to manage dynamic paths without 401 Unauthorized
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: api
+      - action: publish
+      - action: read
+
+# Stream Path Defaults & Rules
+paths:
+  all_others:

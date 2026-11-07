@@ -1,0 +1,92 @@
+# ==============================================================================
+# Mắt Phố - Backend Docker Compose (Cloud Core Stack)
+# Dành riêng cho cụm Backend (FastAPI Gateway + Redis State Cache + MediaMTX)
+# ==============================================================================
+
+name: matpho_backend
+
+networks:
+  backend-net:
+    driver: bridge
+    name: matpho_backend_net
+
+volumes:
+  redis_data:
+    name: matpho_backend_redis_data
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. MediaMTX: Optional Local Mock (The Real MediaMTX runs in EdgeAI-MatPho)
+  # ----------------------------------------------------------------------------
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: matpho_mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"       # RTSP Ingest & Local Proxy
+      - "8888:8888"       # HLS Playback (Flutter Mobile App)
+      - "8889:8889"       # WHEP / WebRTC Playback (Web Frontend)
+      - "8189:8189/udp"   # WebRTC ICE UDP
+      - "9997:9997"       # MediaMTX Control REST API
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    networks:
+      - backend-net
+    profiles:
+      - mock-mtx
+
+  # ----------------------------------------------------------------------------
+  # 2. Redis: Optional Local Fallback (Upstash Redis Cloud is used by default)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: matpho_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    profiles:
+      - local-redis
+
+  # ----------------------------------------------------------------------------
+  # 3. Backend: FastAPI Core Gateway (REST API, WebSocket, Managers, Debounce)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: matpho_backend
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"       # FastAPI REST API & WebSocket Endpoint
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - ENVIRONMENT=development
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - MEDIAMTX_API_URL=${MEDIAMTX_API_URL:-http://host.docker.internal:9997}
+      - MEDIAMTX_RTSP_URL=${MEDIAMTX_RTSP_URL:-rtsp://host.docker.internal:8554}
+      - MEDIAMTX_HOST=${MEDIAMTX_HOST:-http://localhost:8888}
+      - REDIS_URL=${REDIS_URL:-rediss://default:gQAAAAAAAvH2AAIgcDI3Mzg5YjhlYzNhODc0MTJhOWIyNDg2NmIwNmJmMWI0YQ@integral-osprey-193014.upstash.io:6379}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-matpho-c7e77}
+      - FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-matpho-c7e77.firebasestorage.app}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-service-account.json
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ${FIREBASE_CREDENTIALS_PATH:-./credentials/firebase-service-account.json}:/app/credentials/firebase-service-account.json:ro
+    networks:
+      - backend-net

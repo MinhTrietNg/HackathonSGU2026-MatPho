@@ -1,0 +1,23 @@
+# Docker build ignore for MatPho Backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+postman/
+scripts/
+
+# Ignore local env and credentials
+.env
+.env.*
+credentials/*.json
+!credentials/.gitkeep
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+.git
+.gitignore

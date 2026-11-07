@@ -6,12 +6,15 @@ Việc đã biết nhưng chưa làm, kèm lý do. Xong việc nào thì xoá d�
 
 | Việc | Vì sao chưa làm |
 |---|---|
-| Detector kiểm SHA-256 của ONNX theo `.pt` thay vì so mtime (`onnx_is_stale`) | `src/firewatch/detector.py` đang khoá. Trong lúc chờ, tránh lỗi bằng thứ tự chép ở `models/README.md` |
+| Detector kiểm SHA-256 của ONNX theo `.pt` thay vì so mtime (`onnx_is_stale`) | `src/firewatch/detector.py` đang khoá. Trong lúc chờ, tránh lỗi bằng thứ tự chép ở `models/README.md`; `run.sh` / `run.ps1` kiểm SHA-256 trước khi chạy, ONNX lệch chỉ cảnh báo |
 | Docstring dòng 3 của `detector.py` còn tên checkpoint cũ | cùng lý do trên; `tests/test_ten_cu.py` đang miễn trừ file này |
 | Xoá các section `train`, `finetune`, `datasets`, `audit`, `eval` khỏi `config.yaml` vận hành | các section này phục vụ script train và đánh giá, vốn không nằm ở đây. Đã đổi tên tại chỗ; xoá phải sửa cả model trong `config.py`, nên tách thành quyết định riêng |
 | `datafirewatch-v0.4` trong `train` và `finetune` | bộ fine-tune v0.4 không có trong bảng đăng ký của FireWatch-Model; tên mới được đặt theo quy tắc, chưa có dòng đăng ký |
-| Vùng quét `watch_area` (sơ đồ 05/11 có vẽ) | chưa có trong FireWatchAI; khung `ai_service` ở nhánh `backend` đã có hàm che |
-| `.pt` và ONNX cho box lệch nhau khi mỗi backend tự tiền xử lý (lệch IoU tối đa 0,043; `models/README.md`) | chưa quyết có cần thống nhất letterbox hay không. Pipeline chạy ONNX nên hiện không ảnh hưởng vận hành |
+| Vùng quét `watch_area` (sơ đồ 05/11 có vẽ) | FireWatch chưa có. Nhánh `backend` đã có hàm che ở `EdgeAI-MatPho/ai_service/src/masking.py`; chưa quyết che ở phía nào |
+| Căn letterbox của `detector.py` theo tiền xử lý của ultralytics, để `.pt` và ONNX cho cùng box (hiện lệch IoU tối đa 0,043; `models/README.md`) | `detector.py` đang khoá. Pipeline chỉ chạy ONNX nên hiện không ảnh hưởng vận hành |
+| Tách đường ảnh khỏi webhook khi nhiều camera | `webhook.gui_anh` nhúng ảnh gốc (JPEG ≤ 200 KB, base64) vào từng payload, đủ cho một vài camera. Nhiều camera thì nên đẩy ảnh qua đường riêng và chỉ gửi đường dẫn; việc này đổi hợp đồng với backend nên phải thống nhất hai bên trước |
+| `updated` dạng timeline mỗi 30 s (gửi kèm lịch sử các lần cập nhật) | ADR gom sự cố chọn mỗi `updated` chỉ mang trạng thái hiện tại; backend tự ghép dòng thời gian từ chuỗi `updated` cùng `event_id` nếu cần |
+| Giữ trạng thái sự cố qua lần khởi động lại | trạng thái nằm trong bộ nhớ; khởi động lại thì cảnh báo kế tiếp mở sự cố mới (ADR gom sự cố, mục hạn chế) |
 
 ## Chọn ngưỡng vận hành (bài FA ở FireWatch-Model) phải xét clip này
 

@@ -1,0 +1,9 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="icon/battery">
+<g id="glyph">
+<path id="Vector" d="M17 7H5C3.89543 7 3 7.89543 3 9V15C3 16.1046 3.89543 17 5 17H17C18.1046 17 19 16.1046 19 15V9C19 7.89543 18.1046 7 17 7Z" stroke="#F2F4F6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_2" d="M21 10V14" stroke="#F2F4F6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_3" d="M11.5 9.5H6.5C5.94772 9.5 5.5 9.94772 5.5 10.5V13.5C5.5 14.0523 5.94772 14.5 6.5 14.5H11.5C12.0523 14.5 12.5 14.0523 12.5 13.5V10.5C12.5 9.94772 12.0523 9.5 11.5 9.5Z" fill="#F5B21E"/>
+</g>
+</g>
+</svg>

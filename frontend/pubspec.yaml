@@ -32,3 +32,31 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/
+    - assets/illustrations/
+    - assets/illustrations/animated/
+    - assets/brand/
+
+  fonts:
+    - family: Be Vietnam Pro
+      fonts:
+        - asset: assets/fonts/be_vietnam_pro/BeVietnamPro-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/be_vietnam_pro/BeVietnamPro-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/be_vietnam_pro/BeVietnamPro-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/be_vietnam_pro/BeVietnamPro-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/be_vietnam_pro/BeVietnamPro-ExtraBold.ttf
+          weight: 800
+    - family: IBM Plex Mono
+      fonts:
+        - asset: assets/fonts/ibm_plex_mono/IBMPlexMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/ibm_plex_mono/IBMPlexMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ibm_plex_mono/IBMPlexMono-SemiBold.ttf
+          weight: 600

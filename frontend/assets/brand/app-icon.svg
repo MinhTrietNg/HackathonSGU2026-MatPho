@@ -1,0 +1,24 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="mp/app-icon">
+<rect x="0.5" y="0.5" width="159" height="159" rx="35.5" fill="url(#paint0_linear_20_202)"/>
+<rect x="0.5" y="0.5" width="159" height="159" rx="35.5" stroke="#34495F"/>
+<g id="mp/logo-mark">
+<g id="mark">
+<path id="Vector" d="M29.7333 80C51 48.1 109 48.1 130.267 80C109 111.9 51 111.9 29.7333 80Z" stroke="#F5B21E" stroke-width="5.5"/>
+<path id="Vector_2" d="M80 99.8167C90.9445 99.8167 99.8167 90.9444 99.8167 80C99.8167 69.0556 90.9445 60.1833 80 60.1833C69.0556 60.1833 60.1833 69.0556 60.1833 80C60.1833 90.9444 69.0556 99.8167 80 99.8167Z" stroke="#F5B21E" stroke-width="5.5"/>
+<path id="Vector_3" d="M80 90.15C85.6057 90.15 90.15 85.6057 90.15 80C90.15 74.3943 85.6057 69.85 80 69.85C74.3943 69.85 69.85 74.3943 69.85 80C69.85 85.6057 74.3943 90.15 80 90.15Z" fill="url(#paint1_linear_20_202)"/>
+<path id="Vector_4" d="M75.65 79.13C77.572 79.13 79.13 77.5719 79.13 75.65C79.13 73.728 77.572 72.17 75.65 72.17C73.7281 72.17 72.17 73.728 72.17 75.65C72.17 77.5719 73.7281 79.13 75.65 79.13Z" fill="#FFF6DD"/>
+</g>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_20_202" x1="22.8571" y1="22.8571" x2="137.143" y2="137.143" gradientUnits="userSpaceOnUse">
+<stop stop-color="#17364F"/>
+<stop offset="1" stop-color="#080D13"/>
+</linearGradient>
+<linearGradient id="paint1_linear_20_202" x1="72.75" y1="72.75" x2="87.25" y2="87.25" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FFD15C"/>
+<stop offset="1" stop-color="#E8800D"/>
+</linearGradient>
+</defs>
+</svg>

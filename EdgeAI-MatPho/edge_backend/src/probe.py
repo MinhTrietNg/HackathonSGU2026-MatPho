@@ -150,3 +150,6 @@ _probe_service = CameraProbeService()
 
 def get_probe_service() -> CameraProbeService:
     return _probe_service
+
+
+get_lan_probe_service = get_probe_service

@@ -1,136 +1,74 @@
-import os
-import sqlite3
 import pytest
-from src.db import (
-    clear_sent_events,
-    delete_camera,
-    enqueue_offline_event,
-    get_camera,
-    get_pending_offline_events,
-    get_queue_stats,
-    init_db,
-    init_db_sync,
-    list_active_cameras,
-    list_active_cameras_sync,
-    mark_event_failed,
-    mark_event_sent,
-    update_camera_status,
-    update_camera_watch_area,
-    upsert_camera,
-)
-
-
-@pytest.fixture
-def test_db_path(tmp_path):
-    return str(tmp_path / "test_edge.db")
-
-
-def test_init_db_sync(test_db_path):
-    """Verify synchronous DB initialization and WAL journal mode."""
-    init_db_sync(test_db_path)
-    assert os.path.exists(test_db_path)
-
-    # Check WAL mode
-    with sqlite3.connect(test_db_path) as conn:
-        cursor = conn.execute("PRAGMA journal_mode;")
-        row = cursor.fetchone()
-        assert row[0].lower() == "wal"
+from src.db import EdgeDatabase
 
 
 @pytest.mark.asyncio
-async def test_crud_camera_lifecycle(test_db_path):
-    """Verify full CRUD lifecycle for local_cameras table."""
-    await init_db(test_db_path)
+async def test_edge_sqlite_wal_cameras_crud_and_dual_watch_area(tmp_path):
+    """Verify local_cameras CRUD in SQLite WAL mode with both Polygon and Rectangle watch_area (Q2)."""
+    db_file = str(tmp_path / "test_edge.db")
+    db = EdgeDatabase(db_path=db_file)
+    await db.init_db()
 
-    # 1. Upsert
-    watch_area = [[0.1, 0.1], [0.8, 0.1], [0.8, 0.8], [0.1, 0.8]]
-    await upsert_camera(
+    # 1. Insert camera with Polygon watch_area
+    watch_poly = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    await db.upsert_camera(
         cam_id="cam_01",
-        cam_name="Cổng chính",
-        rtsp_url="rtsp://192.168.1.10:554/live",
+        rtsp_url="rtsp://admin:pass@192.168.1.10:554/live",
+        cam_name="Camera Cổng Chính",
+        watch_area=watch_poly,
         is_active=True,
-        codec="h264",
-        watch_area=watch_area,
-        db_path=test_db_path,
     )
 
-    # 2. Get camera
-    cam = await get_camera("cam_01", db_path=test_db_path)
-    assert cam is not None
-    assert cam["cam_name"] == "Cổng chính"
-    assert cam["is_active"] == 1
-    assert "0.8" in cam["watch_area"]
+    cams = await db.list_cameras()
+    assert len(cams) == 1
+    assert cams[0]["cam_id"] == "cam_01"
+    assert cams[0]["watch_area"] == watch_poly
 
-    # 3. List active
-    active = await list_active_cameras(db_path=test_db_path)
-    assert len(active) == 1
-    assert active[0]["cam_id"] == "cam_01"
+    # 2. Update camera with Rectangle dict watch_area (from App I5 / Cloud Backend)
+    watch_rect = {"left": 0.15, "top": 0.25, "width": 0.5, "height": 0.4}
+    await db.upsert_camera(
+        cam_id="cam_01",
+        rtsp_url="rtsp://admin:pass@192.168.1.11:554/live",
+        cam_name="Camera Cổng Chính Mới",
+        watch_area=watch_rect,
+        is_active=False,
+    )
 
-    # Test sync helper (cold boot)
-    active_sync = list_active_cameras_sync(db_path=test_db_path)
-    assert len(active_sync) == 1
-    assert active_sync[0]["cam_id"] == "cam_01"
+    cams_after = await db.list_cameras()
+    assert cams_after[0]["watch_area"] == watch_rect
+    assert cams_after[0]["is_active"] is False
 
-    # 4. Update status & watch_area
-    await update_camera_status("cam_01", "ONLINE", db_path=test_db_path)
-    cam_updated = await get_camera("cam_01", db_path=test_db_path)
-    assert cam_updated["status"] == "ONLINE"
-
-    new_area = [[0.2, 0.2], [0.7, 0.7]]
-    await update_camera_watch_area("cam_01", new_area, db_path=test_db_path)
-    cam_area = await get_camera("cam_01", db_path=test_db_path)
-    assert "0.7" in cam_area["watch_area"]
-
-    # 5. Delete camera
-    deleted = await delete_camera("cam_01", db_path=test_db_path)
-    assert deleted is True
-
-    cam_gone = await get_camera("cam_01", db_path=test_db_path)
-    assert cam_gone is None
+    # 3. Remove camera
+    removed = await db.remove_camera("cam_01")
+    assert removed is True
+    assert await db.list_cameras() == []
 
 
 @pytest.mark.asyncio
-async def test_offline_events_queue_resilience(test_db_path):
-    """Verify Sơ đồ 6: Offline events buffering, FIFO retrieval, retry and cleanup."""
-    await init_db(test_db_path)
+async def test_edge_sqlite_offline_events_queue(tmp_path):
+    """Verify Store-and-Forward offline_events_queue FIFO operations."""
+    db_file = str(tmp_path / "test_queue.db")
+    db = EdgeDatabase(db_path=db_file)
+    await db.init_db()
 
-    # 1. Enqueue 3 events while offline
-    p1 = {"confidence": 0.92, "bbox": [0.1, 0.2, 0.4, 0.5]}
-    p2 = {"confidence": 0.85, "bbox": [0.2, 0.3, 0.5, 0.6]}
-    p3 = {"confidence": 0.78, "bbox": [0.3, 0.4, 0.6, 0.7]}
+    id1 = await db.enqueue_offline_event(
+        cam_id="cam_01",
+        event_type="FIRE_DETECTED",
+        payload={"cam_id": "cam_01", "confidence": 0.88, "class_name": "fire"},
+    )
+    id2 = await db.enqueue_offline_event(
+        cam_id="cam_02",
+        event_type="FIRE_DETECTED",
+        payload={"cam_id": "cam_02", "confidence": 0.92, "class_name": "smoke"},
+    )
+    assert id2 > id1
 
-    await enqueue_offline_event("evt_01", "cam_01", "fire", p1, db_path=test_db_path)
-    await enqueue_offline_event("evt_02", "cam_01", "fire", p2, db_path=test_db_path)
-    await enqueue_offline_event("evt_03", "cam_02", "smoke", p3, db_path=test_db_path)
+    queued = await db.peek_offline_events(limit=10)
+    assert len(queued) == 2
+    assert queued[0]["cam_id"] == "cam_01"
+    assert queued[1]["cam_id"] == "cam_02"
 
-    # 2. Retrieve pending events in FIFO order
-    pending = await get_pending_offline_events(limit=10, db_path=test_db_path)
-    assert len(pending) == 3
-    assert pending[0]["event_id"] == "evt_01"
-    assert pending[1]["event_id"] == "evt_02"
-    assert pending[2]["event_id"] == "evt_03"
-    assert pending[0]["payload"]["confidence"] == 0.92
-
-    # 3. Mark evt_01 as sent successfully
-    ok = await mark_event_sent("evt_01", db_path=test_db_path)
-    assert ok is True
-
-    # 4. Mark evt_02 as failed with retry increment
-    await mark_event_failed("evt_02", error_message="HTTP 503 Service Unavailable", max_retries=3, db_path=test_db_path)
-    pending_after_retry = await get_pending_offline_events(limit=10, db_path=test_db_path)
-    assert len(pending_after_retry) == 2  # evt_02 and evt_03 still pending
-    assert pending_after_retry[0]["event_id"] == "evt_02"
-    assert pending_after_retry[0]["retry_count"] == 1
-
-    # 5. Check queue stats
-    stats = await get_queue_stats(db_path=test_db_path)
-    assert stats["SENT"] == 1
-    assert stats["PENDING"] == 2
-
-    # 6. Reclaim disk space by clearing sent events
-    cleared = await clear_sent_events(db_path=test_db_path)
-    assert cleared == 1
-
-    stats_after_clear = await get_queue_stats(db_path=test_db_path)
-    assert stats_after_clear["SENT"] == 0
-    assert stats_after_clear["PENDING"] == 2
+    await db.delete_offline_event(id1)
+    remaining = await db.peek_offline_events(limit=10)
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == id2

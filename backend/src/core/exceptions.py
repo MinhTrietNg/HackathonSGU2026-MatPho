@@ -125,3 +125,14 @@ class PhoneNotRegisteredException(NotFoundException):
 class ServiceUnavailableException(AppException):
     def __init__(self, message: str = "Dịch vụ tạm thời không khả dụng.", code: str = "SERVICE_UNAVAILABLE"):
         super().__init__(code=code, message=message, status_code=503)
+
+
+class CameraConnectException(AppException):
+    def __init__(self, code: str, message: str, device_name: str, host: str):
+        super().__init__(
+            code=code,
+            message=message,
+            status_code=400,
+            details={"device_name": device_name, "host": host},
+        )
+

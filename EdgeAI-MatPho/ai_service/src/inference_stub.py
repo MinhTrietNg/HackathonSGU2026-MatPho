@@ -1,93 +1,86 @@
-"""AI Model Inference Black-Box Interface.
-
-================================================================================
-QUY ƯỚC QUAN TRỌNG DÀNH CHO TEAM AI (BÊN 1):
-- Hệ thống Edge coi khối suy luận AI này là một "HỘP ĐEN" (Black Box).
-- Bạn có thể sử dụng bất kỳ kiến trúc mô hình nào (YOLOv8, YOLOv11, YOLO26n,
-  ViT, CNN, VLM, ONNX Runtime, TensorRT, PyTorch, v.v.).
-- Bạn chỉ cần thực thi hàm `predict(frame_bgr)` nhận vào khung hình OpenCV BGR
-  và trả về danh sách đối tượng `DetectionResult`.
-================================================================================
+"""
+AI Model Plug-in Slot (Empty Skeleton for AI Team)
+==============================================================================
+Architecture Contract:
+- INPUT : `frame` (np.ndarray, BGR format decoded from RTSP `rtsp://mediamtx:8554/live/{cam_id}`)
+- MODEL : Currently empty stub. AI Team loads custom model in `__init__` and runs inference in `predict`.
+- OUTPUT: Returns a list of `DetectionResult` -> Automatically forwarded by `main.py` to Cloud Webhook!
+==============================================================================
 """
 
-from __future__ import annotations
-
+import os
 import logging
 from dataclasses import dataclass
-from typing import Protocol
-
+from typing import List
 import numpy as np
 
-logger = logging.getLogger("ai.model")
+logger = logging.getLogger("firewatch-ai.inference")
 
 
 @dataclass
 class DetectionResult:
-    """Kết quả phát hiện từ mô hình AI.
+    """Standardized output of one fire/smoke detection box."""
 
-    Attributes
-    ----------
-    class_name : str
-        Nhãn đối tượng: 'fire' (lửa) hoặc 'smoke' (khói).
-    confidence : float
-        Độ tin cậy từ 0.0 đến 1.0 (ví dụ 0.88).
-    bbox : list[float]
-        Tọa độ Bounding Box chuẩn hóa [x_min, y_min, x_max, y_max] trong khoảng [0.0, 1.0].
-        Ví dụ: [0.15, 0.20, 0.45, 0.60] biểu thị ô chữ nhật có:
-          - x_min: 15% chiều rộng ảnh từ mép trái
-          - y_min: 20% chiều cao ảnh từ mép trên
-          - x_max: 45% chiều rộng ảnh từ mép trái
-          - y_max: 60% chiều cao ảnh từ mép trên
-    """
-
-    class_name: str
-    confidence: float
-    bbox: list[float]
-
-
-class FireDetectionModel(Protocol):
-    """Giao diện chuẩn của mô hình phát hiện cháy."""
-
-    def load(self, weights_path: str) -> None:
-        """Nạp trọng số mô hình."""
-        ...
-
-    def predict(self, frame_bgr: np.ndarray) -> list[DetectionResult]:
-        """Thực hiện suy luận trên 1 khung hình BGR (từ OpenCV hoặc PyAV).
-
-        Parameters
-        ----------
-        frame_bgr : np.ndarray
-            Mảng NumPy 3 chiều (Height, Width, 3), hệ màu BGR.
-
-        Returns
-        -------
-        list[DetectionResult]
-            Danh sách các phát hiện cháy / khói (nếu có).
-        """
-        ...
+    class_name: str  # "fire" or "smoke"
+    confidence: float  # [0.0, 1.0]
+    bbox: List[float]  # [x1, y1, x2, y2]
 
 
 class MockFireModel:
-    """Mô hình giả lập (Stub) dùng để kiểm thử toàn bộ đường ống trước khi ráp Model thật.
-
-    Team AI sẽ thay thế class này bằng class nạp trọng số thật của các bạn
-    (ví dụ: class YOLOv8FireModel, class TensorRTFireModel).
+    """
+    Empty AI Model Skeleton (1 Input Frame -> 1 Output DetectionResult List).
+    AI Team Instructions:
+      1. Place your model weights (e.g., `best.pt`) inside `EdgeAI-MatPho/ai_service/weights/`.
+      2. Load your model in `__init__` below.
+      3. Implement `predict(frame, conf_threshold)` to return `List[DetectionResult]`.
     """
 
-    def __init__(self, weights_path: str | None = None) -> None:
+    def __init__(self, weights_path: str = "/app/weights/best.pt") -> None:
         self.weights_path = weights_path
-        logger.info("Initializing FireDetectionModel (Weights: %s)...", weights_path or "None (Mock)")
+        self.model = None
+        self.is_ready = False
 
-    def load(self, weights_path: str) -> None:
-        self.weights_path = weights_path
-        logger.info("Loaded AI model weights from %s", weights_path)
+        if os.path.exists(self.weights_path):
+            logger.info("Found weights file at %s (Ready for AI team to load model).", self.weights_path)
+            # ==================================================================
+            # [CHỖ GẮN MODEL CỦA TEAM AI - BƯỚC 1: LOAD WEIGHTS]
+            # from ultralytics import YOLO
+            # self.model = YOLO(self.weights_path)
+            # self.is_ready = True
+            # ==================================================================
+        else:
+            logger.info(
+                "AI Skeleton running in EMPTY STUB mode (no weights at %s).",
+                self.weights_path,
+            )
 
-    def predict(self, frame_bgr: np.ndarray) -> list[DetectionResult]:
-        """Placeholder inference.
-
-        Trong môi trường production, Team AI đặt code suy luận vào đây:
-            results = self.model(frame_bgr, conf=0.5)
-            ...
+    def predict(
+        self, frame: np.ndarray, conf_threshold: float = 0.60
+    ) -> List[DetectionResult]:
         """
+        Run inference on a single BGR frame (Input) and return detections (Output).
+        """
+        if frame is None or frame.size == 0:
+            return []
+
+        # ======================================================================
+        # [CHỖ GẮN MODEL CỦA TEAM AI - BƯỚC 2: SUY LUẬN (INFERENCE)]
+        # if self.is_ready and self.model is not None:
+        #     results = self.model.predict(frame, conf=conf_threshold, verbose=False)
+        #     detections: List[DetectionResult] = []
+        #     for r in results:
+        #         for box in r.boxes:
+        #             detections.append(
+        #                 DetectionResult(
+        #                     class_name=r.names[int(box.cls[0])],
+        #                     confidence=float(box.conf[0]),
+        #                     bbox=[float(v) for v in box.xyxy[0].tolist()],
+        #                 )
+        #             )
+        #     return detections
+        # ======================================================================
+
         return []
+
+
+FireDetectionModelStub = MockFireModel

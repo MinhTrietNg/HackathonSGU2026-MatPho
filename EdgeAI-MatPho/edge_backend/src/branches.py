@@ -1,8 +1,10 @@
-"""The output branches fed by one decoded source.
+"""The two output branches fed by one decoded source.
 
-* Live branch (towards App): Lossless remux for H.264 (Zero-Copy), otherwise
-  full-resolution H.264 transcode for non-H.264 sources.
-* AI branch stub (towards Edge AI): Reserved plug-and-play seam for Team 1.
+* **Live branch** (towards the app & AI): lossless remux when the source is H.264,
+  otherwise a full-resolution H.264 transcode so every app player (HLS) and AI reader can consume it.
+* **AI branch** (optional down-scaled sub-stream): down-scaled, down-sampled H.264
+  sub-stream, encoded on its own thread so it can never stall the live branch.
+  When ``settings.enable_ai_branch`` is ``False``, :class:`AiBranchStub` is used for Zero-CPU overhead.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from typing import Protocol
 
 import av
@@ -20,29 +23,29 @@ from .scaling import fit_even
 from .sinks import CLOCK_HZ, CopySink, H264Sink
 from .stats import SessionStats
 
-logger = logging.getLogger("edge.branches")
+logger = logging.getLogger("stream-worker.branches")
 
 _STOP = object()
 _LIVE_TRANSCODE_CRF = 23
 
 
 class LiveBranch(Protocol):
-    """Interface of the branch that feeds the mobile app via MediaMTX."""
+    """Interface of the branch that feeds the app (HLS) and direct RTSP consumers."""
 
     mode: str
 
     def on_packet(self, packet: av.Packet) -> None:
-        """Handle one compressed packet."""
+        """Handle one compressed packet (called after it was decoded)."""
 
     def on_frame(self, frame: av.VideoFrame, pts: int) -> None:
         """Handle one decoded frame with its 90 kHz timestamp."""
 
     def close(self) -> None:
-        """Release the output sink."""
+        """Release the output."""
 
 
 class CopyLiveBranch:
-    """Forward source packets untouched; zero re-encoding cost (CPU < 1%)."""
+    """Forward source packets untouched; zero re-encoding cost."""
 
     mode = "copy"
 
@@ -61,14 +64,14 @@ class CopyLiveBranch:
             self._stats.live_packets_out += 1
 
     def on_frame(self, frame: av.VideoFrame, pts: int) -> None:
-        pass
+        """Unused: the copy branch works on packets."""
 
     def close(self) -> None:
         self._sink.close()
 
 
 class TranscodeLiveBranch:
-    """Re-encode to H.264 at source resolution for non-H.264 sources."""
+    """Re-encode to H.264 at source resolution (non-H.264 sources like HEVC/H.265)."""
 
     mode = "transcode"
 
@@ -86,7 +89,7 @@ class TranscodeLiveBranch:
         self._stats = stats
 
     def on_packet(self, packet: av.Packet) -> None:
-        pass
+        """Unused: the transcode branch works on frames."""
 
     def on_frame(self, frame: av.VideoFrame, pts: int) -> None:
         self._sink.write(frame, pts)
@@ -106,17 +109,37 @@ def make_live_branch(
     """Choose remux for H.264 sources and transcode for everything else."""
     if info.codec == "h264":
         return CopyLiveBranch(url, in_stream, settings, stats)
-    logger.info("Source codec %s is not H.264: Live branch will transcode to H.264", info.codec)
+    logger.info("source codec %s is not H.264: live branch will transcode", info.codec)
     return TranscodeLiveBranch(url, info, settings, stats)
 
 
 class AiBranchStub:
-    """Seam for the AI sub-stream.
+    """Zero-CPU stub when ``enable_ai_branch=False`` (AI reads directly from ``live/{cam_id}``)."""
 
-    When enable_ai_branch=False (default), it safely drops submitted frames
-    without consuming CPU or RAM, while providing the exact interface needed
-    when Team 1 plugs in the AI Model.
-    """
+    def __init__(self, *args, **kwargs) -> None:
+        self.error: BaseException | None = None
+        self._size = (0, 0)
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self._size
+
+    @property
+    def failed(self) -> bool:
+        return False
+
+    def start(self) -> None:
+        pass
+
+    def submit(self, frame: av.VideoFrame, t: float) -> bool:
+        return True
+
+    def close(self, timeout: float = 5.0) -> None:
+        pass
+
+
+class AiBranch:
+    """Down-scaled, down-sampled H.264 sub-stream published on a worker thread."""
 
     def __init__(
         self,
@@ -129,32 +152,29 @@ class AiBranchStub:
         self._settings = settings
         self._stats = stats
         self._size = fit_even(info.width, info.height, settings.ai_max_edge)
-        self.error: BaseException | None = None
-        self._enabled = settings.enable_ai_branch
         self._queue: queue.Queue = queue.Queue(maxsize=settings.ai_queue_size)
-        self._thread: threading.Thread | None = None
+        self._thread = threading.Thread(
+            target=self._run, name="ai-branch", daemon=True
+        )
         self._t0: float | None = None
-
-        if self._enabled:
-            self._thread = threading.Thread(
-                target=self._run, name="ai-branch", daemon=True
-            )
+        self.error: BaseException | None = None
 
     @property
     def size(self) -> tuple[int, int]:
+        """Output ``(width, height)``."""
         return self._size
 
     @property
     def failed(self) -> bool:
+        """``True`` once the worker died; the branch must be recreated."""
         return self.error is not None
 
     def start(self) -> None:
-        if self._enabled and self._thread:
-            self._thread.start()
+        """Start the worker thread."""
+        self._thread.start()
 
     def submit(self, frame: av.VideoFrame, t: float) -> bool:
-        if not self._enabled:
-            return True
+        """Hand a frame over without blocking."""
         if self.failed:
             return False
         if self._t0 is None:
@@ -173,15 +193,28 @@ class AiBranchStub:
         self._stats.ai_frames_submitted += 1
         return True
 
+    def close(self, timeout: float = 5.0) -> None:
+        """Let the worker drain the queue, then stop it and wait for it."""
+        if not self._thread.is_alive():
+            return
+        deadline = time.monotonic() + timeout
+        try:
+            self._queue.put(_STOP, timeout=timeout)
+        except queue.Full:
+            return
+        self._thread.join(max(0.0, deadline - time.monotonic()))
+
     def _run(self) -> None:
         sink: H264Sink | None = None
         try:
+            width, height = self._size
             sink = H264Sink(
                 self._url,
-                *self._size,
+                width,
+                height,
                 self._settings.ai_fps,
                 self._settings.ai_crf,
-                1.0,
+                self._settings,
             )
             while True:
                 item = self._queue.get()
@@ -190,22 +223,9 @@ class AiBranchStub:
                 frame, pts = item
                 sink.write(frame, pts)
                 self._stats.ai_frames_encoded += 1
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - recorded, then handled by owner
             self.error = exc
-            logger.warning("AI sub-stream worker died: %s", exc)
+            logger.warning("AI branch stopped: %s: %s", type(exc).__name__, exc)
         finally:
             if sink is not None:
                 sink.close()
-
-    def close(self, timeout: float = 5.0) -> None:
-        if not self._enabled or not self._thread:
-            return
-        try:
-            self._queue.put_nowait(_STOP)
-        except queue.Full:
-            try:
-                self._queue.get_nowait()
-            except queue.Empty:
-                pass
-            self._queue.put(_STOP)
-        self._thread.join(timeout)

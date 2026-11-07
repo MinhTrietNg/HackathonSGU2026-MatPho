@@ -1,131 +1,122 @@
 # ==============================================================================
-# EdgeAI-MatPho: On-Premise Edge Node Orchestration (Master Spec v4.0)
-# Multi-Container Deployment: MediaMTX + Edge Backend + Mock Camera + AI Engine
+# Mắt Phố - Autonomous Edge Node (Docker Compose Stack)
+# Services:
+#   1. mediamtx     : RTSP (:8554), Low-Latency HLS (:8888/live/{cam_id}/index.m3u8), WebRTC (:8889)
+#   2. edge-backend : RTSP Input -> H.264 -> HLS Publisher + LAN Probe + SQLite WAL + Cloud WS
+#   3. firewatch-ai : Clean AI Skeleton (1 RTSP Input + 1 Webhook Output) for AI Team
+#   4. mock-camera  : (Tùy chọn --profile mock) Giả lập camera OSD bơm vào rtsp://mediamtx:8554/mock/cam_test
 # ==============================================================================
 
 networks:
   edge-net:
     driver: bridge
-    name: edgeai_matpho_net
+    name: matpho_edge_net
 
 volumes:
-  edge_data:
-    name: edgeai_matpho_data
+  edge_local_data:
+    name: matpho_edge_local_data
 
 services:
   # ----------------------------------------------------------------------------
-  # 1. MediaMTX: Local RTSP Remuxer & On-Demand HLS Streaming Gateway
+  # 1. Local MediaMTX: Edge Stream Gateway (RTSP Ingest & Low-Latency HLS Server)
   # ----------------------------------------------------------------------------
   mediamtx:
     image: bluenviron/mediamtx:latest
-    container_name: edge_mediamtx
+    container_name: matpho_edge_mediamtx
     restart: unless-stopped
     ports:
-      - "8554:8554"       # RTSP Ingest & Local Publish/Read (:8554/live/{cam_id})
-      - "8888:8888"       # HLS Playback (On-Demand for Mobile App via Tunnel)
-      - "9997:9997"       # Control REST API (for edge-backend dynamic path CRUD)
+      - "${MEDIAMTX_RTSP_PORT:-8554}:8554"       # RTSP Ingest & Local Proxy for AI (rtsp://mediamtx:8554/live/{cam_id})
+      - "${MEDIAMTX_HLS_PORT:-8888}:8888"       # HLS Playback for App (http://localhost:8888/live/{cam_id}/index.m3u8)
+      - "${MEDIAMTX_WEBRTC_PORT:-8889}:8889"       # WebRTC / WHEP Playback
+      - "${MEDIAMTX_API_PORT:-9997}:9997"       # MediaMTX Control REST API
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     networks:
       - edge-net
 
   # ----------------------------------------------------------------------------
-  # 2. Edge Backend: Autonomous Stream Worker, SQLite WAL Cache & Cloud WS Sync
+  # 2. Edge Backend: RTSP -> HLS Stream Worker, LAN Probe, SQLite WAL & Cloud WS
   # ----------------------------------------------------------------------------
   edge-backend:
     build:
       context: ./edge_backend
       dockerfile: Dockerfile
-    container_name: edge_backend
+    container_name: matpho_edge_backend
+    restart: unless-stopped
+    ports:
+      - "${EDGE_BACKEND_PORT:-8090}:8090"
+    env_file:
+      - .env
+    environment:
+      - EDGE_DEVICE_ID=${EDGE_DEVICE_ID:-edg_local_01}
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
+      - MEDIAMTX_HLS_URL=${MEDIAMTX_HLS_URL:-http://localhost:8888}
+      - PATH_SOURCE_TEMPLATE=${PATH_SOURCE_TEMPLATE:-source/{cam_id}}
+      - PATH_APP_TEMPLATE=${PATH_APP_TEMPLATE:-live/{cam_id}}
+      - PATH_AI_TEMPLATE=${PATH_AI_TEMPLATE:-ai/{cam_id}}
+      - ENABLE_AI_BRANCH=${ENABLE_AI_BRANCH:-false}
+      - CLOUD_BACKEND_WS_URL=${CLOUD_BACKEND_WS_URL:-ws://host.docker.internal:8000/api/v1/internal/edge/ws}
+      - CLOUD_BACKEND_API_URL=${CLOUD_BACKEND_API_URL:-http://host.docker.internal:8000}
+      - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
+      - EDGE_SQLITE_PATH=/app/data/edge_local.db
+      - 'DECODER_STREAMS=${DECODER_STREAMS:-[{"cam_id": "cam_01", "source_url": "rtsp://mediamtx:8554/mock/cam_test"}]}'
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - edge_local_data:/app/data
+    depends_on:
+      mediamtx:
+        condition: service_started
+    networks:
+      - edge-net
+
+  # ----------------------------------------------------------------------------
+  # 3. FireWatch AI Service: Clean Plug-and-Play Skeleton (1 Input RTSP + 1 Output Webhook)
+  # ----------------------------------------------------------------------------
+  firewatch-ai:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    container_name: matpho_edge_firewatch_ai
     restart: unless-stopped
     env_file:
       - .env
     environment:
       - EDGE_DEVICE_ID=${EDGE_DEVICE_ID:-edg_local_01}
-      - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
-      - CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.matpho.vn}
-      - CLOUD_BACKEND_WS_URL=${CLOUD_BACKEND_WS_URL:-wss://api.matpho.vn/api/v1/internal/edge/ws}
+      - STREAM_PATH_TEMPLATE=${STREAM_PATH_TEMPLATE:-live/{cam_id}}
+      - CLOUD_BACKEND_API_URL=${CLOUD_BACKEND_API_URL:-http://host.docker.internal:8000}
+      - EDGE_BACKEND_API_URL=http://edge-backend:8090
       - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
-      - SQLITE_DB_PATH=/app/data/edge.db
+      - 'AI_CAMERA_STREAMS=${AI_CAMERA_STREAMS:-[{"cam_id": "cam_01"}]}'
+      - AI_TARGET_FPS=${AI_TARGET_FPS:-3.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    ports:
-      - "8080:8000"
     volumes:
-      - edge_data:/app/data
-      - ./edge_backend/src:/app/src
+      - ./ai_service/weights:/app/weights:ro
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
+      edge-backend:
+        condition: service_started
     networks:
       - edge-net
 
   # ----------------------------------------------------------------------------
-  # 3. Mock Camera Simulator (Profile: mock)
-  # docker compose --profile mock up -d
-  # Tự động sinh luồng RTSP 1080p @ 25fps phát vào MediaMTX để test không cần cam thật
+  # 4. Mock Camera Simulator (Optional Demo Profile: --profile mock)
   # ----------------------------------------------------------------------------
   mock-camera:
-    profiles: ["mock"]
     build:
       context: ./edge_backend
       dockerfile: Dockerfile
-    container_name: edge_mock_camera
+    container_name: matpho_edge_mock_camera
     restart: unless-stopped
     command: ["python", "/app/scripts/mock_camera.py", "--url", "rtsp://mediamtx:8554/mock/cam_test"]
     volumes:
       - ./scripts:/app/scripts:ro
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
     networks:
       - edge-net
-
-  # ----------------------------------------------------------------------------
-  # 4. Cloudflare Tunnel (Zero Trust Outbound Tunnel - Profile: tunnel)
-  # Đưa luồng HLS :8888 ra Internet qua domain công khai không cần mở port modem
-  # docker compose --profile tunnel up -d
-  # ----------------------------------------------------------------------------
-  tunnel:
-    profiles: ["tunnel"]
-    image: cloudflare/cloudflared:latest
-    container_name: edge_tunnel
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - mediamtx
-    networks:
-      - edge-net
-
-  # ----------------------------------------------------------------------------
-  # 5. FireWatch AI Service (Profile: ai)
-  # Nhận RTSP từ MediaMTX (:8554), chạy suy luận mô hình và bắn webhook lên Cloud
-  # docker compose --profile ai up -d
-  # ----------------------------------------------------------------------------
-  ai-service:
-    profiles: ["ai"]
-    build:
-      context: ./ai_service
-      dockerfile: Dockerfile
-    container_name: edge_ai_service
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
-      - EDGE_BACKEND_URL=http://edge-backend:8000
-      - CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.matpho.vn}
-      - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
-      - AI_CAMERA_IDS=${AI_CAMERA_IDS:-cam_mock}
-      - AI_SAMPLING_FPS=${AI_SAMPLING_FPS:-1.0}
-      - AI_CONFIDENCE_THRESHOLD=${AI_CONFIDENCE_THRESHOLD:-0.60}
-      - ALERT_COOLDOWN_SECONDS=${ALERT_COOLDOWN_SECONDS:-30.0}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    volumes:
-      - ./ai_service/src:/app/src
-      - ./ai_service/weights:/app/weights
-    depends_on:
-      - mediamtx
-      - edge-backend
-    networks:
-      - edge-net
+    profiles:
+      - mock
+      - demo

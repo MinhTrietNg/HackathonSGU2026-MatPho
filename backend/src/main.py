@@ -3,6 +3,7 @@ FastAPI Core Gateway for Mắt Phố (AI Surveillance & Fire Emergency Platform)
 Synchronized with API_SPECIFICATION.md v1.2 and Clean Architecture
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -11,7 +12,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.error_handlers import register_exception_handlers
 from .services.firebase_service import init_firebase
-from .routers import health, auth, users
+from .workers.camera_heartbeat import camera_heartbeat_loop
+from .workers.escalation_worker import escalation_loop
+from .routers import (
+    health,
+    auth,
+    users,
+    groups,
+    invitations,
+    cameras,
+    settings as settings_router,
+    websocket_router,
+    internal_ai,
+    alerts,
+)
+
+# Export internal secret key for tests and external adapters
+INTERNAL_API_SECRET_KEY = settings.INTERNAL_API_SECRET_KEY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,11 +52,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Firebase initialization warning: {e}")
 
+    # 2. Start Background Workers
+    heartbeat_task = asyncio.create_task(camera_heartbeat_loop())
+    escalation_task = asyncio.create_task(escalation_loop())
+
     logger.info("Backend services ready to serve requests.")
     yield
 
     # Shutdown sequence
     logger.info("Shutting down Backend services...")
+    heartbeat_task.cancel()
+    escalation_task.cancel()
+    try:
+        await asyncio.gather(heartbeat_task, escalation_task, return_exceptions=True)
+    except asyncio.CancelledError:
+        pass
 
 
 # Initialize FastAPI instance
@@ -66,3 +93,10 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
+app.include_router(groups.router, prefix=settings.API_V1_STR)
+app.include_router(invitations.router, prefix=settings.API_V1_STR)
+app.include_router(cameras.router, prefix=settings.API_V1_STR)
+app.include_router(settings_router.router, prefix=settings.API_V1_STR)
+app.include_router(internal_ai.router)
+app.include_router(alerts.router)
+app.include_router(websocket_router.router)

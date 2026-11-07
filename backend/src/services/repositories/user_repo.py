@@ -83,6 +83,7 @@ class UserRepository(BaseFirestoreRepository):
                 "group_name": "Cá nhân",
                 "is_personal": True,
                 "address": None,
+                "leader_id": user_id,
                 "creator_id": user_id,
                 "member_count": 1,
                 "camera_count": 0,

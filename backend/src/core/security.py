@@ -281,3 +281,38 @@ async def get_optional_current_user(
         return await get_current_user(authorization)
     except Exception:
         return None
+
+
+def verify_internal_secret(
+    x_internal_secret: Optional[str] = Header(None, alias="X-Internal-Secret"),
+) -> bool:
+    """Verifies internal secret key for Edge AI / FireWatch Webhooks."""
+    secret = settings.INTERNAL_API_SECRET_KEY
+    if not x_internal_secret or x_internal_secret != secret:
+        raise UnauthorizedException("Mã bảo mật nội bộ không hợp lệ hoặc bị thiếu.", code="INVALID_INTERNAL_SECRET")
+    return True
+
+
+def generate_emergency_token(alert_id: str) -> str:
+    """Generates a verifiable short-lived emergency token for an alert (valid 3 hours)."""
+    secret = settings.INTERNAL_API_SECRET_KEY
+    ts = int(time.time())
+    sig = hashlib.sha256(f"{alert_id}:{ts}:{secret}".encode()).hexdigest()[:16]
+    return f"emg_{ts}_{sig}"
+
+
+def verify_emergency_token(alert_id: str, token: str) -> bool:
+    """Verifies emergency token for zero-friction access during fire incidents."""
+    try:
+        parts = token.split("_")
+        if len(parts) != 3 or parts[0] != "emg":
+            return False
+        ts = int(parts[1])
+        if abs(time.time() - ts) > 10800:  # 3 hours validity
+            return False
+        secret = settings.INTERNAL_API_SECRET_KEY
+        expected = hashlib.sha256(f"{alert_id}:{ts}:{secret}".encode()).hexdigest()[:16]
+        return parts[2] == expected
+    except Exception:
+        return False
+

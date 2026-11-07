@@ -65,8 +65,8 @@ class DecodeSession:
     def _describe(self, exc: BaseException) -> str:
         text = str(exc).strip()
         if not text:
-            text = exc.__class__.__name__
-        return redact_text(text)
+            return exc.__class__.__name__
+        return redact_text(f"{exc.__class__.__name__}: {text}")
 
     def _run(self) -> None:
         cam_id = self.spec.cam_id

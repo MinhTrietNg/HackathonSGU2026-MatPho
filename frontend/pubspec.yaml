@@ -38,6 +38,7 @@ flutter:
     - assets/illustrations/
     - assets/illustrations/animated/
     - assets/brand/
+    - assets/sounds/
 
   fonts:
     - family: Be Vietnam Pro

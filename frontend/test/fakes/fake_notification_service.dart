@@ -14,6 +14,7 @@ final class FakeNotificationService implements NotificationService {
     this.grantOnRequest = true,
     this.settingsTurnOn = true,
     this.launchAlertId,
+    this.launchCall114 = false,
   }) : permission = scenario.has(FakeCase.notificationsDenied)
            ? NotificationPermission.denied
            : scenario.has(FakeCase.notificationsNotDetermined)
@@ -29,6 +30,9 @@ final class FakeNotificationService implements NotificationService {
 
   @override
   final String? launchAlertId;
+
+  @override
+  final bool launchCall114;
 
   @override
   Future<NotificationPermission> status() async => permission;

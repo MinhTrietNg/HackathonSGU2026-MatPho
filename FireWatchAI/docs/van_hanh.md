@@ -183,3 +183,66 @@ volumes:
 - Mỗi camera một service (một tiến trình một nguồn), mỗi service một `camera.id`: ghi đè
   bằng `command: ["--set", "camera.id=cam02", "serve", "--host", "0.0.0.0",
   "--exit-on-pipeline-stop"]` và một volume event riêng.
+
+## 8. Chạy thử cờ `verifier.ben_vung` bật (2026-11-07)
+
+Mục đích: xác nhận verifier bền vững và gom sự cố chạy đúng trên pipeline thật, trước
+khi quyết mặc định cờ. **Không phải** số đo độ chính xác: các clip thuộc tập T1, VLM là
+giả.
+
+**Cách chạy.** Pipeline thật (FireWatch-v2.0, ONNX 640, CPU) với `--realtime`, nhánh
+`FireWatch-AI` @ `81966a6`, `camera.context=HAM`, webhook rỗng. `/health` hỏi mỗi 5 s
+qua cùng ứng dụng FastAPI của `serve`. Bốn chế độ:
+
+| Chế độ | Cấu hình |
+|---|---|
+| cờ tắt | `vlm.provider=mock`, `vlm.mock_delay_s=0.5` (đối chứng) |
+| nhanh | cờ bật, mock 0,5 s |
+| chậm | cờ bật, mock 5 s |
+| chết | cờ bật, `vlm.provider=gemini` trỏ `api_url` tới cổng đóng trên localhost: mọi lượt gọi lỗi mạng, không gọi Gemini thật |
+
+Kết quả thô (event, `run.log`, `ket_qua.json` mỗi trường hợp) ở
+`E:\Hackathon\_tam_gd1\verifier_thu\`, ngoài repo.
+
+**Clip.**
+- Dương: `tr-cn-tret-chay-101_d1.mp4` (170 s, cháy gần suốt clip).
+- Âm: `te-vn-ham-bt-031_d1.mp4` (50 s).
+- Leo thang: `te-cn-ngoai-chay-134_d1.mp4` (67 s, WARNING ở 18 s rồi CRITICAL ở 24 s), chỉ
+  chạy cờ tắt và nhanh.
+- Clip dương chọn ban đầu, `te-vn-ham-chay-023_d1.mp4`, không sinh cảnh báo nào với
+  FireWatch-v2.0 ở cả bốn chế độ, nên được thay.
+
+### Kết quả
+
+| Clip, chế độ | `created` | `updated` | Voting quyết → `created` | Trạng thái verifier | ERROR trong log |
+|---|---|---|---|---|---|
+| dương, cờ tắt | 3 (26 s, 86 s, 146 s video) | 0 | 1,04 s | không có | 0 |
+| dương, nhanh | 1 | 4 (nhịp 30 s) | 0,53 s | `VERIFIED` ngay trong `created` | 0 |
+| dương, chậm | 1 | 5 | 2,07 s | `PENDING` rồi `VERIFIED` sau 3 s (5 s từ lúc quyết) | 0 |
+| dương, chết | 1 | 5 | 2,05 s | `PENDING` rồi `VLM_ERROR` (`loi_mang`) | 0 |
+| âm, cả 4 chế độ | 0 | 0 | | | 0 |
+| leo thang, cờ tắt | 2 (WARNING, CRITICAL) | 0 | 1,03 s; 1,01 s | không có | 0 |
+| leo thang, nhanh | 1 (WARNING) | 2 | 0,55 s; lên CRITICAL sau 0,04 s | `VERIFIED`, lượt 2 khi leo thang | 0 |
+
+- **Thời điểm cảnh báo.** `created` đầu tiên có cùng `video_ts_sec` ở mọi chế độ (26,0 s
+  clip dương; 18,0 s clip leo thang). Cờ bật không phát muộn hơn cửa sổ 2 s; với VLM
+  nhanh còn sớm hơn cờ tắt khoảng 0,5 s, vì bộ điều phối phát ngay khi có kết quả thay vì
+  chờ heartbeat kế tiếp.
+- **VLM chết.** Lỗi kết nối tới cổng đóng trên Windows mất khoảng 2 s, nên `created` ra
+  `PENDING` đúng lúc 2 s và `VLM_ERROR` theo sau trong cùng mili giây. Chỉ có một lượt gọi
+  (gom sự cố), nên cầu dao không mở.
+- **Gom sự cố.** Clip dương: 3 event của cờ tắt thành 1 event, `updated` đều 30 s một lần,
+  `status` giữ `open` vì cháy tới hết clip. Clip leo thang: 2 event thành 1, mức lên
+  CRITICAL bằng `updated` ngay (`luot_xac_minh` 2).
+- **`/health`.** Luôn trả 200 trong lúc chạy, không lần nào không trả lời. Khối
+  `verifier` khớp từng trường hợp: nhanh `answered_ratio_in_window` 1,0 và p50 500 ms;
+  chậm 1,0 và p50 5000 ms; chết 0,0 và p50 `null`; cầu dao `closed`, `vlm_off_total` 0.
+- **Log.** Không dòng ERROR nào. WARNING gồm dòng báo VLM giả lập lúc khởi động, dòng lỗi
+  của mỗi lượt gọi VLM ở chế độ chết, và dòng báo mức tăng của sự cố.
+
+### Chưa kiểm được ở đây
+
+- Kết thúc sự cố (`ended` sau 120 s) và kiểm lại VLM sau 300 s: cần clip dài hơn hoặc
+  nguồn lặp; đã có test với đồng hồ giả (`tests/test_su_co.py`).
+- Cầu dao mở trên pipeline thật: cần ít nhất 3 lượt gọi lỗi liên tiếp, tức 3 sự cố trong
+  thời gian ngắn; đã có test (`tests/test_verifier_cau_dao.py`).

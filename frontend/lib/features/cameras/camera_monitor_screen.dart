@@ -17,8 +17,10 @@ import '../../core/widgets/mp_still.dart';
 import '../../core/widgets/mp_toast.dart';
 import '../../data/models/models.dart';
 import '../../data/providers.dart';
+import '../ai_mode/ai_mode_state.dart' show aiActivityAt, aiActivityLabel;
 import '../auth/notifications_off_banner.dart';
 import '../auth/permission_controller.dart';
+import '../detection/watch_widgets.dart' show WatchTicker;
 import '../groups/group_state.dart' show groupDisplayName, roleLabel;
 import 'camera_routes.dart';
 import 'camera_state.dart';
@@ -269,7 +271,7 @@ class _CameraRow extends ConsumerWidget {
       MpIllustrations.feed,
       size: _thumbnailArtSize,
     );
-    return MpListCard(
+    Widget card(DateTime now) => MpListCard(
       thumbnail: switch (still) {
         final still? => MpStill.image(
           still,
@@ -286,7 +288,9 @@ class _CameraRow extends ConsumerWidget {
       title: camera.name,
       subtitle: lost && since != null
           ? 'Mất tín hiệu từ ${formatClock(since, seconds: false)}'
-          : 'AI đang quét',
+          : lost
+          ? 'AI đang quét'
+          : aiActivityLabel(aiActivityAt(camera.ai, now)),
       badge: lost
           ? const MpBadge(label: 'Mất tín hiệu', tone: MpBadgeTone.warn)
           : const MpBadge(label: 'Đang theo dõi', tone: MpBadgeTone.live),
@@ -299,6 +303,11 @@ class _CameraRow extends ConsumerWidget {
             )
           : () => showMpToast(context, const MpToast(title: noLiveViewNote)),
     );
+    final clock = ref.watch(clockProvider);
+    // Only a schedule changes with the time of day.
+    return !lost && camera.ai.mode == AiMode.scheduled
+        ? WatchTicker(clock: clock, builder: card)
+        : card(clock());
   }
 }
 

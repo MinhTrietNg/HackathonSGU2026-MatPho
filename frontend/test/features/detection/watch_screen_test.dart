@@ -76,6 +76,7 @@ void main() {
     WidgetTester tester,
     String cameraId, {
     DetectionRepository? repository,
+    DateTime Function()? clock,
     List<Override> overrides = const [],
   }) async {
     tester.view
@@ -117,7 +118,7 @@ void main() {
           fakeScenarioProvider.overrideWithValue(const FakeScenario.test()),
           if (repository != null)
             detectionRepositoryProvider.overrideWithValue(repository),
-          clockProvider.overrideWithValue(() => FakeData.demoNow),
+          clockProvider.overrideWithValue(clock ?? () => FakeData.demoNow),
           ...overrides,
         ]),
         child: MaterialApp.router(
@@ -151,6 +152,24 @@ void main() {
     expect(find.text('HẦM B1 · 23/10/2025 21:47:43'), findsOneWidget);
     expect(find.text('Toàn màn hình'), findsOneWidget);
     expect(find.text('Dừng theo dõi'), findsNothing);
+  });
+
+  testWidgets('inside its pause window the camera says AI is resting, until '
+      'the window ends', (tester) async {
+    var now = DateTime(2025, 10, 23, 18);
+    final repo = ScriptedDetectionRepository();
+    await open(tester, 'cam-kitchen', repository: repo, clock: () => now);
+    repo.emit(const DetectionWatching());
+    await tester.pumpAndSettle();
+    expect(find.text('Nghỉ AI theo lịch'), findsOneWidget);
+    expect(find.text('AI đang quét'), findsNothing);
+    expect(find.text('5 khung/giây'), findsNothing);
+
+    now = DateTime(2025, 10, 23, 19, 30);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Nghỉ AI theo lịch'), findsNothing);
+    expect(find.text('AI đang quét'), findsOneWidget);
+    expect(find.text('5 khung/giây'), findsOneWidget);
   });
 
   testWidgets('the timeline grows E2a → E2d, then F2 opens', (tester) async {

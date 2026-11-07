@@ -18,6 +18,7 @@ import '../../core/widgets/mp_tips_card.dart';
 import '../../core/widgets/mp_toast.dart';
 import '../../data/models/models.dart';
 import '../../data/providers.dart';
+import '../ai_mode/ai_mode_state.dart';
 import '../alert/alert_actions.dart' show callEmergency;
 import '../cameras/camera_state.dart';
 import 'detection_controller.dart';
@@ -196,7 +197,17 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
       case DetectionIdle() || DetectionWatching() || DetectionUnverified():
         return [
           feed(),
-          WatchStatusCard(rows: [_scanning(_fpsOf(state))]),
+          WatchTicker(
+            clock: clock,
+            builder: (now) => WatchStatusCard(
+              rows: [
+                switch (aiActivityAt(camera.camera.ai, now)) {
+                  AiActivity.scanning => _scanning(_fpsOf(state)),
+                  final idle => _aiIdle(idle),
+                },
+              ],
+            ),
+          ),
         ];
 
       case DetectionVerifying(
@@ -319,6 +330,17 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
         description: description,
         bold: false,
       );
+
+  WatchStatusRow _aiIdle(AiActivity activity) => (
+    dot: activity == AiActivity.off
+        ? context.mpColors.statusWarn
+        : context.mpColors.brandAccentFg,
+    title: aiActivityLabel(activity),
+    value: null,
+    valueColor: null,
+    description: null,
+    bold: false,
+  );
 
   List<WatchStatusRow> _steps(
     List<TimelineStep> steps, {

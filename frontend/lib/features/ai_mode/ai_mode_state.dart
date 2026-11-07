@@ -142,3 +142,29 @@ String aiRolePhrase(GroupRole role) => switch (role) {
 
 bool aiPauseValid(AiPause pause) =>
     pause.days.isNotEmpty && pause.from != pause.to;
+
+enum AiActivity { scanning, paused, off }
+
+// A window with from > to runs past midnight: `days` are the days it starts.
+AiActivity aiActivityAt(CameraAi ai, DateTime now) {
+  if (ai.mode == AiMode.off) return AiActivity.off;
+  if (ai.mode == AiMode.alwaysOn) return AiActivity.scanning;
+  final minute = now.hour * 60 + now.minute;
+  final yesterday = now.weekday == DateTime.monday
+      ? DateTime.sunday
+      : now.weekday - 1;
+  for (final p in ai.pauses) {
+    final paused = p.from <= p.to
+        ? p.days.contains(now.weekday) && minute >= p.from && minute < p.to
+        : (p.days.contains(now.weekday) && minute >= p.from) ||
+              (p.days.contains(yesterday) && minute < p.to);
+    if (paused) return AiActivity.paused;
+  }
+  return AiActivity.scanning;
+}
+
+String aiActivityLabel(AiActivity activity) => switch (activity) {
+  AiActivity.scanning => 'AI đang quét',
+  AiActivity.paused => 'Nghỉ AI theo lịch',
+  AiActivity.off => 'AI đã tắt',
+};

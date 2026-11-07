@@ -215,6 +215,42 @@ void main() {
     expect(find.text('Khu sạc xe'), findsNothing);
   });
 
+  testWidgets('rows say when AI is paused by schedule or off, and flip at '
+      'the end of the window', (tester) async {
+    var now = DateTime(2025, 10, 23, 18);
+    await _pumpCameras(
+      tester,
+      overrides: [
+        clockProvider.overrideWithValue(() => now),
+        fakeWorldProvider.overrideWith((ref) {
+          final world = FakeWorld(ref.watch(fakeScenarioProvider));
+          ref.onDispose(world.dispose);
+          world.cameras = [
+            for (final c in world.cameras)
+              c.id == 'cam-front' ? c.copyWith(ai: CameraAi.off) : c,
+          ];
+          return world;
+        }),
+      ],
+    );
+    await _tap(tester, find.bySemanticsLabel('Chọn nơi: Chung cư Sky Garden'));
+    await _tap(tester, find.text('Nhà mình'));
+    String subtitleOf(String name) => tester
+        .widget<MpListCard>(
+          find.ancestor(of: find.text(name), matching: find.byType(MpListCard)),
+        )
+        .subtitle;
+    expect(subtitleOf('Bếp'), 'Nghỉ AI theo lịch');
+    expect(subtitleOf('Cửa trước'), 'AI đã tắt');
+    expect(subtitleOf('Phòng khách'), 'AI đang quét');
+    expect(find.text('Đang theo dõi'), findsNWidgets(3));
+
+    now = DateTime(2025, 10, 23, 19, 30);
+    await tester.pump(const Duration(seconds: 1));
+    expect(subtitleOf('Bếp'), 'AI đang quét');
+    expect(subtitleOf('Cửa trước'), 'AI đã tắt');
+  });
+
   testWidgets('a member sees only assigned cameras and no "+"', (tester) async {
     await _pumpCameras(tester);
     await _tap(tester, find.bySemanticsLabel('Chọn nơi: Chung cư Sky Garden'));

@@ -30,7 +30,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from .alerts import FireType, Verification, VLMResult
+from .alerts import FireType, Verification, VerifierInfo, VLMResult
 from .config import Context, VLMConfig, env_secret
 
 log = logging.getLogger(__name__)
@@ -377,9 +377,54 @@ class VerifyOutcome:
     latency_s: float
     attempts: int
     error: str | None = None
+    reason: str | None = None
+    """Mã ngắn của lỗi (``alerts.LY_DO``) khi không có câu trả lời; không chứa
+    body HTTP hay chuỗi lỗi thô (cái đó nằm ở ``error``, chỉ để log)."""
 
 
 OnDone = Callable[[VerifyOutcome], None]
+
+
+def ma_loi(exc: BaseException) -> str:
+    """Mã lý do ngắn cho một lỗi gọi VLM.
+
+    Parameters
+    ----------
+    exc : BaseException
+        Lỗi của lượt gọi cuối.
+
+    Returns
+    -------
+    str
+        ``http_429``, ``http_4xx``, ``http_5xx``, ``loi_phan_tich`` (trả lời
+        không đọc được) hoặc ``loi_mang`` (mọi lỗi còn lại, kể cả timeout
+        của một lượt gọi).
+    """
+    if isinstance(exc, GeminiHTTPError):
+        if exc.code == 429:
+            return "http_429"
+        if 400 <= exc.code < 500:
+            return "http_4xx"
+        if exc.code >= 500:
+            return "http_5xx"
+    if isinstance(exc, (ValueError, KeyError, TypeError)):
+        return "loi_phan_tich"
+    return "loi_mang"
+
+
+def trang_thai_verifier(outcome: VerifyOutcome) -> VerifierInfo:
+    """Trạng thái verifier của một kết quả VLM đã có (cờ ``ben_vung`` bật).
+
+    Có câu trả lời: ``VERIFIED`` hoặc ``REJECTED`` kèm độ trễ. VLM tắt hoặc
+    thiếu key: ``VLM_OFF``. Lỗi: ``VLM_ERROR``. Hai trạng thái sau cần người
+    trực tự xác thực. Không bao giờ đổi mức cảnh báo.
+    """
+    if outcome.result is not None:
+        status = "VERIFIED" if outcome.verification == "VERIFIED" else "REJECTED"
+        return VerifierInfo.tao(status, latency_s=outcome.latency_s)
+    if outcome.reason == "vlm_tat":
+        return VerifierInfo.tao("VLM_OFF", reason="vlm_tat")
+    return VerifierInfo.tao("VLM_ERROR", reason=outcome.reason or "loi_mang")
 
 
 class VerificationService:
@@ -405,7 +450,8 @@ class VerificationService:
         """
         if self.verifier is None:
             fut: Future = Future()
-            fut.set_result(VerifyOutcome("UNVERIFIED", None, 0.0, 0, "vlm disabled"))
+            fut.set_result(VerifyOutcome("UNVERIFIED", None, 0.0, 0, "vlm disabled",
+                                         "vlm_tat"))
             if on_done:
                 on_done(fut.result())
             return fut
@@ -435,6 +481,7 @@ class VerificationService:
                                   self.cfg.jpeg_quality)
                       if req.first_frame is not None else None)
         error: str | None = None
+        reason: str | None = None
         attempts = 0
         for attempt in range(self.cfg.retries + 1):
             attempts = attempt + 1
@@ -451,12 +498,13 @@ class VerificationService:
                                      attempts)
             except Exception as exc:  # noqa: BLE001 - mọi lỗi đều fail-open
                 error = f"{type(exc).__name__}: {exc}"
+                reason = ma_loi(exc)
                 log.warning("VLM %s lỗi lần %d/%d: %s", self.verifier.name, attempts,
                             self.cfg.retries + 1, error)
         latency = time.perf_counter() - t0
         log.warning("VLM thất bại sau %d lần (%.1fs): alert UNVERIFIED", attempts,
                     latency)
-        return VerifyOutcome("UNVERIFIED", None, latency, attempts, error)
+        return VerifyOutcome("UNVERIFIED", None, latency, attempts, error, reason)
 
     def drain(self, timeout_s: float | None = None) -> int:
         """Block until pending verifications finish; return how many remained."""

@@ -1,0 +1,596 @@
+{
+ "notify_suppressed_true": {
+  "thong_bao": [
+   [
+    "created",
+    {
+     "event_id": "E1",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "VERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 10.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": true,
+      "is_smoke": true,
+      "confidence": 0.9,
+      "description_vi": "Lửa và khói bốc lên từ yên xe.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E2",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 20.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "updated",
+    {
+     "event_id": "E2",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "VERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 20.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": true,
+      "is_smoke": true,
+      "confidence": 0.9,
+      "description_vi": "Lửa và khói bốc lên từ yên xe.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E3",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "WARNING",
+     "verification": "SUPPRESSED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 30.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": false,
+      "is_smoke": false,
+      "confidence": 0.8,
+      "description_vi": "Không thấy lửa hay khói.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E4",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 40.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E5",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 50.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "updated",
+    {
+     "event_id": "E5",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "SUPPRESSED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 50.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": false,
+      "is_smoke": false,
+      "confidence": 0.8,
+      "description_vi": "Không thấy lửa hay khói.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E6",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 60.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ]
+  ],
+  "tom_tat": [
+   {
+    "event_id": "E1",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "VERIFIED",
+    "video_ts_sec": 10.0,
+    "track_id": 1,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": false
+   },
+   {
+    "event_id": "E2",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "VERIFIED",
+    "video_ts_sec": 20.0,
+    "track_id": 2,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": true
+   },
+   {
+    "event_id": "E3",
+    "kind": "NEW",
+    "severity": "WARNING",
+    "verification": "SUPPRESSED",
+    "video_ts_sec": 30.0,
+    "track_id": 3,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": false
+   },
+   {
+    "event_id": "E4",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "UNVERIFIED",
+    "video_ts_sec": 40.0,
+    "track_id": 4,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 2,
+    "vlm_error": "GeminiHTTPError: HTTP 429",
+    "updated": false
+   },
+   {
+    "event_id": "E5",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "SUPPRESSED",
+    "video_ts_sec": 50.0,
+    "track_id": 5,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": true
+   },
+   {
+    "event_id": "E6",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "UNVERIFIED",
+    "video_ts_sec": 60.0,
+    "track_id": 6,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 0,
+    "vlm_error": "vlm chưa trả lời trong grace_s",
+    "updated": false
+   }
+  ],
+  "dia": [
+   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}"
+  ],
+  "log": [
+   "firewatch.alerts INFO ALERT CRITICAL VERIFIED E1 video 10.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E2 video 20.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT UPDATE E2 -> VERIFIED",
+   "firewatch.alerts INFO ALERT WARNING SUPPRESSED E3 video 30.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E4 video 40.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E5 video 50.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT UPDATE E5 -> SUPPRESSED",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E6 video 60.0s -> (không snapshot)"
+  ]
+ },
+ "notify_suppressed_false": {
+  "thong_bao": [
+   [
+    "created",
+    {
+     "event_id": "E1",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "VERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 10.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": true,
+      "is_smoke": true,
+      "confidence": 0.9,
+      "description_vi": "Lửa và khói bốc lên từ yên xe.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E2",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 20.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "updated",
+    {
+     "event_id": "E2",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "VERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 20.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": {
+      "is_fire": true,
+      "is_smoke": true,
+      "confidence": 0.9,
+      "description_vi": "Lửa và khói bốc lên từ yên xe.",
+      "fire_type": "UNCONTROLLED"
+     },
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E4",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 40.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E5",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 50.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ],
+   [
+    "created",
+    {
+     "event_id": "E6",
+     "camera_id": "cam01",
+     "context": "HAM",
+     "severity": "CRITICAL",
+     "verification": "UNVERIFIED",
+     "started_at": "2026-11-07T12:00:00+07:00",
+     "video_ts_sec": 60.0,
+     "boxes": [
+      {
+       "cls": "fire",
+       "conf": 0.9,
+       "xyxy": [
+        10.0,
+        20.0,
+        60.0,
+        80.0
+       ]
+      }
+     ],
+     "vlm": null,
+     "snapshot_path": ""
+    }
+   ]
+  ],
+  "tom_tat": [
+   {
+    "event_id": "E1",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "VERIFIED",
+    "video_ts_sec": 10.0,
+    "track_id": 1,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": false
+   },
+   {
+    "event_id": "E2",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "VERIFIED",
+    "video_ts_sec": 20.0,
+    "track_id": 2,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": true
+   },
+   {
+    "event_id": "E3",
+    "kind": "NEW",
+    "severity": "WARNING",
+    "verification": "SUPPRESSED",
+    "video_ts_sec": 30.0,
+    "track_id": 3,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": false
+   },
+   {
+    "event_id": "E4",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "UNVERIFIED",
+    "video_ts_sec": 40.0,
+    "track_id": 4,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 2,
+    "vlm_error": "GeminiHTTPError: HTTP 429",
+    "updated": false
+   },
+   {
+    "event_id": "E5",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "SUPPRESSED",
+    "video_ts_sec": 50.0,
+    "track_id": 5,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 1,
+    "vlm_error": null,
+    "updated": true
+   },
+   {
+    "event_id": "E6",
+    "kind": "NEW",
+    "severity": "CRITICAL",
+    "verification": "UNVERIFIED",
+    "video_ts_sec": 60.0,
+    "track_id": 6,
+    "vlm_latency_s": "<so>",
+    "vlm_attempts": 0,
+    "vlm_error": "vlm chưa trả lời trong grace_s",
+    "updated": false
+   }
+  ],
+  "dia": [
+   "{\n  \"event_id\": \"E1\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 10.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E2\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"VERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 20.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": true,\n    \"is_smoke\": true,\n    \"confidence\": 0.9,\n    \"description_vi\": \"Lửa và khói bốc lên từ yên xe.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E3\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"WARNING\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 30.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E4\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 40.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E5\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"SUPPRESSED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 50.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": {\n    \"is_fire\": false,\n    \"is_smoke\": false,\n    \"confidence\": 0.8,\n    \"description_vi\": \"Không thấy lửa hay khói.\",\n    \"fire_type\": \"UNCONTROLLED\"\n  },\n  \"snapshot_path\": \"\"\n}",
+   "{\n  \"event_id\": \"E6\",\n  \"camera_id\": \"cam01\",\n  \"context\": \"HAM\",\n  \"severity\": \"CRITICAL\",\n  \"verification\": \"UNVERIFIED\",\n  \"started_at\": \"2026-11-07T12:00:00+07:00\",\n  \"video_ts_sec\": 60.0,\n  \"boxes\": [\n    {\n      \"cls\": \"fire\",\n      \"conf\": 0.9,\n      \"xyxy\": [\n        10.0,\n        20.0,\n        60.0,\n        80.0\n      ]\n    }\n  ],\n  \"vlm\": null,\n  \"snapshot_path\": \"\"\n}"
+  ],
+  "log": [
+   "firewatch.alerts INFO ALERT CRITICAL VERIFIED E1 video 10.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E2 video 20.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT UPDATE E2 -> VERIFIED",
+   "firewatch.alerts INFO ALERT WARNING SUPPRESSED E3 video 30.0s -> (không snapshot)",
+   "firewatch.alerts INFO event E3 SUPPRESSED: chỉ ghi đĩa, không đẩy WS/webhook",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E4 video 40.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E5 video 50.0s -> (không snapshot)",
+   "firewatch.alerts INFO ALERT UPDATE E5 -> SUPPRESSED",
+   "firewatch.alerts INFO event E5 SUPPRESSED: chỉ ghi đĩa, không đẩy WS/webhook",
+   "firewatch.alerts INFO ALERT CRITICAL UNVERIFIED E6 video 60.0s -> (không snapshot)"
+  ]
+ }
+}

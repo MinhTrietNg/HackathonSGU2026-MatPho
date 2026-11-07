@@ -99,6 +99,17 @@ vlm:
   # CHỈ hỏi khi camera.context = NGOAI; HAM/TRET luôn UNCONTROLLED. CONTROLLED KHÔNG đổi
   # verification/severity: event vẫn phát, chỉ người trực được bỏ qua.
 
+# ───────── [4b] Verifier bền vững (docs/decisions/2026-11-07-verifier-ben-vung.md) ─────────
+verifier:
+  ben_vung: false           # false (hoặc thiếu khối này): hành vi, log, JSON event y hệt trước đây.
+                            # true: event có thêm object verifier (status, needs_human_check,
+                            # latency_ms, reason); VLM không hạ mức, không gỡ cảnh báo
+  ngan_sach_s: 10           # ngân sách nền tính từ lúc Voting quyết; phải lớn hơn vlm.grace_s
+  hang_cho_toi_da: 8        # số mục tối đa đang chờ gọi VLM, khoá theo event_id
+  cau_dao:
+    loi_lien_tiep: 3        # thất bại liên tiếp thì mở cầu dao
+    mo_s: 60                # mở chừng này giây rồi cho một lượt gọi thử
+
 # ───────── [5] Alert sink ─────────
 alerts:
   events_dir: events        # mỗi alert = 1 file .json + 1 ảnh .jpg keyframe đã vẽ box

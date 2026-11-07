@@ -28,12 +28,13 @@ from pathlib import Path
 import cv2
 
 from .acks import MUTING_ACTIONS, Ack, AckStore
-from .alerts import Event, EventStore
+from .alerts import Event, EventStore, VerifierInfo
 from .annotate import draw_detections, draw_tracks, write_jpeg
 from .config import Config
 from .detector import DetectResult, Detector, Detection
 from .sources import Heartbeat, HeartbeatSampler, open_source
-from .vlm import VerificationService, VerifyOutcome, VerifyRequest, build_verifier
+from .vlm import (VerificationService, VerifyOutcome, VerifyRequest, build_verifier,
+                  trang_thai_verifier)
 from .voting import Severity, TrackEvent, VotingEngine, union
 
 log = logging.getLogger(__name__)
@@ -314,36 +315,52 @@ class Pipeline:
 
     def _flush_pending(self, store: EventStore, summary: RunSummary,
                        final: bool = False) -> None:
-        """Tier 5: emit events whose verdict is in, or whose grace expired."""
+        """Tier 5: emit events whose verdict is in, or whose grace expired.
+
+        Mọi ``created`` / ``updated`` đều phát trên luồng pipeline, và
+        ``updated`` chỉ phát khi event đã có (``p.event``), nên không có
+        ``updated`` nào đi trước ``created`` của cùng ``event_id``.
+
+        Cờ ``verifier.ben_vung`` bật: event mang object ``verifier``. Hết cửa
+        sổ đồng bộ mà VLM chưa trả lời thì ``PENDING`` (reason ``cho_vlm``);
+        kết quả về sau phát ``updated`` với ``VERIFIED``, ``REJECTED`` hoặc
+        ``VLM_ERROR``. Mức cảnh báo không bao giờ đổi.
+        """
+        ben_vung = self.cfg.verifier.ben_vung
         now = time.time()
         for p in list(self._pending):
             if p.future.done():
                 outcome: VerifyOutcome = p.future.result()
+                v = trang_thai_verifier(outcome) if ben_vung else None
                 if p.event is None:
-                    self._emit(store, summary, p, outcome)
+                    self._emit(store, summary, p, outcome, v)
                 else:
                     store.update(p.event.event_id, verification=outcome.verification,
-                                 vlm=outcome.result)
+                                 vlm=outcome.result, verifier=v)
                     if p.record is not None:
                         p.record.update({"verification": outcome.verification,
                                          "vlm_latency_s": round(outcome.latency_s, 2),
                                          "vlm_attempts": outcome.attempts,
                                          "vlm_error": outcome.error, "updated": True})
+                        if v is not None:
+                            p.record["verifier_status"] = v.status
                 self._pending.remove(p)
             elif p.event is None and (final or now >= p.deadline_wall):
                 late = VerifyOutcome("UNVERIFIED", None, now - (p.deadline_wall
                                                                 - self.cfg.vlm.grace_s),
                                      0, "vlm chưa trả lời trong grace_s")
-                self._emit(store, summary, p, late)
+                v = VerifierInfo.tao("PENDING", reason="cho_vlm") if ben_vung else None
+                self._emit(store, summary, p, late, v)
                 if final:
                     self._pending.remove(p)
 
     def _emit(self, store: EventStore, summary: RunSummary, p: _PendingAlert,
-              outcome: VerifyOutcome) -> None:
+              outcome: VerifyOutcome, verifier: VerifierInfo | None = None) -> None:
         p.event = store.create(severity=p.severity.value,
                                verification=outcome.verification, video_ts=p.ts,
                                detections=p.detections, image=p.image,
-                               vlm=outcome.result, started_at=p.started_at)
+                               vlm=outcome.result, started_at=p.started_at,
+                               verifier=verifier)
         p.record = {"event_id": p.event.event_id, "kind": p.kind,
                     "severity": p.event.severity,
                     "verification": p.event.verification,
@@ -351,6 +368,8 @@ class Pipeline:
                     "vlm_latency_s": round(outcome.latency_s, 2),
                     "vlm_attempts": outcome.attempts, "vlm_error": outcome.error,
                     "updated": False}
+        if verifier is not None:
+            p.record["verifier_status"] = verifier.status
         summary.alerts.append(p.record)
         self._event_track[p.event.event_id] = p.track_id
         if self.health:

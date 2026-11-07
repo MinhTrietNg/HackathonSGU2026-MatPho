@@ -21,7 +21,7 @@ Bảng đối chiếu tên file cũ sang tên mới nằm ở `CHANGELOG.md` c�
 Chép theo đúng thứ tự: **`.pt` trước, ONNX sau**.
 
 ```bash
-cd FireWatchAI
+cd EdgeAI-MatPho/FireWatchAI
 cp <FireWatch-Model>/models/firewatch-v2.0.pt models/
 cp <FireWatch-Model>/models/firewatch-v2.0_640.onnx models/
 touch models/firewatch-v2.0_640.onnx      # bảo đảm ONNX mới hơn .pt

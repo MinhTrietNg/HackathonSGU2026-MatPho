@@ -8,7 +8,7 @@
 | Commit nguồn | `afa5a70788ebd872b0523cc722f4c372e4f7f6c4` (2026-11-06 15:25 +0700) |
 | Ngày nhập | 2026-11-07 |
 | Commit nhập | `42b9f631602d21128ba0342b82e03c850aa279da` ("Nhập mã nguồn FireWatch làm bản gốc của repo") |
-| Vị trí hiện tại | thư mục `FireWatchAI/` (dời từ gốc repo sang `ai/` ở commit đổi bố cục, sau đó đổi tên `ai/` thành `FireWatchAI/`) |
+| Vị trí hiện tại | thư mục `EdgeAI-MatPho/FireWatchAI/` (dời từ gốc repo sang `ai/` ở commit đổi bố cục, đổi tên `ai/` thành `FireWatchAI/`, rồi chuyển vào `EdgeAI-MatPho/` ngày 2026-11-08) |
 
 Phần được nhập, so theo hash object của git giữa `afa5a70` và `42b9f63` (hash object
 trùng nghĩa là nội dung trùng từng byte):
@@ -73,5 +73,5 @@ commit thêm `.gitattributes` (`* text=auto eol=lf`), bản checkout giữ LF v�
 kiểm trực tiếp:
 
 ```bash
-sha256sum FireWatchAI/src/firewatch/{voting,detector,sources}.py
+sha256sum EdgeAI-MatPho/FireWatchAI/src/firewatch/{voting,detector,sources}.py
 ```

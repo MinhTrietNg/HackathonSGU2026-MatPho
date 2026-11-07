@@ -1,7 +1,7 @@
 # Vận hành FireWatch
 
-Mọi lệnh chạy trong thư mục `FireWatchAI/`. Cài đặt và lệnh cơ bản xem `README.md` của
-thư mục này; tài liệu này nói rõ hơn về trọng số, đầu ra, tham số và nguồn live.
+Mọi lệnh chạy trong thư mục `EdgeAI-MatPho/FireWatchAI/`. Cài đặt và lệnh cơ bản xem
+`README.md` của thư mục này; tài liệu này nói rõ hơn về trọng số, đầu ra, tham số và nguồn live.
 
 ## 1. Cài đặt
 
@@ -132,6 +132,7 @@ Máy kiểm: Windows 11, CPU, ultralytics 8.4.198, onnxruntime 1.31.1.
 ### Docker
 
 ```bash
+cd EdgeAI-MatPho
 docker build -t firewatch FireWatchAI
 docker run -d --name firewatch --restart unless-stopped -p 8000:8000 \
   --env-file FireWatchAI/.env -e FIREWATCH_SOURCE=rtsp://<camera>/stream \
@@ -152,22 +153,23 @@ docker run -d --name firewatch --restart unless-stopped -p 8000:8000 \
 
 ### Gắn vào docker-compose của backend
 
-Với nút biên `EdgeAI-MatPho`, làm theo mục 11: FireWatchAI thay hẳn
-`ai_service`, mọi camera trong một container. Cách dưới đây chạy một nguồn mỗi service.
+Với nút biên `EdgeAI-MatPho`, làm theo mục 11: FireWatchAI đã là dịch vụ
+`firewatch-ai` của compose đó, mọi camera trong một container. Cách dưới đây chạy một
+nguồn mỗi service trong một compose khác.
 
 Không sửa nhánh `backend`. Thêm service sau vào `docker-compose.yml` của backend, đường
-dẫn tính từ thư mục chứa file compose đó tới `FireWatchAI/` của repo:
+dẫn tính từ thư mục chứa file compose đó tới `EdgeAI-MatPho/FireWatchAI/` của repo:
 
 ```yaml
 services:
   firewatch:
-    build: ../FireWatchAI
+    build: ../EdgeAI-MatPho/FireWatchAI
     restart: unless-stopped
-    env_file: ../FireWatchAI/.env          # FIREWATCH_WEBHOOK_URL, FIREWATCH_WEBHOOK_TOKEN, GEMINI_API_KEY
+    env_file: ../EdgeAI-MatPho/FireWatchAI/.env   # FIREWATCH_WEBHOOK_URL, FIREWATCH_WEBHOOK_TOKEN, GEMINI_API_KEY
     environment:
       FIREWATCH_SOURCE: rtsp://mediamtx:8554/cam01
     volumes:
-      - ../FireWatchAI/models:/app/models:ro
+      - ../EdgeAI-MatPho/FireWatchAI/models:/app/models:ro
       - firewatch_events:/app/events
       - firewatch_runs:/app/runs
     ports:
@@ -335,25 +337,22 @@ Giới hạn của lần đo:
 - Khoảng phút 2–5 có một lệnh tìm kiếm khác chạy trên một luồng CPU. `/health` vẫn trả
   200 và heartbeat không bị trễ trong lúc đó.
 
-## 11. Chạy thay `EdgeAI-MatPho/ai_service`
+## 11. Chạy trong nút biên `EdgeAI-MatPho`
 
-Nút biên `EdgeAI-MatPho` (thư mục cùng cấp với `FireWatchAI/`, từ PR #2) có dịch vụ
-`firewatch-ai` build từ `./ai_service`. Thư mục đó vốn là một khung trống chờ gắn model.
-FireWatchAI đặt vào chỗ đó thì chạy được ngay, không sửa `docker-compose.yml`,
-`edge_backend` hay backend.
+FireWatchAI nằm ở `EdgeAI-MatPho/FireWatchAI/` và là dịch vụ `firewatch-ai` của
+`EdgeAI-MatPho/docker-compose.yml`. Từ 2026-11-08 nó thay khung `ai_service` cũ, vốn chỉ
+đọc RTSP và gửi webhook quanh một model trống. `edge_backend` và backend không phải sửa
+gì.
 
 **Các bước.**
-1. Thay nội dung `EdgeAI-MatPho/ai_service/` bằng nội dung `FireWatchAI/` (giữ cả
-   `models/README.md`, `run.sh`, `uv.lock`, `Dockerfile`). `.gitignore` gốc đã có ngoại lệ
-   cho `EdgeAI-MatPho/ai_service/` để `git add` không bỏ sót file `.md`, `docs/` và
-   `run.ps1`.
-2. Chép `firewatch-v2.0.pt` rồi `firewatch-v2.0_640.onnx` vào
-   `EdgeAI-MatPho/ai_service/weights/` (thư mục này không vào git). Compose gắn nó vào
-   `/app/weights` ở chế độ chỉ đọc; `run.sh` chép sang `models/` rồi kiểm SHA-256, sai
-   hoặc thiếu thì container dừng mã 1 với thông báo rõ.
-3. Thêm `GEMINI_API_KEY=<key>` vào `EdgeAI-MatPho/.env`. Không có key thì VLM tắt và mọi
-   event ra `VLM_OFF`, cần người xác thực.
-4. `cd EdgeAI-MatPho && ./run_edge.sh up` (hoặc `docker compose up -d --build`).
+1. Chép `firewatch-v2.0.pt` rồi `firewatch-v2.0_640.onnx` vào
+   `EdgeAI-MatPho/FireWatchAI/models/` theo `models/README.md` (không vào git). Compose
+   gắn thư mục này vào `/app/weights` ở chế độ chỉ đọc; `run.sh` chép sang `/app/models`
+   rồi kiểm SHA-256, sai hoặc thiếu thì container dừng mã 1 với thông báo rõ.
+2. Điền `GEMINI_API_KEY=<key>` trong `EdgeAI-MatPho/.env` (dòng có sẵn trong
+   `.env.example`). Không có key thì VLM tắt và mọi event ra `VLM_OFF`, cần người xác
+   thực.
+3. `cd EdgeAI-MatPho && ./run_edge.sh up` (hoặc `docker compose up -d --build`).
 
 **Biến môi trường được dùng** (đúng như khung `ai_service` cũ):
 

@@ -1,4 +1,4 @@
-# FireWatchAI/: FireWatch
+# EdgeAI-MatPho/FireWatchAI/: FireWatch
 
 Pipeline phát hiện cháy và khói từ camera giám sát khu để xe:
 
@@ -13,7 +13,7 @@ FireWatch-v2.0 (YOLO26n, `.pt` SHA-256 `58def3d0…`).
 ## Chạy trong 5 lệnh
 
 ```bash
-cd FireWatchAI
+cd EdgeAI-MatPho/FireWatchAI
 uv sync                                  # tạo .venv từ uv.lock
 cp .env.example .env                     # điền GEMINI_API_KEY, webhook nếu dùng
 cp <FireWatch-Model>/models/firewatch-v2.0.pt <FireWatch-Model>/models/firewatch-v2.0_640.onnx models/ && touch models/firewatch-v2.0_640.onnx
@@ -30,11 +30,12 @@ server: `./run.sh run --source <video.mp4>`, kết quả vào `runs/` và `event
 dịch vụ (Docker, tự khởi động lại, gắn vào docker-compose của backend): `docs/van_hanh.md`
 mục 7.
 
-**Nút biên `EdgeAI-MatPho`.** Thư mục này thay được `EdgeAI-MatPho/ai_service`: đặt nội
-dung vào đó, chép trọng số vào `ai_service/weights/`, thêm `GEMINI_API_KEY` vào
-`EdgeAI-MatPho/.env`, rồi `docker compose up -d --build`. Lệnh mặc định của image
-(`edge`) chạy mọi camera trong `AI_CAMERA_STREAMS` theo lịch quét của edge_backend và
-gửi event qua cổng chuyển tiếp của nó (`docs/van_hanh.md` mục 11).
+**Nút biên `EdgeAI-MatPho`.** Thư mục này là dịch vụ `firewatch-ai` trong
+`EdgeAI-MatPho/docker-compose.yml`. Chép trọng số vào `models/` như trên, thêm
+`GEMINI_API_KEY` vào `EdgeAI-MatPho/.env`, rồi chạy `./run_edge.sh up` trong
+`EdgeAI-MatPho/`. Lệnh mặc định của image (`edge`) chạy mọi camera trong
+`AI_CAMERA_STREAMS` theo lịch quét của edge_backend và gửi event qua cổng chuyển tiếp
+của nó (`docs/van_hanh.md` mục 11).
 
 ## Cấu hình
 

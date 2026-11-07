@@ -12,7 +12,7 @@ mới được bỏ qua một cảnh báo.
 |---|---|---|
 | `ai/` | pipeline phát hiện, xác minh, phát cảnh báo, console người trực | [ai/](ai/) (ở đây) |
 | `backend/` | API, xác thực, lưu và phân phối cảnh báo | [nhánh `backend`](https://github.com/MinhTrietNg/HackathonSGU2026-MatPho/tree/backend) |
-| `app/` | ứng dụng nhận và hiển thị cảnh báo | (chưa có link) |
+| `app/` | ứng dụng nhận và hiển thị cảnh báo | (đang phát triển) |
 
 Mỗi khối có README riêng hướng dẫn cài đặt và chạy.
 

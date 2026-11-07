@@ -4,6 +4,11 @@
 
 # Chặn toàn bộ file Markdown (.md)
 *.md
+**/*.md
+!README.md
+!**/README.md
+!readme.md
+!**/readme.md
 
 # Chặn scripts cục bộ (.bat, .ps1)
 *.bat

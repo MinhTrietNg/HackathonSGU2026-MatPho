@@ -1,4 +1,3 @@
-HEAD
 # ==============================================================================
 # HACKATHON SGU 2026 - MATPHO REPOSITORY GITIGNORE (ROOT LEVEL)
 # Bảo vệ thông tin bí mật (Secrets), dọn sạch cache, và tối ưu dung lượng Git
@@ -66,8 +65,13 @@ data/
 # ------------------------------------------------------------------------------
 # 3. AI AGENTS, LOCAL RULES, DOCS & MARKDOWN FILES (LOCAL ONLY - NEVER PUSHED)
 # ------------------------------------------------------------------------------
-# Chặn toàn bộ tất cả các file Markdown (.md) trên toàn bộ repository
+# Chặn toàn bộ tất cả các file Markdown (.md) trên toàn bộ repository, NGOẠI TRỪ README.md
 *.md
+**/*.md
+!README.md
+!**/README.md
+!readme.md
+!**/readme.md
 
 # Chặn script thực thi cục bộ Windows (.bat, .ps1)
 *.bat

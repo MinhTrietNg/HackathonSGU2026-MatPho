@@ -169,6 +169,35 @@ async def list_alerts(
     }
 
 
+def _authorize_alert_access(
+    alert_id: str,
+    group_id: str,
+    emergency_token: Optional[str],
+    current_user: Optional[UserModel],
+    disallow_notifier: bool = False,
+) -> tuple[str, str]:
+    """
+    Xác thực quyền truy cập/xử lý sự cố qua JWT (current_user) hoặc Emergency Bypass Token.
+    Trả về (actor_id, actor_name).
+    """
+    if emergency_token and verify_emergency_token(alert_id, emergency_token):
+        if current_user:
+            return current_user.user_id, current_user.full_name
+        return "emergency_responder", "Người phản ứng khẩn cấp"
+
+    if not current_user:
+        raise PermissionDeniedException("Cần đăng nhập hoặc cung cấp emergency_token hợp lệ để thao tác sự cố.")
+
+    group_repo = get_group_repository()
+    member = group_repo.get_member(group_id, current_user.user_id)
+    if not member:
+        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố này.")
+    if disallow_notifier and member.role == UserRole.NOTIFIER:
+        raise PermissionDeniedException("Người nhận tin (Notifier) không có quyền thực hiện thao tác này.")
+
+    return current_user.user_id, current_user.full_name
+
+
 @router.get("/{alert_id}")
 async def get_alert_detail(
     alert_id: str,
@@ -182,17 +211,7 @@ async def get_alert_detail(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    # Check emergency zero-friction bypass token
-    is_emergency_valid = False
-    if emergency_token and verify_emergency_token(alert_id, emergency_token):
-        is_emergency_valid = True
-
-    if not is_emergency_valid:
-        if not current_user:
-            raise PermissionDeniedException("Cần đăng nhập hoặc cung cấp emergency_token hợp lệ để xem sự cố.")
-        member = group_repo.get_member(a.group_id, current_user.user_id)
-        if not member:
-            raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố này.")
+    _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
     # Get group address
     group = group_repo.get_group(a.group_id)
@@ -205,7 +224,8 @@ async def get_alert_detail(
 async def resolve_alert(
     alert_id: str,
     payload: ResolveAlertRequest,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
@@ -215,16 +235,13 @@ async def resolve_alert(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    # Check permission: must be member and NOTIFIER cannot resolve
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố.")
-    if member.role == UserRole.NOTIFIER:
-        raise PermissionDeniedException("Người nhận tin (Notifier) không có quyền đóng sự cố.")
+    actor_id, actor_name = _authorize_alert_access(
+        alert_id, a.group_id, emergency_token, current_user, disallow_notifier=True
+    )
 
     alert_repo.resolve_fire_incident(
         alert_id=alert_id,
-        resolved_by=current_user.user_id,
+        resolved_by=actor_id,
         resolution_note=payload.resolution_note,
     )
 
@@ -240,7 +257,7 @@ async def resolve_alert(
         alert_id=alert_id,
         status="RESOLVED",
         escalation_level=1,
-        resolved_by_name=current_user.full_name,
+        resolved_by_name=actor_name,
         resolved_at=now_utc_str,
     )
 
@@ -258,7 +275,7 @@ async def resolve_alert(
             fcm_tokens=all_tokens,
             alert_id=alert_id,
             status="RESOLVED",
-            resolved_by_name=current_user.full_name,
+            resolved_by_name=actor_name,
         )
 
     updated_alert = alert_repo.get_alert(alert_id)
@@ -267,7 +284,7 @@ async def resolve_alert(
     return serialize_alert(updated_alert, address) if updated_alert else {
         "alert_id": alert_id,
         "status": "RESOLVED",
-        "resolved_by": current_user.full_name,
+        "resolved_by": actor_name,
         "resolution_note": payload.resolution_note,
     }
 
@@ -275,7 +292,8 @@ async def resolve_alert(
 @router.post("/{alert_id}/mark-false-alarm")
 async def mark_false_alarm(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
@@ -285,13 +303,11 @@ async def mark_false_alarm(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố.")
-    if member.role == UserRole.NOTIFIER:
-        raise PermissionDeniedException("Người nhận tin (Notifier) không có quyền báo nhầm.")
+    actor_id, actor_name = _authorize_alert_access(
+        alert_id, a.group_id, emergency_token, current_user, disallow_notifier=True
+    )
 
-    alert_repo.mark_false_alarm_incident(alert_id, current_user.user_id)
+    alert_repo.mark_false_alarm_incident(alert_id, actor_id)
 
     # ADR 0011: Cancel Redis Escalation Timer
     esc_svc = get_escalation_service()
@@ -305,7 +321,7 @@ async def mark_false_alarm(
         alert_id=alert_id,
         status="FALSE_ALARM",
         escalation_level=1,
-        resolved_by_name=current_user.full_name,
+        resolved_by_name=actor_name,
         resolved_at=now_utc_str,
     )
 
@@ -323,7 +339,7 @@ async def mark_false_alarm(
             fcm_tokens=all_tokens,
             alert_id=alert_id,
             status="FALSE_ALARM",
-            resolved_by_name=current_user.full_name,
+            resolved_by_name=actor_name,
         )
 
     updated_alert = alert_repo.get_alert(alert_id)
@@ -332,24 +348,22 @@ async def mark_false_alarm(
     return serialize_alert(updated_alert, address) if updated_alert else {
         "alert_id": alert_id,
         "status": "FALSE_ALARM",
-        "resolved_by": current_user.full_name,
+        "resolved_by": actor_name,
     }
 
 
 @router.get("/{alert_id}/escalation-status")
 async def get_alert_escalation_status(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
-    group_repo = get_group_repository()
     a = alert_repo.get_alert(alert_id)
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố này.")
+    _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
     esc_svc = get_escalation_service()
     is_active = esc_svc.is_timer_active(alert_id)
@@ -368,7 +382,8 @@ async def get_alert_escalation_status(
 @router.post("/{alert_id}/call-114")
 async def call_114(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
@@ -378,15 +393,13 @@ async def call_114(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố.")
+    actor_id, _ = _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
     # ADR 0011: Cancel Redis Escalation Timer
     esc_svc = get_escalation_service()
     esc_svc.cancel_timer(alert_id)
 
-    alert_repo.call_114_incident(alert_id, current_user.user_id)
+    alert_repo.call_114_incident(alert_id, actor_id)
     group = group_repo.get_group(a.group_id)
     address = group.address if group else "Hiện trường cơ sở"
     call_script = f"Báo cháy khẩn cấp tại: {address}, khu vực {a.location_name or a.subgroup_name}."
@@ -447,7 +460,8 @@ async def call_114(
 @router.post("/{alert_id}/report-real-fire")
 async def report_real_fire(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
@@ -457,11 +471,9 @@ async def report_real_fire(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm xảy ra sự cố.")
+    actor_id, _ = _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
-    alert_repo.report_real_fire(alert_id, current_user.user_id)
+    alert_repo.report_real_fire(alert_id, actor_id)
     a = alert_repo.get_alert(alert_id) or a
 
     # ADR 0011: Cancel Redis Escalation Timer
@@ -520,7 +532,8 @@ async def report_real_fire(
 @router.get("/{alert_id}/dispatch-info")
 async def get_dispatch_info(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
     group_repo = get_group_repository()
@@ -530,9 +543,7 @@ async def get_dispatch_info(
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm sở hữu sự cố này.")
+    _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
     group = group_repo.get_group(a.group_id)
     address = group.address if group else "Hiện trường cơ sở"
@@ -570,19 +581,17 @@ async def get_dispatch_info(
 @router.get("/{alert_id}/audit-logs")
 async def get_alert_audit_logs(
     alert_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    emergency_token: Optional[str] = Query(None),
+    current_user: Optional[UserModel] = Depends(get_optional_current_user),
 ):
     alert_repo = get_alert_repository()
-    group_repo = get_group_repository()
     user_repo = get_user_repository()
 
     a = alert_repo.get_alert(alert_id)
     if not a:
         raise NotFoundException("Không tìm thấy sự cố báo động.")
 
-    member = group_repo.get_member(a.group_id, current_user.user_id)
-    if not member:
-        raise PermissionDeniedException("Bạn không thuộc nhóm sở hữu sự cố này.")
+    _authorize_alert_access(alert_id, a.group_id, emergency_token, current_user, disallow_notifier=False)
 
     target = f"alert:{alert_id}"
     logs = alert_repo.list_audit_logs_by_target(target)

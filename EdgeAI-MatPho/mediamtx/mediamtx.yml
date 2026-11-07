@@ -41,10 +41,10 @@ paths:
     source: rtsp://localhost:8554/mock/cam_test
     sourceOnDemand: no
 
-  # 3. Dynamic On-Demand fallback for all camera sources (LAN/virtual fallback to mock stream)
+  # 3. Dynamic camera source streams published by tool_test_rtsp or external IP cameras
   ~^source/(.*)$:
-    source: rtsp://localhost:8554/mock/cam_test
-    sourceOnDemand: yes
+    source: publisher
+    fallback: /mock/cam_test
 
   # 4. All active live & output streams published by edge-backend or tool_test_rtsp
   all_others:

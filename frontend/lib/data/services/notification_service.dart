@@ -24,9 +24,11 @@ abstract interface class NotificationService {
   Stream<AlertTap> get taps;
 
   String? get launchAlertId;
+
+  bool get launchCall114;
 }
 
-const fireAlertChannelId = 'fire_alarms';
+const fireAlertChannelId = 'fire_alarms_v2';
 const legacyFireAlertChannelId = 'fire_alerts';
 const fireAlertChannelName = 'Cảnh báo cháy';
 

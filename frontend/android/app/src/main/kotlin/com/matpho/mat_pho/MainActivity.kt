@@ -5,10 +5,32 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 // Fire alert flow: a fire notification (tap or full-screen intent) opens F2
 // over the lock screen; once the app leaves the screen, it needs an unlock again.
 class MainActivity : FlutterActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.matpho.mat_pho/siren"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    FireAlarmSirenPlayer.startSiren(applicationContext)
+                    result.success(true)
+                }
+                "stop" -> {
+                    FireAlarmSirenPlayer.stopSiren(applicationContext)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showOverLockScreen(isFireAlert(intent))

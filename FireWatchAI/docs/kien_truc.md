@@ -92,5 +92,4 @@ xem model bằng mắt, không đi qua voting hay alert.
 |---|---|
 | "chỉ quét vùng `watch_area`" | FireWatchAI chưa có vùng quét: detector xử lý cả khung. Hàm che `watch_area` hiện chỉ có trong khung `ai_service` ở nhánh `backend` |
 | Container, "1 tiến trình mỗi camera", MediaMTX cấp RTSP :8554 | FireWatchAI không có Dockerfile hay cấu hình MediaMTX; mỗi lần chạy `python -m firewatch` là một nguồn. Docker và MediaMTX nằm ở `EdgeAI-MatPho/` của nhánh `backend`. FireWatch nhận URL RTSP bất kỳ, nên đọc được luồng MediaMTX |
-| Webhook "sự kiện cháy + ảnh, xác thực secret nội bộ" | FireWatch gửi event theo `docs/ban_giao_backend.md` (JSON có `snapshot_path`, header `Authorization: Bearer`). Backend hiện nhận một payload khác: xem mục 4 của tài liệu đó. Hai bên chưa khớp |
 | Gemini "p50 ≈ 2 s" | số từ một lần đo trên 50 khung val của bộ dữ liệu cũ (README nguồn); chưa đo lại với model và prompt hiện tại |

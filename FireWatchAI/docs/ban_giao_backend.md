@@ -102,27 +102,27 @@ Message trên `WS /ws`:
 
 ## 4. Webhook
 
-- Đặt `FIREWATCH_WEBHOOK_URL` trong `.env` thì mỗi event được `POST` dưới dạng JSON (đúng
-  schema mục 1). Có thêm `FIREWATCH_WEBHOOK_TOKEN` thì gửi kèm header
-  `Authorization: Bearer <token>`.
+Hợp đồng đã chốt với đội backend ngày 2026-11-07.
+
+| Mục | Giá trị |
+|---|---|
+| URL | do backend cung cấp, đặt vào `FIREWATCH_WEBHOOK_URL` trong `.env`. Không đặt thì FireWatch không gửi webhook |
+| Phương thức | `POST`, `Content-Type: application/json` |
+| Xác thực | token đặt vào `FIREWATCH_WEBHOOK_TOKEN`. Có token thì gửi **cả hai** header với cùng giá trị: `Authorization: Bearer <token>` và `X-Internal-Secret: <token>`. Token rỗng hoặc chưa đặt thì không gửi header xác thực nào |
+| Payload | event **đầy đủ** đúng schema mục 1, không đổi, không cắt bớt trường |
+| Cập nhật | mọi lần gửi lại cùng `event_id` (event đã cập nhật) đi **cùng URL đó** với cùng payload và header. Backend upsert theo `event_id` |
+| Không dùng | các endpoint `/internal/ai/verifying` và `/internal/ai/suppressed` của backend. Trạng thái xác minh và `SUPPRESSED` đã nằm trong event (`verification`, `vlm`, và `verifier` khi bật cờ) |
+
+Bên gửi:
 - Gửi trên thread riêng, không chặn pipeline.
 - Có ba trường hợp gửi lại cùng `event_id`: cập nhật VLM, nhắc lại CRITICAL, và object
   `verifier` đổi trạng thái (mục 5, khi bật cờ).
 - Lỗi 4xx (trừ 408 và 429) không retry, vì gửi lại cũng vậy. Lỗi 5xx và lỗi mạng retry
   theo `alerts.webhook_retries`.
+- Backend nên trả 2xx ngay khi đã nhận, rồi mới xử lý.
 
-**Chưa khớp với nhánh `backend` (đọc ngày 2026-11-07, commit `1e8ec49`).** Backend nhận
-sự kiện ở `POST /api/v1/internal/ai/fire-events`. Hợp đồng bên đó khác FireWatch ở ba
-chỗ:
-- header: dùng `X-Internal-Secret`, FireWatch gửi `Authorization: Bearer`;
-- payload: phẳng `{cam_id, class_name, confidence, timestamp, bbox, image_base64}` cho
-  một box, trong khi event FireWatch có nhiều box, `severity`, `verification`, `vlm`,
-  `snapshot_path`;
-- backend còn có `/internal/ai/verifying` và `/internal/ai/suppressed`, FireWatch không
-  gọi hai endpoint này.
-
-Cần thống nhất một trong hai: backend nhận event theo mục 1, hoặc FireWatch thêm một bộ
-chuyển đổi. Chưa quyết.
+Test: `tests/test_webhook_hop_dong.py` dựng một backend giả trên localhost, kiểm đủ hai
+header và payload là event đầy đủ.
 
 ## 5. Verifier bền vững (sau cờ, mặc định tắt)
 

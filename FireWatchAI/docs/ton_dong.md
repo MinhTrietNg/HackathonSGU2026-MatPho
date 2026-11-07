@@ -10,7 +10,6 @@ Việc đã biết nhưng chưa làm, kèm lý do. Xong việc nào thì xoá d�
 | Docstring dòng 3 của `detector.py` còn tên checkpoint cũ | cùng lý do trên; `tests/test_ten_cu.py` đang miễn trừ file này |
 | Xoá các section `train`, `finetune`, `datasets`, `audit`, `eval` khỏi `config.yaml` vận hành | các section này phục vụ script train và đánh giá, vốn không nằm ở đây. Đã đổi tên tại chỗ; xoá phải sửa cả model trong `config.py`, nên tách thành quyết định riêng |
 | `datafirewatch-v0.4` trong `train` và `finetune` | bộ fine-tune v0.4 không có trong bảng đăng ký của FireWatch-Model; tên mới được đặt theo quy tắc, chưa có dòng đăng ký |
-| Webhook của FireWatch và endpoint nhận của nhánh `backend` khác nhau về header và payload (`docs/ban_giao_backend.md` mục 4) | cần đội backend và đội này thống nhất bên nào đổi |
 | Vùng quét `watch_area` (sơ đồ 05/11 có vẽ) | chưa có trong FireWatchAI; khung `ai_service` ở nhánh `backend` đã có hàm che |
 | `.pt` và ONNX cho box lệch nhau khi mỗi backend tự tiền xử lý (lệch IoU tối đa 0,043; `models/README.md`) | chưa quyết có cần thống nhất letterbox hay không. Pipeline chạy ONNX nên hiện không ảnh hưởng vận hành |
 | Verifier bền vững: hàng chờ, ngân sách nền, cầu dao, `/health`, `reason: "verifier"` trên WebSocket | đang làm trên nhánh `FireWatch-AI` theo `docs/decisions/2026-11-07-verifier-ben-vung.md` |

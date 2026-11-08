@@ -91,3 +91,18 @@ def test_cua_so_tu_bien_moi_truong(monkeypatch):
     assert cua_so_ghep_s() == 900
     monkeypatch.delenv("INCIDENT_MERGE_WINDOW_S")
     assert cua_so_ghep_s() == 900
+
+
+def test_trang_thai_nguoi_da_dong_khong_bi_vlm_ghi_de():
+    f = incident_rules.trang_thai_sau_tin_hieu
+    for st in ("RESOLVED", "FALSE_ALARM", "DISMISSED"):
+        assert f(st, bi_tu_choi=True, xac_nhan_chay=False) == st
+        assert f(st, bi_tu_choi=False, xac_nhan_chay=True) == st
+
+
+def test_trang_thai_vlm_tu_choi_roi_xac_nhan_thi_mo_lai():
+    f = incident_rules.trang_thai_sau_tin_hieu
+    assert f("NEW", bi_tu_choi=True, xac_nhan_chay=False) == "SUPPRESSED"
+    assert f("SUPPRESSED", bi_tu_choi=False, xac_nhan_chay=True) == "NEW"
+    assert f("SUPPRESSED", bi_tu_choi=False, xac_nhan_chay=False) == "SUPPRESSED"
+    assert f("CONFIRMED", bi_tu_choi=False, xac_nhan_chay=True) == "CONFIRMED"

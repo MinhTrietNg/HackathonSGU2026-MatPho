@@ -38,6 +38,22 @@ class EscalationService:
         # Local tracking set of active timers to prevent idle Redis polling (0 commands/day on Upstash when idle)
         self._tracked_active_ids: set = set()
         self._connect_redis()
+        self._nap_bo_dem_dang_chay()
+
+    def _nap_bo_dem_dang_chay(self) -> None:
+        """
+        Backend khởi động lại (uvicorn --reload, crash) giữa chừng một bộ đếm 60 s: tập
+        theo dõi trong RAM rỗng nên vòng kiểm không hỏi Redis và cấp 2 không bao giờ
+        bắn. Nạp lại tập bộ đếm đang chạy từ Redis một lần lúc khởi tạo.
+        """
+        if not self._redis:
+            return
+        try:
+            self._tracked_active_ids = set(self._redis.smembers("escalation:active_timers"))
+            if self._tracked_active_ids:
+                logger.info("Restored %d escalation timers from Redis", len(self._tracked_active_ids))
+        except Exception as e:
+            logger.warning(f"Could not restore escalation timers from Redis: {e}")
 
     def _connect_redis(self):
         if redis:

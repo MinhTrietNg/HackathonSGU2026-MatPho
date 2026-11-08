@@ -112,3 +112,27 @@ def tai_bung(doc: Dict[str, Any], payload_type: Optional[str], event_id: Optiona
     if not event_id:
         return False
     return not cung_event(doc, event_id)
+
+
+TRANG_THAI_NGUOI_DONG = ("RESOLVED", "FALSE_ALARM", "DISMISSED")
+"""Trạng thái do người trực quyết (luồng 4): tín hiệu của FireWatch không được đổi."""
+
+
+def trang_thai_sau_tin_hieu(hien_tai: str, *, bi_tu_choi: bool, xac_nhan_chay: bool) -> str:
+    """
+    Trạng thái alert sau khi nhận thêm một tín hiệu của FireWatch.
+
+    - Người trực đã đóng (RESOLVED / FALSE_ALARM / DISMISSED): giữ nguyên. Kết quả VLM
+      đến sau không được ghi đè quyết định của người.
+    - VLM từ chối (REJECTED / SUPPRESSED): SUPPRESSED, trừ khi người đã đóng.
+    - Alert đang SUPPRESSED mà lượt sau xác nhận cháy (VERIFIED): mở lại thành NEW để
+      báo động lại; lượt từ chối trước có thể là âm tính giả.
+    - Còn lại: giữ nguyên.
+    """
+    if hien_tai in TRANG_THAI_NGUOI_DONG:
+        return hien_tai
+    if bi_tu_choi:
+        return "SUPPRESSED"
+    if hien_tai == "SUPPRESSED" and xac_nhan_chay:
+        return "NEW"
+    return hien_tai

@@ -131,19 +131,18 @@ async def receive_ai_fire_events(
         )
 
     alert_record, is_new, ghep = alert_repo.upsert_fire_incident_signal(payload)
-    tai_bung = bool(ghep.get("tai_bung"))
+    # tai_bung: event_id mới trên alert đang mở; mo_lai: lượt VLM sau xác nhận cháy trên
+    # alert đã bị SUPPRESSED. Cả hai báo động lại trên cùng alert_id.
+    tai_bung = bool(ghep.get("tai_bung")) or bool(ghep.get("mo_lai"))
     group_id = alert_record.group_id
     cam_name = alert_record.cam_name
     location_name = alert_record.location_name or alert_record.subgroup_name
     status_str = alert_record.status.value if hasattr(alert_record.status, "value") else str(alert_record.status)
     verification_str = alert_record.verification.value if hasattr(alert_record.verification, "value") else str(alert_record.verification)
 
-    # Check if this event was suppressed or rejected
-    is_suppressed = (
-        status_str == AlertStatus.SUPPRESSED.value
-        or verification_str == AlertVerification.SUPPRESSED.value
-        or (payload.verifier and payload.verifier.status == "REJECTED")
-    )
+    # Suppressed = trạng thái alert SAU khi repo áp luật (incident_rules.trang_thai_sau_tin_hieu):
+    # alert người trực đã đóng không bị kết quả VLM đến sau biến thành SUPPRESSED.
+    is_suppressed = status_str == AlertStatus.SUPPRESSED.value
 
     if is_suppressed:
         esc_svc.cancel_timer(alert_record.alert_id)

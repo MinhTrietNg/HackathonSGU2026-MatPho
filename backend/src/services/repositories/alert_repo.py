@@ -29,7 +29,12 @@ from ...models.common import (
 from ...core.exceptions import NotFoundException
 from ...core.formatters import current_utc_iso, format_iso_utc
 from ..storage_service import get_storage_service
-from ..incident_rules import chon_su_co_dang_mo, cung_event, tai_bung
+from ..incident_rules import (
+    chon_su_co_dang_mo,
+    cung_event,
+    tai_bung,
+    trang_thai_sau_tin_hieu,
+)
 
 
 class AlertRepository(BaseRepository):
@@ -316,14 +321,29 @@ class AlertRepository(BaseRepository):
                 update_data["verifier"] = payload.verifier.model_dump()
                 update_data["needs_human_check"] = payload.verifier.needs_human_check
 
-            if is_suppressed:
-                update_data["status"] = AlertStatus.SUPPRESSED.value
-                update_data["verification"] = AlertVerification.SUPPRESSED.value
-            elif payload.verification == "VERIFIED":
-                update_data["verification"] = AlertVerification.VERIFIED.value
+            hien_tai = str(alert_dict.get("status") or AlertStatus.NEW.value)
+            xac_nhan_chay = payload.verification == "VERIFIED" or bool(
+                payload.verifier and payload.verifier.status == "VERIFIED")
+            moi = trang_thai_sau_tin_hieu(hien_tai, bi_tu_choi=bool(is_suppressed),
+                                          xac_nhan_chay=xac_nhan_chay)
+            nguoi_da_dong = moi == hien_tai and hien_tai in (
+                AlertStatus.RESOLVED.value, AlertStatus.FALSE_ALARM.value,
+                AlertStatus.DISMISSED.value)
+            if not nguoi_da_dong:
+                if moi != hien_tai:
+                    update_data["status"] = moi
+                if moi == AlertStatus.SUPPRESSED.value:
+                    update_data["verification"] = AlertVerification.SUPPRESSED.value
+                elif xac_nhan_chay:
+                    update_data["verification"] = AlertVerification.VERIFIED.value
 
             ghep = {"tai_bung": tai_bung(alert_dict, payload.type, event_id),
-                    "event_id_moi": bool(event_id) and not cung_event(alert_dict, event_id)}
+                    "event_id_moi": bool(event_id) and not cung_event(alert_dict, event_id),
+                    "mo_lai": hien_tai == AlertStatus.SUPPRESSED.value
+                    and update_data.get("status") == AlertStatus.NEW.value,
+                    "nguoi_da_dong": nguoi_da_dong}
+            if nguoi_da_dong:
+                ghep["tai_bung"] = False
             if ghep["event_id_moi"]:
                 update_data["event_ids"] = firestore.ArrayUnion([event_id])
                 update_data["ai_status"] = payload.status or "open"
@@ -405,7 +425,8 @@ class AlertRepository(BaseRepository):
             details={"cam_id": cam_id, "confidence": max_conf, "sign": sign.value, "event_id": event_id},
         )
 
-        return self._parse_alert(alert_data), True, {"tai_bung": False, "event_id_moi": False}
+        return self._parse_alert(alert_data), True, {"tai_bung": False, "event_id_moi": False,
+                                                    "mo_lai": False, "nguoi_da_dong": False}
 
     def attach_incident_snapshot(
         self,

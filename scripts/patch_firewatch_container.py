@@ -122,6 +122,8 @@ def encode_frame_to_base64_jpeg(frame_bgr: np.ndarray, quality: int = 80) -> str
 class CloudWebhookClient:
     def __init__(self, settings: AISettings) -> None:
         self.settings = settings
+        self.last_reported: dict[str, float] = {}
+        self.active_event_ids: dict[str, str] = {}
         self.headers = {
             "Content-Type": "application/json",
             "X-Internal-Secret": settings.internal_api_secret_key,
@@ -138,6 +140,21 @@ class CloudWebhookClient:
         timestamp: float | None = None,
     ) -> bool:
         ts = timestamp or time.time()
+        last_t = self.last_reported.get(cam_id, 0.0)
+        # Cooldown: throttle AI reports to at most 1 per 10 seconds to avoid spamming
+        if ts - last_t < 10.0:
+            return True
+        self.last_reported[cam_id] = ts
+
+        # Reuse active event_id within 60s window so updates correlate
+        if cam_id in self.active_event_ids and (ts - last_t < 60.0):
+            event_id = self.active_event_ids[cam_id]
+            evt_type = "updated"
+        else:
+            event_id = f"evt_{int(ts)}_{cam_id}"
+            self.active_event_ids[cam_id] = event_id
+            evt_type = "created"
+
         try:
             image_b64 = encode_frame_to_base64_jpeg(frame_bgr)
         except Exception as exc:
@@ -147,8 +164,8 @@ class CloudWebhookClient:
         h, w = frame_bgr.shape[:2] if frame_bgr is not None else (720, 1280)
         # Construct standard two-phase payload for EAG relay
         payload: dict[str, Any] = {
-            "type": "created",
-            "event_id": f"evt_{int(ts)}_{cam_id}",
+            "type": evt_type,
+            "event_id": event_id,
             "cam_id": cam_id,
             "camera_id": cam_id,
             "context": "NGOAI",

@@ -72,7 +72,10 @@ class _AlertListenerState extends ConsumerState<AlertListener> {
       MpAlertBanner(
         title: unverified ? 'Có thể có khói ở $where' : 'Cháy · $where',
         subtitle: unverified ? 'chạm để xem' : '${event.summary} · chạm để xem',
-        onTap: () => router?.push<void>(AppRoutes.alert(event.id)),
+        onTap: () {
+          unawaited(ref.read(notificationServiceProvider).clearFireAlert(event.id));
+          router?.push<void>(AppRoutes.alert(event.id));
+        },
       ),
     );
   }

@@ -101,7 +101,7 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
     final notifications = ref.read(notificationServiceProvider);
     await notifications.showFireAlert(event, picture: await _picture(event));
     if (_inForeground) {
-      await _openAlert(event.id, clearNotification: false);
+      await _openAlert(event.id, clearNotification: true);
     }
   }
 
@@ -123,7 +123,7 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
           alerts: ref.read(alertRepositoryProvider),
         );
         if (_inForeground) {
-          await _openAlert(alertId, clearNotification: false);
+          await _openAlert(alertId, clearNotification: true);
         }
       case FireAlertUpdatedPush(:final alertId):
         await _alertUpdated(alertId);
@@ -205,7 +205,7 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
   void _onResume() {
     ref.read(notificationPermissionProvider.notifier).refresh();
     if (_ringing.isNotEmpty) {
-      unawaited(_openAlert(_ringing.last, clearNotification: false));
+      unawaited(_openAlert(_ringing.last, clearNotification: true));
     }
   }
 

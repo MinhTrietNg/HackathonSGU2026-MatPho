@@ -148,7 +148,7 @@ class FireAlarmSirenReceiver : BroadcastReceiver() {
         val type = extras.getString("type") ?: extras.getString("gcm.notification.type") ?: ""
         if (type == "FIRE_ALERT") {
             FireAlarmSirenPlayer.startSiren(context)
-        } else if (type == "FIRE_ALERT_UPDATED") {
+        } else if (type == "FIRE_ALERT_UPDATED" || type == "FIRE_ALERT_RESOLVED" || type == "FIRE_ALERT_CALL_114" || type == "SILENCE_SIREN") {
             FireAlarmSirenPlayer.stopSiren(context)
         }
     }

@@ -237,6 +237,9 @@ final class LocalNotificationService implements NotificationService {
     }
   }
 
+  @override
+  Future<void> stopSiren() => _stopSiren();
+
   Future<void> _startSiren() async {
     try {
       await _sirenChannel.invokeMethod<void>('start');

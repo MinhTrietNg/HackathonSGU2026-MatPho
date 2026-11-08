@@ -181,6 +181,20 @@ async def receive_ai_fire_events(
         async def dispatch_fcm_async():
             if not is_new_timer:
                 return
+            # Anti-spam: Strict FCM Level 0 deduplication per incident and camera cooldown (90s)
+            r = getattr(esc_svc, "_redis", None)
+            fcm_incident_key = f"fcm:sent:{alert_record.alert_id}:level_0"
+            fcm_camera_cooldown_key = f"fcm:cooldown:camera:{target_cam_id}"
+
+            if r:
+                try:
+                    if r.exists(fcm_incident_key) or r.exists(fcm_camera_cooldown_key):
+                        return
+                    r.set(fcm_incident_key, "1", ex=3600)
+                    r.set(fcm_camera_cooldown_key, "1", ex=90)
+                except Exception:
+                    pass
+
             members = group_repo.list_members(group_id)
             leader_tokens = []
             for m in members:

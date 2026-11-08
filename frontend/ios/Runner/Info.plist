@@ -77,5 +77,11 @@
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<true/>
+	<!-- Luồng HLS của nút biên trong cùng mạng LAN đi qua http://<IP>:8888; ATS mặc định chặn. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

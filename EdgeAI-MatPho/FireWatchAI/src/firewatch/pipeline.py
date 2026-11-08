@@ -42,7 +42,7 @@ from .detector import DetectResult, Detector, Detection
 from .sources import Heartbeat, HeartbeatSampler, VideoSource, open_source
 from .vlm import VerificationService, VerifyOutcome, VerifyRequest, build_verifier
 from .voting import Severity, TrackEvent, VotingEngine, union
-from .su_co import GomSuCo
+from .su_co import GomSuCo, SuCo
 from .xac_minh_nen import DieuPhoiXacMinh, DongHo
 
 log = logging.getLogger(__name__)
@@ -165,7 +165,8 @@ class Pipeline:
                  show: bool | None = None, max_heartbeats: int | None = None,
                  weights: str | None = None, store: EventStore | None = None,
                  strict: bool = False, health: PipelineHealth | None = None,
-                 acks: AckStore | None = None, detector: object | None = None):
+                 acks: AckStore | None = None, detector: object | None = None,
+                 su_co_truoc: SuCo | None = None):
         self.cfg = cfg
         self.source_spec = source_spec
         self.realtime = realtime
@@ -187,6 +188,9 @@ class Pipeline:
         self._detector = detector
         """Detector dùng chung (chế độ nút biên: nhiều camera một model, có
         khoá); ``None`` thì ``run()`` tự dựng ``Detector`` riêng."""
+        self.su_co_truoc = su_co_truoc
+        """Sự cố đang mở của lần chạy trước trên cùng camera (``GomSuCo``
+        tham số ``tiep``): pipeline chạy lại giữ nguyên ``event_id``."""
         self._dung = threading.Event()
         self._source: VideoSource | None = None
         if weights:
@@ -208,6 +212,12 @@ class Pipeline:
     def da_yeu_cau_dung(self) -> bool:
         """``dung()`` đã được gọi."""
         return self._dung.is_set()
+
+    @property
+    def su_co_mo(self) -> SuCo | None:
+        """Sự cố đang mở khi ``run()`` kết thúc (cờ ``verifier.ben_vung``), để
+        lần chạy lại nhận tiếp qua ``su_co_truoc``; ``None`` nếu không có."""
+        return self._gom.su_co_mo if self._gom is not None else None
 
     def run(self) -> RunSummary:
         cfg = self.cfg
@@ -393,7 +403,8 @@ class Pipeline:
         phối riêng.
         """
         self._gom = GomSuCo(self.cfg, store, service, summary=summary,
-                            health=self.health, dong_ho=dong_ho)
+                            health=self.health, dong_ho=dong_ho,
+                            tiep=self.su_co_truoc)
         self._dieu_phoi = self._gom.dieu_phoi
         if self.health is not None:
             self.health.verifier_stats = self._dieu_phoi.thong_ke

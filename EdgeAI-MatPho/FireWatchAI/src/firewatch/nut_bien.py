@@ -73,8 +73,11 @@ class CameraChay:
         Camera.
     nguon : str
         URL nguồn (chỉ dùng để hiển thị; ``tao_pipeline`` đã biết nguồn).
-    tao_pipeline : Callable[[PipelineHealth], Any]
-        Dựng một ``Pipeline`` mới (có ``run()``, ``dung()``) cho mỗi lần chạy.
+    tao_pipeline : Callable[[PipelineHealth, Any], Any]
+        Dựng một ``Pipeline`` mới (có ``run()``, ``dung()``) cho mỗi lần chạy;
+        tham số thứ hai là sự cố đang mở của lần chạy trước (``su_co_mo`` của
+        pipeline vừa dừng, hoặc ``None``) để lần chạy lại giữ nguyên
+        ``event_id`` thay vì mở sự cố mới cho cùng đám cháy.
     khi_loi_chet : Callable[[str], None]
         Gọi khi gặp lỗi không thể chạy lại (``SystemExit`` từ pipeline, ví dụ
         trọng số sai): cả tiến trình phải dừng.
@@ -104,6 +107,8 @@ class CameraChay:
         self.loi_cuoi: str | None = None
         self.da_co_heartbeat = False
         """Đã từng nhận heartbeat ở một lần chạy nào đó."""
+        self.su_co_mo: Any = None
+        """Sự cố đang mở do lần chạy gần nhất để lại (``Pipeline.su_co_mo``)."""
         self._thread = threading.Thread(target=self._vong,
                                         name=f"cam-{cam.cam_id}", daemon=True)
 
@@ -129,7 +134,7 @@ class CameraChay:
         cho = self._cho_dau
         while not self._dung.is_set():
             health = PipelineHealth()
-            pipe = self._tao(health)
+            pipe = self._tao(health, self.su_co_mo)
             with self._khoa:
                 self.health, self._pipe = health, pipe
             if self._dung.is_set():
@@ -146,6 +151,8 @@ class CameraChay:
                 break
             except Exception as exc:  # noqa: BLE001 - chạy lại, không dừng tiến trình
                 self.loi_cuoi = f"{type(exc).__name__}: {exc}"
+            finally:
+                self.su_co_mo = getattr(pipe, "su_co_mo", None)
             if self._dung.is_set():
                 break
             if health.heartbeats > 0:
@@ -410,9 +417,9 @@ def chay_nut_bien(cfg: Config, cfgb: CauHinhBien, *, host: str | None,
         store = stores[cam.cam_id]
         nguon = cfgb.nguon(cam.cam_id)
 
-        def tao_pipeline(health: PipelineHealth) -> Pipeline:
+        def tao_pipeline(health: PipelineHealth, su_co_truoc: Any) -> Pipeline:
             return Pipeline(c, nguon, store=store, strict=True, health=health,
-                            detector=dung_chung)
+                            detector=dung_chung, su_co_truoc=su_co_truoc)
 
         return CameraChay(cam, nguon, tao_pipeline, khi_loi_chet)
 

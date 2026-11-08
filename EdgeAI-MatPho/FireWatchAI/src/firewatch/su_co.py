@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -106,11 +107,17 @@ class GomSuCo:
         ``alerts`` tăng một mỗi sự cố.
     dong_ho : DongHo, optional
         Mặc định :class:`DongHoThat` (đóng cùng lớp gom).
+    tiep : SuCo, optional
+        Sự cố đang mở của lần chạy trước trên cùng camera (pipeline chạy lại
+        sau lỗi nguồn). Chưa quá ``su_co.khoang_cach_s`` giây thật kể từ lần
+        thấy cháy cuối thì được nhận lại nguyên ``event_id``: cảnh báo tiếp
+        theo là ``updated``, không mở sự cố mới (backend không nhận thêm một
+        ``created`` cho cùng đám cháy). Quá hạn hoặc đã kết thúc thì bỏ qua.
     """
 
     def __init__(self, cfg: Config, store: EventStore, service: VerificationService,
                  *, summary: Any = None, health: Any = None,
-                 dong_ho: DongHo | None = None):
+                 dong_ho: DongHo | None = None, tiep: SuCo | None = None):
         self._cfg = cfg.su_co
         self._ctx = cfg.camera.context
         self._store, self._summary, self._health = store, summary, health
@@ -123,6 +130,42 @@ class GomSuCo:
         self.dieu_phoi = DieuPhoiXacMinh(cfg, service, phat_tao=self._ket_qua,
                                          phat_cap_nhat=self._ket_qua,
                                          dong_ho=self._dong_ho)
+        if tiep is not None:
+            self._nhan_lai(tiep)
+
+    def _nhan_lai(self, sc: SuCo) -> None:
+        """Nhận lại sự cố đang mở của lần chạy trước (xem ``tiep``)."""
+        troi = time.time() - sc.last_seen_unix
+        if sc.da_ket_thuc or troi < 0 or troi >= self._cfg.khoang_cach_s:
+            ly_do = ("đã kết thúc" if sc.da_ket_thuc
+                     else f"{troi:.0f}s không thấy cháy")
+            log.info("sự cố %s của lần chạy trước không nhận lại (%s)",
+                     sc.event_id[:8], ly_do)
+            return
+        with self._khoa:
+            now = self._dong_ho.bay_gio()
+            sc.thay_cuoi = now - troi
+            sc.t_luot = now
+            sc.phat_cuoi = None
+            sc.ban = False
+            sc.cho_phat.clear()
+            sc.tracks.clear()           # track của Voting mới, đánh số lại từ đầu
+            sc.record = None            # bản ghi summary thuộc lần chạy trước
+            self._huy_ve(sc)
+            self._mo = sc
+            self._tat_ca[sc.event_id] = sc
+            sc.ve_ket_thuc = self._dong_ho.hen(sc.thay_cuoi + self._cfg.khoang_cach_s,
+                                               lambda: self._kiem_ket_thuc(sc))
+            sc.ve_kiem_lai = self._dong_ho.hen(now + self._cfg.vlm_kiem_lai_s,
+                                               lambda: self._kiem_lai(sc))
+            log.info("SỰ CỐ %s tiếp tục sau khi chạy lại: %s, thấy cháy %.0fs trước, "
+                     "%s", sc.event_id[:8], sc.severity.value, troi,
+                     "đã phát created" if sc.da_tao else "created chưa phát")
+            if sc.da_tao:
+                return
+        # created chưa kịp phát (lượt xác minh của lần chạy trước bị mất): mở lượt
+        # mới cùng số thứ tự để ``_ket_qua`` phát created.
+        self.dieu_phoi.gui(sc.event_id, sc.req, None, luot=sc.luot)
 
     # ------------------------------------------------------------ bên ngoài
     def canh_bao(self, *, kind: str, track_id: int, severity: Severity, ts: float,

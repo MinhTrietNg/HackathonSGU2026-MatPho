@@ -383,7 +383,10 @@ vẫn ghi đè được.
 - Mọi camera dùng chung một model (gọi tuần tự có khoá). Event nằm ở `/app/events/<cam_id>/`,
   `run.log` ở `/app/runs/<cam_id>/`, mỗi dòng log có `[cam-<cam_id>]`.
 - Camera không mở được nguồn (MediaMTX chưa phát luồng) hoặc mất nguồn thì tự chạy lại:
-  chờ 2 s, gấp đôi, tối đa 30 s.
+  chờ 2 s, gấp đôi, tối đa 30 s. Sự cố đang mở được giữ qua lần chạy lại: chưa quá
+  `su_co.khoang_cach_s` (120 s) kể từ lần thấy cháy cuối thì cảnh báo kế tiếp là
+  `updated` cùng `event_id`, không phải `created` mới (log `SỰ CỐ … tiếp tục sau khi
+  chạy lại`).
 - `GET /health` trên cổng 8000 trong container: 200 khi mọi camera đang chạy có heartbeat
   đều, 503 khi có camera `stale`, camera đã từng chạy rồi mất nguồn, hoặc camera chưa có
   heartbeat nào sau 120 s. Thân trả về liệt kê từng camera, camera đang nghỉ theo lịch

@@ -172,7 +172,7 @@ def _camera(kich_ban: list[str], chet: list[str] | None = None,
     it = iter(kich_ban)
     return nb.CameraChay(
         CameraBien("cam_01"), "rtsp://mediamtx:8554/live/cam_01",
-        lambda h: PipelineGia(h, next(it, "chay")),
+        lambda h, _sc: PipelineGia(h, next(it, "chay")),
         (chet.append if chet is not None else lambda m: None),
         cho_lai_s=(0.005, 0.02), bay_gio=bay_gio)
 
@@ -333,3 +333,25 @@ def test_cli_edge_nut_bien_ghi_de_mac_dinh_va_set_van_thang(moi_truong):
     assert cli.main(["--config", CFG, "--set", "webhook.gui_anh=false",
                      "edge"]) == 0
     assert goi["cfg"].webhook.gui_anh is False
+
+
+def test_camera_chay_lai_chuyen_su_co_mo_sang_pipeline_moi():
+    """Pipeline lần trước để lại ``su_co_mo`` thì lần chạy lại nhận được nó."""
+    nhan: list = []
+
+    class PipelineCoSuCo(PipelineGia):
+        def __init__(self, health, hanh_vi, su_co_truoc):
+            super().__init__(health, hanh_vi)
+            nhan.append(su_co_truoc)
+            self.su_co_mo = f"su_co_sau_{hanh_vi}"
+
+    it = iter(["loi", "loi"])
+    w = nb.CameraChay(
+        CameraBien("cam_01"), "rtsp://mediamtx:8554/live/cam_01",
+        lambda h, sc: PipelineCoSuCo(h, next(it, "chay"), sc),
+        lambda m: None, cho_lai_s=(0.005, 0.02))
+    w.start()
+    assert _cho(lambda: len(nhan) >= 3)       # lần chạy thứ ba (chay) đã được dựng
+    w.stop()
+    assert nhan[:3] == [None, "su_co_sau_loi", "su_co_sau_loi"]
+    assert w.su_co_mo == "su_co_sau_chay"     # run() của lần ba kết thúc khi stop

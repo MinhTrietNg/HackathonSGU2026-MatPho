@@ -9,6 +9,7 @@ nên sau mỗi heartbeat test chờ bộ điều phối xong (giờ thật, tố
 from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -49,16 +50,17 @@ class VlmDem(VLMVerifier):
         return kb.CHAY
 
 
-def _he(tmp: Path, vlm: VLMVerifier, **su_co) -> SimpleNamespace:
+def _he(tmp: Path, vlm: VLMVerifier, tiep=None, store=None, **su_co) -> SimpleNamespace:
     cfg = kb.cau_hinh(tmp, verifier={"ben_vung": True},
                       vlm={"provider": "mock", "max_workers": 2},
                       su_co=su_co)
-    store = EventStore(cfg.alerts, cfg.camera, cfg)
+    # store: dùng chung giữa hai lần chạy của một camera (như nút biên) khi chạy lại.
+    store = store if store is not None else EventStore(cfg.alerts, cfg.camera, cfg)
     dh = hv.DongHoGia()
     phat: list[tuple[str, Event, float]] = []
     store.subscribe(lambda e, k: phat.append((k, e, dh.bay_gio())))
     svc = VerificationService(cfg.vlm, vlm)
-    p = Pipeline(cfg, "gia_lap")
+    p = Pipeline(cfg, "gia_lap", su_co_truoc=tiep)
     s = RunSummary(source="gia_lap", weights="w", out_dir="o")
     gom = p._tao_gom(store, s, svc, dong_ho=dh)
     return SimpleNamespace(cfg=cfg, store=store, dh=dh, phat=phat, svc=svc, p=p,
@@ -263,3 +265,81 @@ def test_escalation_watcher_theo_doi_su_co_len_critical_qua_updated(tmp_path):
     store.subs[0](warn.model_copy(update={"severity": "CRITICAL"}), "su_co")
     now[0] = 250.0
     assert w.tick() == [warn.event_id]
+
+
+# ------------------------------------------------- chạy lại pipeline (nút biên)
+def test_pipeline_chay_lai_giu_nguyen_event_id_khi_con_trong_khoang_cach(tmp_path):
+    """Nguồn RTSP lỗi, pipeline chạy lại: sự cố đang mở được nhận lại, cảnh báo
+    tiếp theo là ``updated`` cùng ``event_id``, không có ``created`` thứ hai."""
+    vlm = VlmDem()
+    h1 = _he(tmp_path / "lan1", vlm)
+    _chay(h1, 0, 30, ("fire",))
+    tao1 = _theo_loai(h1, "created")
+    assert len(tao1) == 1
+    sc = h1.p.su_co_mo
+    assert sc is not None and sc.da_tao
+    _don(h1)                                   # nguồn lỗi: pipeline kết thúc
+    sc.last_seen_unix = time.time() - 10.0     # thấy cháy 10 s trước (giờ thật)
+
+    h2 = _he(tmp_path / "lan2", vlm, tiep=sc, store=h1.store)
+    try:
+        assert h2.gom.su_co_mo is sc
+        _chay(h2, 0, 60, ("fire",))
+        assert _theo_loai(h2, "created") == []
+        cap_nhat = _theo_loai(h2, "updated")
+        assert cap_nhat and {e.event_id for e, _ in cap_nhat} == {sc.event_id}
+        assert all(e.status == "open" for e, _ in cap_nhat)
+        assert h2.store.get(sc.event_id).status == "open"
+        _chay(h2, 60, 200, ())                     # hết cháy: ended cùng event_id
+        het = [e for e, _ in _theo_loai(h2, "updated") if e.status == "ended"]
+        assert len(het) == 1 and het[0].event_id == sc.event_id
+    finally:
+        _don(h2)
+
+
+def test_pipeline_chay_lai_qua_khoang_cach_thi_su_co_moi(tmp_path):
+    vlm = VlmDem()
+    h1 = _he(tmp_path / "lan1", vlm)
+    _chay(h1, 0, 30, ("fire",))
+    sc = h1.p.su_co_mo
+    _don(h1)
+    sc.last_seen_unix = time.time() - 130.0    # quá su_co.khoang_cach_s (120 s)
+
+    h2 = _he(tmp_path / "lan2", vlm, tiep=sc, store=h1.store)
+    try:
+        assert h2.gom.su_co_mo is None
+        _chay(h2, 0, 30, ("fire",))
+        tao2 = _theo_loai(h2, "created")
+        assert len(tao2) == 1 and tao2[0][0].event_id != sc.event_id
+    finally:
+        _don(h2)
+
+
+def test_pipeline_chay_lai_created_chua_phat_thi_phat_created_cung_event_id(tmp_path):
+    """Lần chạy trước dừng khi created còn chờ VLM: lần sau phát created với
+    đúng ``event_id`` đã cấp, không cấp mã mới."""
+    vlm = VlmDem()
+    h1 = _he(tmp_path / "lan1", vlm)
+    # Voting quyết ở heartbeat 5 nhưng không chờ bộ điều phối: created chưa phát.
+    for t in range(0, 6):
+        h1.dh.tien_toi(float(t))
+        dets = [Detection("fire", 0, 0.9, HOP)]
+        frame = SimpleNamespace(image=ANH, wall_time=GOC_GIO + t, video_ts=float(t))
+        for ev in h1.voting.update(t, float(t), dets, frame=frame):
+            h1.p._on_track_event(ev, h1.s, h1.svc)
+    sc = h1.p.su_co_mo
+    assert sc is not None
+    h1.gom.cho_xong(2.0)
+    da_tao_truoc = sc.da_tao
+    _don(h1)
+    sc.da_tao = False                           # giả lập lượt xác minh bị mất
+    sc.image = ANH
+    sc.last_seen_unix = time.time() - 5.0
+    h2 = _he(tmp_path / "lan2", vlm, tiep=sc, store=h1.store)
+    try:
+        assert h2.gom.cho_xong(2.0)
+        tao2 = _theo_loai(h2, "created")
+        assert len(tao2) == 1 and tao2[0][0].event_id == sc.event_id
+        assert sc.da_tao, (da_tao_truoc, sc.da_tao)
+    finally:
+        _don(h2)

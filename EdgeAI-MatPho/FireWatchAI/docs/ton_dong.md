@@ -17,7 +17,7 @@ Việc đã biết nhưng chưa làm, kèm lý do. Xong việc nào thì xoá d�
 | Căn letterbox của `detector.py` theo tiền xử lý của ultralytics, để `.pt` và ONNX cho cùng box (hiện lệch IoU tối đa 0,043; `models/README.md`) | `detector.py` đang khoá. Pipeline chỉ chạy ONNX nên hiện không ảnh hưởng vận hành |
 | Tách đường ảnh khỏi webhook khi nhiều camera | `webhook.gui_anh` nhúng ảnh gốc (JPEG ≤ 200 KB, base64) vào từng payload, đủ cho một vài camera. Nhiều camera thì nên đẩy ảnh qua đường riêng và chỉ gửi đường dẫn; việc này đổi hợp đồng với backend nên phải thống nhất hai bên trước |
 | `updated` dạng timeline mỗi 30 s (gửi kèm lịch sử các lần cập nhật) | ADR gom sự cố chọn mỗi `updated` chỉ mang trạng thái hiện tại; backend tự ghép dòng thời gian từ chuỗi `updated` cùng `event_id` nếu cần |
-| Giữ trạng thái sự cố qua lần khởi động lại | trạng thái nằm trong bộ nhớ; khởi động lại thì cảnh báo kế tiếp mở sự cố mới (ADR gom sự cố, mục hạn chế) |
+| Giữ trạng thái sự cố qua lần khởi động lại | trạng thái nằm trong bộ nhớ. Từ 2026-11-08 sự cố sống qua lần **pipeline** chạy lại trong cùng tiến trình (nguồn RTSP lỗi); khởi động lại cả tiến trình thì cảnh báo kế tiếp vẫn mở sự cố mới. Backend đã ghép `event_id` mới vào alert còn mở của camera (`incident_rules.py`) nên không sinh alert trùng |
 
 ## Chọn ngưỡng vận hành (bài FA ở FireWatch-Model) phải xét clip này
 

@@ -252,10 +252,22 @@ alert của Voting vẫn là một `event_id` như mục 1.
 
 Sau `status: "ended"`, cháy lại là sự cố mới với `event_id` mới.
 
+**Pipeline của camera chạy lại** (mất nguồn RTSP, MediaMTX ngắt) **không mở sự cố mới**:
+sự cố đang mở được giữ trong tiến trình và nhận lại nếu chưa quá
+`su_co.khoang_cach_s` giây thật kể từ lần thấy cháy cuối; cảnh báo kế tiếp là `updated`
+cùng `event_id`. Chỉ khi cả tiến trình (container) khởi động lại thì sự cố mới bắt đầu
+lại với `event_id` mới (tồn đọng ở `ton_dong.md`).
+
 **Backend cần làm.**
 - Upsert theo `event_id` như mục 1; coi `status: "ended"` là đám cháy đã hết dấu hiệu
   trên camera, **không** phải người trực đã xử lý. Sự cố CRITICAL `ended` mà chưa ai ack
   vẫn được nhắc lại.
+- **Một camera chỉ có một sự cố đang mở.** `created` mang `event_id` mới của camera đang
+  có alert chưa xử lý (`NEW`/`CONFIRMED`, còn hoạt động trong `INCIDENT_MERGE_WINDOW_S`,
+  mặc định 900 s) thì ghép vào alert đó: thêm `event_id` vào `event_ids`, phát lại
+  cảnh báo tới app trên cùng `alert_id`, không tạo alert mới. Backend đã làm ở
+  `services/incident_rules.py` (2026-11-08); FireWatch chạy lại hay clip phát lặp không
+  còn sinh một alert mới mỗi lần.
 - Nên chỉ tạo thông báo đẩy (push) cho `created` và cho `updated` làm mức tăng, không
   cho mỗi `updated`.
 - `luot_xac_minh` chỉ để hiển thị và đối chiếu log; không cần xử lý.

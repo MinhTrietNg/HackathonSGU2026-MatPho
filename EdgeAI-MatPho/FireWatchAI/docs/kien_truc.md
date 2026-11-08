@@ -75,7 +75,9 @@ serve | edge`. `PipelineHealth` cấp số liệu cho `/health`.
 đọc camera, MediaMTX, edge_backend và bí mật từ biến môi trường; mỗi camera một
 `Pipeline` chung một model; bật tắt camera theo lịch quét của edge_backend; gửi event
 qua cổng chuyển tiếp của edge_backend; `/health` gộp mọi camera (`docs/van_hanh.md`
-mục 11).
+mục 11). Pipeline của một camera chạy lại thì `CameraChay` chuyển sự cố đang mở
+(`Pipeline.su_co_mo`) sang pipeline mới (`GomSuCo(tiep=...)`), nên cùng đám cháy không
+sinh `event_id` mới.
 
 **Cấu hình (`config.py`, `config.yaml`).** Một file cấu hình duy nhất, kiểm bằng pydantic
 (sai tên khoá là lỗi). `--set` ghi đè tại chỗ.

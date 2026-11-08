@@ -36,7 +36,8 @@ final class LocalNotificationService implements NotificationService {
     presentSound: true,
     sound: 'fire_alarm_siren.wav',
     categoryIdentifier: _iosFireCategory,
-    interruptionLevel: InterruptionLevel.critical,
+    // critical/timeSensitive need entitlements a free Apple ID cannot sign.
+    interruptionLevel: InterruptionLevel.active,
   );
 
   static AndroidNotificationDetails _android({
@@ -73,7 +74,7 @@ final class LocalNotificationService implements NotificationService {
             requestAlertPermission: false,
             requestBadgePermission: false,
             requestSoundPermission: false,
-            requestCriticalPermission: true,
+            requestCriticalPermission: false,
             notificationCategories: [
               DarwinNotificationCategory(
                 _iosFireCategory,

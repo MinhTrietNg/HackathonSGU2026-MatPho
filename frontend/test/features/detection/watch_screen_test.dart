@@ -150,7 +150,7 @@ void main() {
     repo.emit(const DetectionWatching());
     await tester.pumpAndSettle();
     expect(find.text('AI đang quét'), findsOneWidget);
-    expect(find.text('5 khung/giây'), findsOneWidget);
+    expect(find.textContaining('khung/giây'), findsNothing);
     expect(find.text('HẦM B1 · 23/10/2025 21:47:43'), findsOneWidget);
     expect(find.text('Toàn màn hình'), findsOneWidget);
     expect(find.text('Dừng theo dõi'), findsNothing);
@@ -165,13 +165,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Nghỉ AI theo lịch'), findsOneWidget);
     expect(find.text('AI đang quét'), findsNothing);
-    expect(find.text('5 khung/giây'), findsNothing);
+    expect(find.textContaining('khung/giây'), findsNothing);
 
     now = DateTime(2025, 10, 23, 19, 30);
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Nghỉ AI theo lịch'), findsNothing);
     expect(find.text('AI đang quét'), findsOneWidget);
-    expect(find.text('5 khung/giây'), findsOneWidget);
+    expect(find.textContaining('khung/giây'), findsNothing);
   });
 
   testWidgets('the timeline grows E2a → E2d, then F2 opens', (tester) async {
@@ -332,7 +332,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Mất mạng'), findsNothing);
     expect(find.text('Máy nóng, đã quét chậm lại'), findsOneWidget);
-    expect(find.text('2 khung/giây'), findsOneWidget);
+    expect(find.textContaining('khung/giây'), findsNothing);
     expect(find.text('Cắm sạc'), findsOneWidget);
     expect(find.text('Tắt các app khác'), findsOneWidget);
   });

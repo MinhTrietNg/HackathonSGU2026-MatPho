@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 
 import '../../data/models/models.dart';
 import '../../data/providers.dart';
+import '../../data/repositories/alert_repository.dart';
 import '../groups/current_group.dart' show groupsProvider;
 import '../groups/group_state.dart' show groupCamerasProvider;
 import 'pending_alert_actions.dart';
@@ -22,6 +23,20 @@ final class AlertState {
 }
 
 enum AlertClosing { unknown, denied, allowed }
+
+/// FIRE_ALERT events already received over the WebSocket, by id. F2/F4 shows
+/// one at once instead of a blank screen, and keeps it if the fetch fails.
+final receivedAlertsProvider =
+    NotifierProvider<ReceivedAlerts, Map<String, FireEvent>>(
+      ReceivedAlerts.new,
+    );
+
+class ReceivedAlerts extends Notifier<Map<String, FireEvent>> {
+  @override
+  Map<String, FireEvent> build() => const {};
+
+  void remember(FireEvent event) => state = {...state, event.id: event};
+}
 
 final alertProvider = AsyncNotifierProvider.autoDispose
     .family<AlertNotifier, AlertState, String>(AlertNotifier.new);
@@ -52,9 +67,38 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
         .where((update) => update.eventId == eventId)
         .listen(_onUpdate);
     ref.onDispose(updates.cancel);
+    final received = ref.read(receivedAlertsProvider)[eventId];
+    if (received != null) {
+      unawaited(_refetch(repository, received, generation));
+      unawaited(_loadRole(received.cameraId, generation));
+      return AlertState(received, closing: closing);
+    }
     final event = await repository.getAlert(eventId);
     unawaited(_loadRole(event.cameraId, generation));
     return AlertState(event, closing: closing);
+  }
+
+  // Swaps the WebSocket copy for the server's once it arrives, unless the
+  // screen already moved on (resolved, false alarm). A failed fetch keeps it.
+  Future<void> _refetch(
+    AlertRepository repository,
+    FireEvent received,
+    int generation,
+  ) async {
+    final FireEvent event;
+    try {
+      event = await repository.getAlert(eventId);
+    } on Object {
+      return;
+    }
+    if (!ref.mounted || generation != _generation) return;
+    await future;
+    final now = state.value;
+    if (now == null || !ref.mounted || generation != _generation) return;
+    if (!identical(now.event, received)) return;
+    state = AsyncData(
+      AlertState(event, closing: now.closing, canUndo: now.canUndo),
+    );
   }
 
   void _onUpdate(AlertUpdate update) {

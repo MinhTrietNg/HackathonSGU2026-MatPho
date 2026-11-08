@@ -21,7 +21,7 @@ import '../groups/group_routes.dart';
 import '../groups/group_state.dart'
     show groupActionsProvider, myInvitationsProvider;
 import 'alert_actions.dart';
-import 'alert_controller.dart' show alertProvider;
+import 'alert_controller.dart' show alertProvider, receivedAlertsProvider;
 
 class AlertNotifications extends ConsumerStatefulWidget {
   const AlertNotifications({super.key, required this.child});
@@ -97,6 +97,7 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
         event.status != EventStatus.unverified) {
       return;
     }
+    ref.read(receivedAlertsProvider.notifier).remember(event);
     _ring(event.id);
     final notifications = ref.read(notificationServiceProvider);
     await notifications.showFireAlert(event, picture: await _picture(event));

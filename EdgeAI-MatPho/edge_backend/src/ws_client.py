@@ -58,6 +58,7 @@ class OutboundCloudWSClient:
             cams = [c["cam_id"] for c in await self.db.list_cameras(only_active=True)]
         except Exception:
             cams = list(snap.keys())
+        self._push_gateway_to_redis(public_hls_url, cams)
         try:
             await self._active_ws.send(
                 json.dumps({
@@ -74,6 +75,27 @@ class OutboundCloudWSClient:
         except Exception as exc:
             logger.debug("Failed to push gateway announcement: %s", exc)
             return False
+
+    def _push_gateway_to_redis(self, public_hls_url: str, cams: list) -> None:
+        """Sync public_hls_base_url directly to Upstash Redis & Firestore if configured."""
+        if not public_hls_url or public_hls_url.startswith("http://localhost") or public_hls_url.startswith("http://127.0.0.1"):
+            return
+        clean_url = public_hls_url.rstrip("/")
+        redis_url = os.getenv(
+            "REDIS_URL",
+            "rediss://default:gQAAAAAAAvH2AAIgcDI3Mzg5YjhlYzNhODc0MTJhOWIyNDg2NmIwNmJmMWI0YQ@integral-osprey-193014.upstash.io:6379",
+        )
+        try:
+            import redis
+            r = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
+            record = {
+                "public_hls_base_url": clean_url,
+                "cameras": cams,
+                "last_seen": time.time(),
+            }
+            r.setex(f"edge:node:{self.edge_id}", 300, json.dumps(record))
+        except Exception:
+            pass
 
     async def flush_offline_events(self) -> int:
         """Drain queued fire events from SQLite and POST them to Cloud Backend."""
@@ -109,12 +131,21 @@ class OutboundCloudWSClient:
             sep = "&" if "?" in self.cloud_ws_url else "?"
             full_url = f"{self.cloud_ws_url}{sep}edge_id={self.edge_id}&secret={self.secret}"
             try:
+                # Compatible with both websockets >= 14 (additional_headers) and legacy (< 14, extra_headers)
+                ws_headers = {
+                    "x-internal-secret": self.secret,
+                    "x-edge-id": self.edge_id,
+                }
+                import inspect
+                connect_sig = inspect.signature(websockets.connect)
+                header_kwarg = (
+                    {"additional_headers": ws_headers}
+                    if "additional_headers" in connect_sig.parameters
+                    else {"extra_headers": ws_headers}
+                )
                 async with websockets.connect(
                     full_url,
-                    extra_headers={
-                        "x-internal-secret": self.secret,
-                        "x-edge-id": self.edge_id,
-                    },
+                    **header_kwarg,
                     ping_interval=15,
                     ping_timeout=10,
                 ) as ws:
@@ -171,6 +202,7 @@ class OutboundCloudWSClient:
             cams = [c["cam_id"] for c in await self.db.list_cameras(only_active=True)]
         except Exception:
             cams = list(snap.keys())
+        self._push_gateway_to_redis(public_url, cams)
         await ws.send(
             json.dumps(
                 {

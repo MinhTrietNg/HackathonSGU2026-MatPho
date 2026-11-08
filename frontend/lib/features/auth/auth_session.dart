@@ -59,9 +59,7 @@ class AuthSessionNotifier extends Notifier<AuthSession> {
           .read(authRepositoryProvider)
           .restoreSession()
           .timeout(restoreTimeout);
-    } on TimeoutException {
-      user = null;
-    } on MpException {
+    } catch (_) {
       user = null;
     }
     final session = user == null ? const SignedOut() : SignedIn(user);

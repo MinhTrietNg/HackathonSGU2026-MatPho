@@ -127,11 +127,12 @@ services:
 
   # ----------------------------------------------------------------------------
   # 5. Edge HTTPS Gateway: Cloudflare Outbound Tunnel for HLS (:8888) & WebRTC (:8889)
-  #    Zero-NAT Port Forwarding - Exposes HLS over HTTPS to Internet (Profile: --profile gateway)
+  #    Zero-NAT Port Forwarding - Exposes HLS over HTTPS to Internet
   # ----------------------------------------------------------------------------
   edge-gateway:
     image: cloudflare/cloudflared:latest
     container_name: matpho_edge_gateway
+    user: "0:0"
     restart: unless-stopped
     command: tunnel --no-autoupdate --logfile /app/data/tunnel.log --url http://mediamtx:8888
     volumes:
@@ -141,7 +142,3 @@ services:
         condition: service_started
     networks:
       - edge-net
-    profiles:
-      - gateway
-      - tunnel
-      - prod

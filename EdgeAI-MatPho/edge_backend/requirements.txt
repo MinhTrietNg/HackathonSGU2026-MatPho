@@ -10,6 +10,7 @@ httpx>=0.27.0
 
 # Local Persistence (SQLite WAL mode & Offline Queue)
 aiosqlite>=0.20.0
+redis>=5.0.0
 
 # LAN Camera Probe & Image Processing
 opencv-python-headless>=4.8.0

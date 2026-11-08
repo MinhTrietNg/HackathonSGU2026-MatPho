@@ -77,8 +77,8 @@ services:
       - ENVIRONMENT=development
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - MEDIAMTX_API_URL=${MEDIAMTX_API_URL:-http://host.docker.internal:9997}
-      - MEDIAMTX_RTSP_URL=${MEDIAMTX_RTSP_URL:-rtsp://host.docker.internal:8554}
+      - MEDIAMTX_API_URL=http://host.docker.internal:9997
+      - MEDIAMTX_RTSP_URL=rtsp://host.docker.internal:8554
       - MEDIAMTX_HOST=${MEDIAMTX_HOST:-http://localhost:8888}
       - REDIS_URL=${REDIS_URL:-rediss://default:gQAAAAAAAvH2AAIgcDI3Mzg5YjhlYzNhODc0MTJhOWIyNDg2NmIwNmJmMWI0YQ@integral-osprey-193014.upstash.io:6379}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-matpho-c7e77}

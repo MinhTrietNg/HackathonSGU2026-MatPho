@@ -12,6 +12,17 @@ logDestinations: [stdout]
 api: yes
 apiAddress: :9997
 
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
+
 rtsp: yes
 rtspAddress: :8554
 protocols: [tcp, udp]
@@ -44,8 +55,10 @@ paths:
   # 3. Dynamic camera source streams published by tool_test_rtsp or external IP cameras
   ~^source/(.*)$:
     source: publisher
-    fallback: /mock/cam_test
 
   # 4. All active live & output streams published by edge-backend or tool_test_rtsp
+  ~^live/(.*)$:
+    source: publisher
+
   all_others:
     source: publisher

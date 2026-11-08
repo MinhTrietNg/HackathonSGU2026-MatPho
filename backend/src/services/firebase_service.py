@@ -39,6 +39,8 @@ def init_firebase() -> firebase_admin.App:
     except ValueError:
         pass
 
+    storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "matpho-c7e77.firebasestorage.app")
+
     # 0. Check raw JSON string or Secret Manager env
     raw_cred_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
     if raw_cred_json and raw_cred_json.strip():
@@ -70,6 +72,7 @@ def init_firebase() -> firebase_admin.App:
         else:
             current_file = Path(__file__).resolve()
             candidates = [
+                Path("/secrets/firebase-sa-key.json"),
                 Path("./credentials/firebase-service-account.json"),
                 Path("/app/credentials/firebase-service-account.json"),
                 current_file.parents[2] / "credentials" / "firebase-service-account.json",
@@ -80,8 +83,6 @@ def init_firebase() -> firebase_admin.App:
                 if cand.exists():
                     cred_path = cand
                     break
-
-    storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "matpho-c7e77.firebasestorage.app")
 
     if cred_path and cred_path.exists():
         cred = credentials.Certificate(str(cred_path))

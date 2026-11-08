@@ -94,7 +94,8 @@ services:
       - CLOUD_BACKEND_API_URL=${CLOUD_BACKEND_API_URL:-http://host.docker.internal:8000}
       - EDGE_BACKEND_API_URL=http://edge-backend:8090
       - INTERNAL_API_SECRET_KEY=${INTERNAL_API_SECRET_KEY:-secure_internal_key_for_ai_and_worker_communication}
-      - 'AI_CAMERA_STREAMS=${AI_CAMERA_STREAMS:-[{"cam_id": "cam_01"}]}'
+      # Trống: chỉ quét camera backend đồng bộ xuống edge-backend (GET /api/v1/edge/cameras).
+      - 'AI_CAMERA_STREAMS=${AI_CAMERA_STREAMS:-}'
       - AI_TARGET_FPS=${AI_TARGET_FPS:-3.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:

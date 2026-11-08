@@ -379,6 +379,18 @@ nó xếp event vào hàng SQLite. Ảnh được tải riêng một lần mỗi
 `edge` tự bật `webhook.gui_anh` để pha 2 có ảnh, và đặt timeout webhook 10 s; `--set`
 vẫn ghi đè được.
 
+**Camera phải có ở backend.** FireWatch báo cháy theo `cam_id` của camera trên edge;
+backend chỉ nhận event của camera đã tạo trong app (id dạng `cam_<hex>`), camera lạ trả
+404 `CAMERA_NOT_FOUND` và app không hú. edge-backend nhận danh sách camera của backend
+qua `CLOUD_BACKEND_WS_URL`, nên biến này và `CLOUD_BACKEND_API_URL` phải trỏ cùng backend
+(local: `host.docker.internal:8000`). Thử bằng clip cháy: phát vào
+`rtsp://<máy edge>:8554/source/<tên>`, tạo camera trong app với đúng URL đó, đợi edge
+nhận `SYNC_CAMERA` rồi kiểm `GET :8090/api/v1/edge/cameras` có `cam_<hex>`. Phát vào
+`source/cam_01` mà không tạo camera thì FireWatch vẫn phát hiện, nhưng event bị từ chối
+(edge ghi log `Backend rejected fire event … HTTP 404`). Đã chạy thử 2026-11-08 trên
+cụm Docker với backend giả: luồng mở lúc 02:33:30, `CONFIRMED 6/10 CRITICAL` lúc
+02:33:37, event và ảnh pha 2 tới backend với HTTP 202.
+
 **Trong container.**
 - Mọi camera dùng chung một model (gọi tuần tự có khoá). Event nằm ở `/app/events/<cam_id>/`,
   `run.log` ở `/app/runs/<cam_id>/`, mỗi dòng log có `[cam-<cam_id>]`.

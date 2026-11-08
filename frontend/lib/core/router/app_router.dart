@@ -41,13 +41,12 @@ final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final appRouterProvider = Provider<GoRouter>((ref) {
   final notifSvc = ref.read(notificationServiceProvider);
   final launchAlertId = notifSvc.launchAlertId;
-  final launchCall114 = notifSvc.launchCall114;
+  // Mở từ nút "Gọi 114" của thông báo: vào màn sự cố, AlertNotifications gọi 114 thật
+  // (không qua màn quay số mô phỏng, vốn không gọi và còn đánh dấu sự cố đã xử lý).
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: launchAlertId != null
-        ? (launchCall114
-            ? AlertPaths.dialer(launchAlertId)
-            : AppRoutes.alert(launchAlertId))
+        ? AppRoutes.alert(launchAlertId)
         : AppRoutes.monitor,
     redirect: (context, state) => authRedirect(ref, state),
     routes: [

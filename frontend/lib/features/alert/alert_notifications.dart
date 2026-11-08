@@ -71,6 +71,14 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
       }),
     );
     _lifecycle = AppLifecycleListener(onResume: _onResume);
+    final launch = ref.read(notificationServiceProvider);
+    final launchId = launch.launchAlertId;
+    if (launchId != null && launch.launchCall114) {
+      // App mở từ nút "Gọi 114" khi đang tắt: gọi 114 thật như khi app đang mở.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_onTap((eventId: launchId, call114: true)));
+      });
+    }
   }
 
   @override

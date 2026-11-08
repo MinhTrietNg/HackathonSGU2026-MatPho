@@ -37,6 +37,7 @@ class DecodeSession:
         self._attempt = attempt
         self._clock = clock
         self._stop = threading.Event()
+        self._wake_event = threading.Event()
         self._thread = threading.Thread(
             target=self._run, name=f"decode-{spec.cam_id}", daemon=True
         )
@@ -47,6 +48,11 @@ class DecodeSession:
     @property
     def alive(self) -> bool:
         return self._thread.is_alive()
+
+    def wake_up(self) -> None:
+        """Interrupt any pending backoff delay and reconnect immediately."""
+        self._backoff.reset()
+        self._wake_event.set()
 
     def start(self) -> None:
         self._thread.start()
@@ -105,8 +111,12 @@ class DecodeSession:
                 delay,
                 self.stats.restarts,
             )
-            if self._stop.wait(delay):
-                break
+            deadline = self._clock() + delay
+            while self._clock() < deadline and not self._stop.is_set():
+                if self._wake_event.wait(timeout=min(0.2, max(0.0, deadline - self._clock()))):
+                    self._wake_event.clear()
+                    logger.info("[cam_id=%s] wake_up requested, bypassing backoff delay", cam_id)
+                    break
 
         self.stats.state = SessionState.STOPPED
         logger.info("[cam_id=%s] session finished", cam_id)

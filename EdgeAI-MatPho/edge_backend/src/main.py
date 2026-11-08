@@ -190,7 +190,8 @@ def build_stream_urls(cam_id: str) -> Dict[str, str]:
 async def start_live_stream(cam_id: str) -> Dict[str, Any]:
     """Activate live stream for a camera (on-demand or always-on)."""
     state.stream_last_requested[cam_id] = time.monotonic()
-    if not state.manager.is_running(cam_id):
+    sess = state.manager.get_session(cam_id)
+    if sess is None or not sess.alive:
         cam = await state.db.get_camera(cam_id)
         if not cam or not cam.get("is_active", True):
             src = state.settings.url_for(state.settings.source_path_template, cam_id)
@@ -202,6 +203,11 @@ async def start_live_stream(cam_id: str) -> Dict[str, Any]:
             logger.info("[cam_id=%s] Started live stream session", cam_id)
         except Exception as exc:
             logger.warning("[cam_id=%s] Failed to start live stream: %s", cam_id, exc)
+    else:
+        from .stats import SessionState
+        if sess.stats.state == SessionState.BACKOFF:
+            sess.wake_up()
+            logger.info("[cam_id=%s] Woke up session from BACKOFF for live view", cam_id)
     return build_stream_urls(cam_id)
 
 
@@ -276,7 +282,7 @@ def resolve_safe_source_url(cam_id: str, rtsp_url: str) -> str:
             if cleaned.lower().startswith(local_alias):
                 cleaned = f"{state.settings.mediamtx_rtsp_url}/" + cleaned[len(local_alias):]
                 break
-    if "mock-camera" in cleaned.lower() or "test-valid" in cleaned.lower():
+    if "mock-camera" in cleaned.lower() or "test-valid" in cleaned.lower() or "mock-cam" in cleaned.lower():
         return f"{state.settings.mediamtx_rtsp_url}/mock/cam_test"
     if cleaned.rstrip("/") in (app_rtsp.rstrip("/"), ai_rtsp.rstrip("/")):
         return f"{state.settings.mediamtx_rtsp_url}/mock/cam_test"
@@ -333,12 +339,17 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             ai_mode=ai_mode,
             ai_schedules=ai_schedule,
         )
-        state.manager.stop(cam_id)
         if is_active:
             try:
-                state.manager.start(cam_id, source_url=safe_source)
+                await asyncio.to_thread(state.manager.restart, cam_id, safe_source)
+                logger.info("[cam_id=%s] Restarted stream session with source: %s", cam_id, safe_source)
             except Exception as exc:
                 logger.warning("Could not start stream for %s: %s", cam_id, exc)
+        else:
+            await asyncio.to_thread(state.manager.stop, cam_id)
+
+        if state.ws_client:
+            asyncio.create_task(state.ws_client.announce_camera_sync())
         urls = build_stream_urls(cam_id)
         return {
             "type": "CAMERA_STATUS",
@@ -455,11 +466,51 @@ async def periodic_status_logger() -> None:
             logger.debug("Status logger error: %s", exc)
 
 
+async def sync_cameras_from_cloud() -> int:
+    """Fetch registered cameras from Cloud Backend and synchronize them into local SQLite."""
+    url = f"{CLOUD_BACKEND_API_URL}/api/v1/internal/edge/cameras?edge_device_id={os.getenv('EDGE_DEVICE_ID', 'edg_local_01')}"
+    headers = {
+        "x-internal-secret": INTERNAL_API_SECRET_KEY,
+        "Authorization": f"Bearer {INTERNAL_API_SECRET_KEY}",
+    }
+    synced = 0
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                cameras = data.get("cameras", [])
+                for c in cameras:
+                    cid = c.get("cam_id")
+                    raw_rtsp = c.get("rtsp_url")
+                    if not cid or not raw_rtsp:
+                        continue
+                    safe_src = resolve_safe_source_url(cid, raw_rtsp)
+                    is_active = bool(c.get("is_active", True))
+                    await state.db.upsert_camera(
+                        cam_id=cid,
+                        rtsp_url=safe_src,
+                        cam_name=c.get("cam_name", cid),
+                        watch_area=c.get("watch_area"),
+                        is_active=is_active,
+                        ai_mode=c.get("ai_mode", "ALWAYS"),
+                        ai_schedules=c.get("ai_schedules", []),
+                    )
+                    synced += 1
+                logger.info("Auto-synced %d cameras from Cloud Backend into Edge DB", synced)
+    except Exception as exc:
+        logger.debug("Cloud Backend cameras sync unavailable: %s", exc)
+    return synced
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await state.db.init_db()
 
-    # Seed from DECODER_STREAMS env if SQLite is empty
+    # 1. Pull latest cameras from Cloud Backend
+    await sync_cameras_from_cloud()
+
+    # 2. Seed from DECODER_STREAMS env if SQLite is still empty
     existing = await state.db.list_cameras()
     if not existing:
         for item in _load_initial_cameras_from_env():
@@ -792,7 +843,7 @@ async def relay_ai_fire_event(
     forward_success = False
     cloud_response_data = {}
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(cloud_url, json=payload, headers=headers)
             if resp.status_code in (200, 201, 202):
                 forward_success = True

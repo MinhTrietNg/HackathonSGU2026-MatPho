@@ -16,6 +16,7 @@ import httpx
 import websockets
 from typing import Callable, Awaitable, Dict, Any, Optional
 
+from .relay_rules import bo_su_kien_bi_tu_choi
 from .db import EdgeDatabase
 
 logger = logging.getLogger("edge-backend.ws_client")
@@ -142,6 +143,15 @@ class OutboundCloudWSClient:
                     if res.status_code in (200, 201, 202):
                         await self.db.delete_offline_event(ev["id"])
                         flushed += 1
+                    elif bo_su_kien_bi_tu_choi(res.status_code):
+                        # Cloud rejected this event for good (camera not registered, bad
+                        # payload): drop it, or it blocks the whole queue forever and gets
+                        # replayed as a stale fire alert every heartbeat.
+                        logger.warning(
+                            "Dropping offline event %s (cam %s): cloud returned %d",
+                            ev["id"], ev.get("cam_id"), res.status_code,
+                        )
+                        await self.db.delete_offline_event(ev["id"])
                     else:
                         break
                 except Exception as exc:

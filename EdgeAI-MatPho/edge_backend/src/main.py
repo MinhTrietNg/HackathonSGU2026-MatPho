@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from .config import ConfigError, DecoderSettings, redact_url
 from .db import EdgeDatabase, WatchAreaType
 from .gateway_discovery import discover_public_hls_url
+from .relay_rules import la_dia_chi_noi_bo, match_cam_id
 from .manager import DecodeManager, StreamAlreadyRunning
 from .probe import get_lan_probe_service
 from .ws_client import OutboundCloudWSClient
@@ -167,8 +168,20 @@ def compute_should_ai_scan_now(
 
 
 def get_current_public_hls_url() -> str:
-    """Resolve the active Public HLS URL for this Edge Node."""
-    return state.settings.edge_public_hls_url or discover_public_hls_url(MEDIAMTX_HLS_URL)
+    """
+    Resolve the HLS base URL the phone can reach, announced to the Cloud Backend:
+    EDGE_PUBLIC_HLS_URL -> Cloudflare tunnel URL from tunnel.log -> http://<EDGE_LAN_IP>:8888
+    (LAN demo without tunnel; the launchers fill EDGE_LAN_IP) -> MEDIAMTX_HLS_URL.
+    A localhost address is still returned last so local tools keep working; the cloud
+    ignores it and reports "no reachable stream" to the app instead of a broken URL.
+    """
+    url = state.settings.edge_public_hls_url or discover_public_hls_url(MEDIAMTX_HLS_URL)
+    if la_dia_chi_noi_bo(url):
+        lan_ip = os.getenv("EDGE_LAN_IP", "").strip()
+        if lan_ip:
+            port = os.getenv("MEDIAMTX_HLS_PORT", "8888").strip() or "8888"
+            return f"http://{lan_ip}:{port}"
+    return url
 
 
 def build_stream_urls(cam_id: str) -> Dict[str, str]:
@@ -782,19 +795,12 @@ async def get_gateway_info():
 
 
 async def resolve_edge_cam_id(raw_camera_id: Optional[str]) -> str:
-    """Map AI raw camera identifier (e.g. 'ham-b1-cam03') to registered cam_id in Edge DB."""
-    if not raw_camera_id:
-        return "cam_unknown"
+    """Map the FireWatch camera identifier to a registered cam_id (see match_cam_id)."""
     cams = await state.db.list_cameras()
-    for c in cams:
-        if c["cam_id"] == raw_camera_id:
-            return c["cam_id"]
-        if c.get("cam_name") and c["cam_name"].lower() == raw_camera_id.lower():
-            return c["cam_id"]
-        # Substring match
-        if raw_camera_id.lower() in c["cam_id"].lower() or (c.get("cam_name") and raw_camera_id.lower() in c["cam_name"].lower()):
-            return c["cam_id"]
-    return raw_camera_id
+    resolved = match_cam_id(raw_camera_id, cams)
+    if raw_camera_id and resolved == raw_camera_id and not any(c.get("cam_id") == resolved for c in cams):
+        logger.warning("Fire event for unregistered camera id %r: forwarded unchanged", raw_camera_id)
+    return resolved
 
 
 @app.post("/api/v1/edge/ai-events", status_code=status.HTTP_202_ACCEPTED)

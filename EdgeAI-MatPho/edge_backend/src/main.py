@@ -247,7 +247,16 @@ async def on_demand_idle_sweeper() -> None:
                 continue
             now = time.monotonic()
             active_cams = list(state.manager.status().keys())
+            # live/{cam_id} vừa là nguồn HLS cho app vừa là luồng phân tích của FireWatch.
+            # On-demand chỉ áp cho người xem: camera đang trong giờ quét của FireWatch không bị dừng,
+            # nếu không FireWatch mất nguồn ngay khi app đóng màn xem.
+            cams = {c["cam_id"]: c for c in await state.db.list_cameras()}
             for cam_id in active_cams:
+                c = cams.get(cam_id)
+                if c is not None and bool(c.get("is_active", True)) and compute_should_ai_scan_now(
+                    c.get("ai_mode", "ALWAYS"), c.get("ai_schedules", [])
+                ):
+                    continue
                 last_req = state.stream_last_requested.get(cam_id)
                 if last_req is not None and (now - last_req) > state.settings.live_idle_ttl_s:
                     logger.info(

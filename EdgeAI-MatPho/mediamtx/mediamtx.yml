@@ -34,6 +34,9 @@ hlsVariant: mpegts
 hlsSegmentCount: 7
 hlsSegmentDuration: 2s
 hlsAlwaysRemux: no
+# HLS on-demand: chỉ đóng gói khi có người xem, ngắt 10 s sau request cuối (sơ đồ kiến
+# trúc, luồng C). Luồng RTSP live/{cam_id} cho FireWatch không bị ảnh hưởng.
+hlsMuxerCloseAfter: 10s
 
 webrtc: yes
 webrtcAddress: :8889

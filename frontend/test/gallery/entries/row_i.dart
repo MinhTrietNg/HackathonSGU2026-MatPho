@@ -9,6 +9,7 @@ import '../../fakes/fake_overrides.dart';
 import '../../fakes/fake_world.dart';
 import 'package:mat_pho/data/models/models.dart';
 import 'package:mat_pho/features/cameras/add_camera_screen.dart';
+import 'package:mat_pho/features/cameras/camera_actions_sheet.dart';
 import 'package:mat_pho/features/cameras/camera_monitor_screen.dart';
 import 'package:mat_pho/features/cameras/camera_screen.dart';
 import 'package:mat_pho/features/cameras/camera_state.dart';
@@ -18,6 +19,7 @@ import 'package:mat_pho/features/cameras/new_area_sheet.dart';
 import 'package:mat_pho/features/cameras/monitor_toasts.dart';
 import 'package:mat_pho/features/cameras/place_picker_sheet.dart';
 import 'package:mat_pho/features/groups/current_group.dart';
+import 'package:mat_pho/features/settings/camera_trash_screen.dart';
 import '../gallery_registry.dart';
 import '../gallery_scope.dart';
 
@@ -180,7 +182,73 @@ final rowIEntries = <GalleryEntry>[
       ),
     ),
   ),
+  GalleryEntry(
+    code: 'I8-NORTSP',
+    title: 'Camera chưa có đường dẫn RTSP',
+    builder: (_) => GalleryScope(
+      overrides: [_downWithoutRtsp],
+      child: const CameraScreen(cameraId: 'cam-down'),
+    ),
+  ),
+  GalleryEntry(
+    code: 'I20',
+    title: 'Gỡ RTSP hay xoá camera (sheet)',
+    builder: (_) => GalleryScope(
+      child: _ShowOnStart(
+        show: (context) => showCameraActionsSheet(
+          context,
+          FakeData.cameras.firstWhere((c) => c.id == 'cam-down'),
+        ),
+        child: const CameraScreen(cameraId: 'cam-down'),
+      ),
+    ),
+  ),
+  GalleryEntry(
+    code: 'I18',
+    title: 'Camera đã xoá (thùng rác 30 ngày)',
+    builder: (_) => GalleryScope(
+      overrides: [_trashedWorld],
+      child: const CameraTrashScreen(),
+    ),
+  ),
 ];
+
+// "Lối xuống" after "Gỡ đường dẫn RTSP".
+final _downWithoutRtsp = fakeWorldProvider.overrideWith((ref) {
+  final world = FakeWorld(ref.watch(fakeScenarioProvider));
+  ref.onDispose(world.dispose);
+  final down = world.cameras.firstWhere((c) => c.id == 'cam-down');
+  world.cameras[world.cameras.indexOf(down)] = down.copyWith(hasRtsp: false);
+  return world;
+});
+
+// Two Sky Garden cameras in the trash: one about to be purged, one fresh.
+final _trashedWorld = fakeWorldProvider.overrideWith((ref) {
+  final world = FakeWorld(ref.watch(fakeScenarioProvider));
+  ref.onDispose(world.dispose);
+  for (final (id, areaName, daysAgo) in [
+    ('cam-charger', 'Hầm B1', 28),
+    ('cam-ramp', 'Hầm B1', 7),
+  ]) {
+    final camera = world.cameras.firstWhere((c) => c.id == id);
+    world.cameras.remove(camera);
+    final deletedAt = world.now().subtract(Duration(days: daysAgo));
+    world.trash.add((
+      entry: TrashedCamera(
+        id: camera.id,
+        groupId: camera.groupId,
+        name: camera.name,
+        areaId: camera.areaId,
+        areaName: areaName,
+        deviceName: camera.deviceName,
+        deletedAt: deletedAt,
+        purgeAt: deletedAt.add(FakeWorld.trashRetention),
+      ),
+      camera: camera,
+    ));
+  }
+  return world;
+});
 
 class _TabFrame extends StatelessWidget {
   const _TabFrame(this.child, {this.onShown});

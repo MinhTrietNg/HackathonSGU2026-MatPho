@@ -13,6 +13,7 @@ import '../../core/widgets/mp_banner.dart';
 import '../../core/widgets/mp_button.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
 import '../../core/widgets/mp_header.dart';
+import '../../core/widgets/mp_icon_button.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_tips_card.dart';
 import '../../core/widgets/mp_toast.dart';
@@ -20,6 +21,7 @@ import '../../data/models/models.dart';
 import '../../data/providers.dart';
 import '../ai_mode/ai_mode_state.dart';
 import '../alert/alert_actions.dart' show callEmergency;
+import '../cameras/camera_actions.dart' show cameraActionsMenu;
 import '../cameras/camera_state.dart';
 import 'detection_controller.dart';
 import 'detection_routes.dart';
@@ -138,6 +140,16 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
               child: MpHeader.back(
                 title: camera.value?.title ?? '',
                 onBack: _back,
+                action: switch (camera.value) {
+                  final detail? when detail.group.myRole.canManage =>
+                    MpIconButton(
+                      icon: MpIcons.trash,
+                      semanticLabel: 'Xoá camera',
+                      onPressed: () =>
+                          cameraActionsMenu(context, ref, detail.camera),
+                    ),
+                  _ => null,
+                },
               ),
             ),
             Expanded(

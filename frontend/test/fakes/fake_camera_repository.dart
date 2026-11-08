@@ -148,6 +148,24 @@ final class FakeCameraRepository implements CameraRepository {
       deviceName: before.deviceName,
       ai: ai ?? before.ai,
       thumbnailUrl: before.thumbnailUrl,
+      hasRtsp: rtspUrl != null || before.hasRtsp,
+    );
+    _world.cameras[_world.cameras.indexOf(before)] = after;
+    return _seenByMe(after);
+  }
+
+  @override
+  Future<Camera> removeRtsp(String cameraId) async {
+    await _world.delay();
+    final before = _camera(cameraId);
+    _requireManager(before.groupId);
+    if (_s.has(FakeCase.cameraUpdateFails)) {
+      throw const ServerException();
+    }
+    final after = before.copyWith(
+      status: CameraStatus.signalLost,
+      signalLostSince: _world.now(),
+      hasRtsp: false,
     );
     _world.cameras[_world.cameras.indexOf(before)] = after;
     return _seenByMe(after);

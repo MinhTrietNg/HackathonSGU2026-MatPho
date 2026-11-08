@@ -454,6 +454,31 @@ class CameraRepository(BaseFirestoreRepository):
         )
         return True
 
+    def clear_camera_rtsp(self, cam_id: str, actor_id: str) -> Optional[CameraModel]:
+        """Drop the RTSP link but keep the camera (name, area, history, members).
+
+        The camera reads SIGNAL_LOST until a new link is set via update_camera.
+        """
+        cam = self.get_camera(cam_id)
+        if not cam or cam.is_deleted:
+            return None
+
+        now_dt = datetime.now(timezone.utc)
+        self.db.collection("cameras").document(cam_id).update({
+            "rtsp_url": "",
+            "status": CameraStatus.SIGNAL_LOST.value,
+            "last_seen_at": now_dt,
+            "updated_at": now_dt,
+        })
+        self.create_audit_log(
+            group_id=cam.group_id,
+            actor_id=actor_id,
+            action=AuditAction.UPDATE_CAMERA,
+            target_entity=f"camera:{cam_id}",
+            details={"cam_name": cam.cam_name, "action": "remove_rtsp"},
+        )
+        return self.get_camera(cam_id)
+
     def restore_camera(self, cam_id: str, actor_id: str) -> bool:
         """Restore camera from trash bin."""
         cam = self.get_camera(cam_id)

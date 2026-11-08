@@ -123,6 +123,10 @@ final class RemoteCameraRepository implements CameraRepository {
   );
 
   @override
+  Future<Camera> removeRtsp(String cameraId) async =>
+      parseCamera(asJsonMap(await _api.delete('/cameras/$cameraId/rtsp')));
+
+  @override
   Future<void> deleteCamera(String cameraId) async {
     await _api.delete('/cameras/$cameraId');
   }
@@ -231,6 +235,7 @@ Camera parseCamera(Map<String, Object?> json) {
         : null,
     liveStreamUrl: readStringOrNull(json, 'live_stream_url'),
     thumbnailUrl: readStringOrNull(json, 'thumbnail_url'),
+    hasRtsp: readBoolOrNull(json, 'has_rtsp') ?? true,
     watchArea: area == null
         ? WatchArea.full
         : WatchArea(

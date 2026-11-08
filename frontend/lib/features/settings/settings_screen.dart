@@ -108,6 +108,13 @@ class SettingsScreen extends ConsumerWidget {
                           onTap: () => context.push(AiModeRoutes.cameras),
                         ),
                         MpSettingsRow(
+                          icon: MpIcons.trash,
+                          iconColor: c.brandAccent,
+                          title: 'Camera đã xoá',
+                          subtitle: 'Khôi phục trong 30 ngày',
+                          onTap: () => context.push(SettingsRoutes.cameraTrash),
+                        ),
+                        MpSettingsRow(
                           icon: MpIcons.sound,
                           iconColor: c.brandAccent,
                           title: 'Kêu cả khi im lặng',

@@ -34,6 +34,9 @@ abstract interface class CameraRepository {
     CameraAi? ai,
   });
 
+  /// Drops the RTSP link; the camera stays, signal lost, until a new link.
+  Future<Camera> removeRtsp(String cameraId);
+
   Future<void> deleteCamera(String cameraId);
 
   Future<List<TrashedCamera>> listTrash(String groupId);

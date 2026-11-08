@@ -408,6 +408,8 @@ void main() {
   });
 
   _i8Tests();
+  _deleteTests();
+  _noRtspTests();
 }
 
 Override _skyRole(GroupRole role) => fakeWorldProvider.overrideWith((ref) {
@@ -577,5 +579,108 @@ void _i8Tests() {
     expect(find.text('Mất tín hiệu từ 21:30'), findsOneWidget);
     expect(find.text(_readd), findsOneWidget);
     expect(_world(tester).cameras, before);
+  });
+}
+
+const _delete = 'Xoá camera';
+
+void _deleteTests() {
+  testWidgets('I8 · owners and managers get "$_delete"; members do not', (
+    tester,
+  ) async {
+    await _pumpLost(tester, failures: 0);
+    expect(find.bySemanticsLabel(_delete), findsOneWidget);
+    await _toastGone(tester);
+  });
+
+  for (final role in [GroupRole.member, GroupRole.alertsOnly]) {
+    testWidgets('I8 · ${role.name} never gets "$_delete"', (tester) async {
+      await _pumpLost(tester, failures: 0, overrides: [_skyRole(role)]);
+      expect(find.bySemanticsLabel(_delete), findsNothing);
+      await _toastGone(tester);
+    });
+  }
+
+  testWidgets('I8 "$_delete" → I17 → "Xoá": E1 with "Hoàn tác", which '
+      'restores the camera', (tester) async {
+    final router = await _pumpLost(tester, failures: 0);
+    final world = _world(tester);
+    final before = world.cameras.length;
+
+    await _tap(tester, find.bySemanticsLabel(_delete));
+    await _tap(tester, find.text(_delete));
+    expect(find.text('Xoá camera Lối xuống?'), findsOneWidget);
+    await _tap(tester, find.text('Huỷ'));
+    expect(world.cameras.length, before);
+
+    await _tap(tester, find.bySemanticsLabel(_delete));
+    await _tap(tester, find.text(_delete));
+    await _tap(tester, find.text('Xoá'));
+    expect(router.state.uri.path, AppRoutes.monitor);
+    expect(world.cameras.length, before - 1);
+    expect(world.trash.single.camera.id, 'cam-down');
+    expect(find.text('Đã xoá camera · Lối xuống'), findsOneWidget);
+
+    await _tap(tester, find.text('Hoàn tác'));
+    expect(world.trash, isEmpty);
+    expect(world.cameras.length, before);
+    await _toastGone(tester);
+  });
+}
+
+const _noLink = 'Chưa có đường dẫn RTSP';
+
+Override _noRtspDown({GroupRole? role}) => fakeWorldProvider.overrideWith((ref) {
+  final world = FakeWorld(ref.watch(fakeScenarioProvider));
+  ref.onDispose(world.dispose);
+  if (role != null) {
+    final sky = world.group(FakeData.skyGarden.id);
+    world.replaceGroup(
+      Group(
+        id: sky.id,
+        name: sky.name,
+        myRole: role,
+        myNickname: sky.myNickname,
+        cameraCount: sky.cameraCount,
+        memberCount: sky.memberCount,
+        address: sky.address,
+      ),
+    );
+  }
+  final down = world.cameras.firstWhere((c) => c.id == 'cam-down');
+  world.cameras[world.cameras.indexOf(down)] = down.copyWith(hasRtsp: false);
+  return world;
+});
+
+void _noRtspTests() {
+  testWidgets('I8 · without a link: no reconnect, "$_readd" for the owner', (
+    tester,
+  ) async {
+    await _pumpLost(tester, failures: 0, overrides: [_noRtspDown()]);
+    expect(find.text(_noLink), findsOneWidget);
+    expect(find.text('Thử kết nối lại'), findsNothing);
+    expect(find.text(_readd), findsOneWidget);
+  });
+
+  testWidgets('I8 · without a link: a member only reads the banner', (
+    tester,
+  ) async {
+    await _pumpLost(
+      tester,
+      failures: 0,
+      overrides: [_noRtspDown(role: GroupRole.member)],
+    );
+    expect(find.text(_noLink), findsOneWidget);
+    expect(find.text('Thử kết nối lại'), findsNothing);
+    expect(find.text(_readd), findsNothing);
+  });
+
+  testWidgets('I20 · without a link the sheet offers only "$_delete"', (
+    tester,
+  ) async {
+    await _pumpLost(tester, failures: 0, overrides: [_noRtspDown()]);
+    await _tap(tester, find.bySemanticsLabel(_delete));
+    expect(find.text('Gỡ đường dẫn RTSP'), findsNothing);
+    expect(find.text(_delete), findsOneWidget);
   });
 }

@@ -11,6 +11,7 @@ import '../../core/widgets/mp_banner.dart';
 import '../../core/widgets/mp_button.dart';
 import '../../core/widgets/mp_duotone_icon.dart';
 import '../../core/widgets/mp_header.dart';
+import '../../core/widgets/mp_icon_button.dart';
 import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_page.dart';
 import '../../core/widgets/mp_tips_card.dart';
@@ -19,6 +20,7 @@ import '../../data/errors.dart';
 import '../../data/models/models.dart';
 import '../../data/providers.dart';
 import '../groups/group_state.dart' show groupCamerasProvider;
+import 'camera_actions.dart' show cameraActionsMenu;
 import 'camera_state.dart';
 import 'camera_widgets.dart';
 
@@ -48,6 +50,14 @@ class CameraScreen extends ConsumerWidget {
       header: MpHeader.back(
         title: detail?.title ?? '',
         onBack: () => _back(context),
+        // Same trash button as E2: the camera is dead, deleting it is likely.
+        action: detail != null && detail.group.myRole.canManage
+            ? MpIconButton(
+                icon: MpIcons.trash,
+                semanticLabel: 'Xoá camera',
+                onPressed: () => cameraActionsMenu(context, ref, detail.camera),
+              )
+            : null,
       ),
       headerBottom: 12,
       children: [if (lost) Expanded(child: _SignalLost(detail!))],
@@ -123,6 +133,9 @@ class _SignalLostState extends ConsumerState<_SignalLost> {
   Widget build(BuildContext context) {
     final since = widget.detail.camera.signalLostSince;
     final names = widget.detail.notifiedNames;
+    // After "Gỡ đường dẫn RTSP" there is nothing to reconnect to.
+    final noLink = !widget.detail.camera.hasRtsp;
+    final canManage = widget.detail.group.myRole.canManage;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 12,
@@ -136,29 +149,36 @@ class _SignalLostState extends ConsumerState<_SignalLost> {
           tone: MpBannerTone.warn,
           outlined: false,
           icon: MpIcons.wifiOff,
-          title: since == null
+          title: noLink
+              ? 'Chưa có đường dẫn RTSP'
+              : since == null
               ? 'Mất tín hiệu'
               : 'Mất tín hiệu từ ${formatClock(since, seconds: false)}',
-          body: [
-            'Khu này đang không được canh cháy.',
-            if (names.isNotEmpty) 'Đã báo ${names.join(', ')}.',
-          ].join(' '),
+          body: noLink
+              ? 'Tên, khu vực và lịch sử vẫn còn. Thêm lại RTSP để AI quét '
+                    'tiếp.'
+              : [
+                  'Khu này đang không được canh cháy.',
+                  if (names.isNotEmpty) 'Đã báo ${names.join(', ')}.',
+                ].join(' '),
         ),
-        const MpTipsCard(
-          tips: [
-            (MpIcons.battery, 'Xem camera còn điện không'),
-            (MpIcons.wifiOff, 'Xem mạng LAN tầng hầm'),
-          ],
-        ),
+        if (!noLink)
+          const MpTipsCard(
+            tips: [
+              (MpIcons.battery, 'Xem camera còn điện không'),
+              (MpIcons.wifiOff, 'Xem mạng LAN tầng hầm'),
+            ],
+          ),
         const Spacer(),
-        MpButton(
-          label: 'Thử kết nối lại',
-          onPressed: _busy ? null : _reconnect,
-        ),
-        if (_failures >= _replaceAfter && widget.detail.group.myRole.canManage)
+        if (!noLink)
+          MpButton(
+            label: 'Thử kết nối lại',
+            onPressed: _busy ? null : _reconnect,
+          ),
+        if (canManage && (noLink || _failures >= _replaceAfter))
           MpButton(
             label: 'Thêm lại RTSP',
-            kind: MpButtonKind.ghost,
+            kind: noLink ? MpButtonKind.primary : MpButtonKind.ghost,
             onPressed: _busy ? null : _replace,
           ),
       ],

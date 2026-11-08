@@ -334,3 +334,57 @@ def test_trash_restore_and_permanent_delete(client):
     # Camera no longer exists anywhere
     res_get_deleted = client.get(f"/api/v1/cameras/{cam_id}", headers=leader["headers"])
     assert res_get_deleted.status_code == 404
+
+
+def test_camera_remove_rtsp_keeps_camera(client):
+    """DELETE /cameras/{id}/rtsp: the camera stays (SIGNAL_LOST, has_rtsp false) until a new link is set."""
+    ts = int(time.time() * 1000) % 10000000
+    leader = _register_user(client, f"096{ts:07d}", "Trưởng Nhóm RTSP")
+    group_id = client.post(
+        "/api/v1/groups",
+        json={"name": "Khu phố RTSP", "address": "Quận 3", "my_nickname": "Trưởng"},
+        headers=leader["headers"],
+    ).json()["group_id"]
+    subgroup_id = client.post(
+        f"/api/v1/groups/{group_id}/subgroups",
+        json={"name": "Ngõ 7", "description": ""},
+        headers=leader["headers"],
+    ).json()["subgroup_id"]
+    cam_id = client.post(
+        "/api/v1/cameras",
+        json={
+            "group_id": group_id,
+            "subgroup_id": subgroup_id,
+            "cam_name": "Camera Ngõ 7",
+            "rtsp_url": "rtsp://admin:123456@192.168.1.20:554/live",
+        },
+        headers=leader["headers"],
+    ).json()["cam_id"]
+
+    res = client.delete(f"/api/v1/cameras/{cam_id}/rtsp", headers=leader["headers"])
+    assert res.status_code == 200
+    body = res.json()
+    assert body["cam_id"] == cam_id
+    assert body["status"] == "SIGNAL_LOST"
+    assert body["has_rtsp"] is False
+
+    detail = client.get(f"/api/v1/cameras/{cam_id}", headers=leader["headers"]).json()
+    assert detail["cam_name"] == "Camera Ngõ 7"
+    assert detail["status"] == "SIGNAL_LOST"
+    assert detail["has_rtsp"] is False
+    assert get_camera_repo().get_camera(cam_id).rtsp_url == ""
+
+    # A new link (I8 "Thêm lại RTSP") brings it back.
+    res_patch = client.patch(
+        f"/api/v1/cameras/{cam_id}",
+        json={"rtsp_url": "rtsp://admin:123456@192.168.1.21:554/live"},
+        headers=leader["headers"],
+    )
+    assert res_patch.status_code == 200
+    detail = client.get(f"/api/v1/cameras/{cam_id}", headers=leader["headers"]).json()
+    assert detail["has_rtsp"] is True
+
+    # Not for members.
+    member = _register_user(client, f"097{ts:07d}", "Thành Viên RTSP")
+    res_forbidden = client.delete(f"/api/v1/cameras/{cam_id}/rtsp", headers=member["headers"])
+    assert res_forbidden.status_code == 403

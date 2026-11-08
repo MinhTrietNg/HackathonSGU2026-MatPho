@@ -294,6 +294,7 @@ def list_cameras(
             "is_ai_enabled": cam.is_ai_enabled,
             "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (cam.ai_schedule or [])],
             "thumbnail_url": cam.thumbnail_url,
+            "has_rtsp": bool(cam.rtsp_url),
         })
     return results
 
@@ -633,6 +634,7 @@ def get_camera_detail(
         "is_ai_enabled": cam.is_ai_enabled,
         "ai_schedule": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (cam.ai_schedule or [])],
         "thumbnail_url": cam.thumbnail_url,
+        "has_rtsp": bool(cam.rtsp_url),
     }
 
 
@@ -886,6 +888,61 @@ def update_camera(
         "thumbnail_url": updated.thumbnail_url,
         "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
         "live_stream_url": build_hls_url(updated.cam_id, request),
+    }
+
+
+@router.delete("/{cam_id}/rtsp", summary="Remove the RTSP link, keep the camera")
+def remove_camera_rtsp(
+    cam_id: str,
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Gỡ đường dẫn RTSP nhưng giữ camera (tên, khu vực, lịch sử, phân quyền).
+    Camera chuyển sang SIGNAL_LOST, luồng MediaMTX bị gỡ và Edge ngừng quét
+    cho tới khi PATCH /cameras/{cam_id} đặt rtsp_url mới (màn I8 "Thêm lại RTSP").
+    Permission: LEADER or MEMBER_MANAGER.
+    """
+    camera_repo = get_camera_repo()
+    cam = camera_repo.get_camera(cam_id)
+    if not cam or cam.is_deleted:
+        raise NotFoundException("Không tìm thấy camera hoặc camera đã bị xóa.", code="CAMERA_NOT_FOUND")
+
+    group_repo = get_group_repo()
+    member = group_repo.get_member(cam.group_id, current_user.user_id)
+    if not member or member.role not in (UserRole.LEADER, UserRole.MEMBER_MANAGER):
+        raise PermissionDeniedException("Chỉ Trưởng nhóm hoặc Quản lý mới có quyền gỡ RTSP của camera.")
+
+    updated = camera_repo.clear_camera_rtsp(cam_id, current_user.user_id)
+    if not updated:
+        raise NotFoundException("Không thể gỡ RTSP của camera.", code="UPDATE_FAILED")
+
+    mtx = get_mediamtx_service()
+    mtx.remove_path(cam_id)
+    try:
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
+        ws_mgr = get_websocket_manager()
+        target_edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
+        # Without a link the Edge cannot SYNC_CAMERA it; a later PATCH with rtsp_url adds it back.
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, {"action": "REMOVE_CAMERA", "cam_id": cam_id}))
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch REMOVE_CAMERA on rtsp removal: {exc}")
+
+    return {
+        "cam_id": updated.cam_id,
+        "cam_name": updated.cam_name,
+        "group_id": updated.group_id,
+        "subgroup_id": updated.subgroup_id,
+        "subgroup_name": updated.subgroup_name,
+        "device_name": updated.device_name,
+        "status": updated.status.value if hasattr(updated.status, "value") else str(updated.status),
+        "last_seen_at": format_iso_utc(updated.last_seen_at),
+        "is_active": updated.is_active,
+        "is_ai_enabled": updated.is_ai_enabled,
+        "thumbnail_url": updated.thumbnail_url,
+        "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
+        "live_stream_url": build_hls_url(updated.cam_id, request),
+        "has_rtsp": False,
     }
 
 

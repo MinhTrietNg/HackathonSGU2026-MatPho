@@ -279,6 +279,34 @@ void main() {
     });
   });
 
+  group('remove the RTSP link (DELETE /cameras/{id}/rtsp)', () {
+    test('the reply is the same camera, signal lost, without a link', () async {
+      server.on('DELETE', '/cameras/cam_down/rtsp', {
+        ...camerasJson.last,
+        'status': 'SIGNAL_LOST',
+        'has_rtsp': false,
+      });
+      final camera = await repo.removeRtsp('cam_down');
+      expect(server.calls, ['DELETE /cameras/cam_down/rtsp']);
+      expect(camera.id, 'cam_down');
+      expect(camera.hasRtsp, isFalse);
+      expect(camera.status, CameraStatus.signalLost);
+    });
+
+    test('a camera read back without has_rtsp still counts as linked', () async {
+      server.on('GET', '/cameras/cam_down', camerasJson.last);
+      expect((await repo.getCamera('cam_down')).hasRtsp, isTrue);
+    });
+
+    test('refused by the server: the error is thrown', () async {
+      server.fail('DELETE', '/cameras/cam_down/rtsp', 403, 'PERMISSION_DENIED');
+      await expectLater(
+        repo.removeRtsp('cam_down'),
+        throwsA(isA<MpException>()),
+      );
+    });
+  });
+
   group('edit (PATCH /cameras/{id})', () {
     test('sends only the given fields; the reply is the camera', () async {
       server.on('PATCH', '/cameras/cam_charger', {

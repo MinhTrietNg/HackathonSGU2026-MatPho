@@ -116,6 +116,7 @@ final class Camera {
     this.deviceName,
     this.ai = CameraAi.alwaysOn,
     this.thumbnailUrl,
+    this.hasRtsp = true,
   });
 
   final String id;
@@ -140,12 +141,17 @@ final class Camera {
 
   final String? thumbnailUrl;
 
+  // False once the RTSP link was removed (I8 "Chưa có đường dẫn RTSP"); the
+  // server never sends the link itself, it holds the camera's password.
+  final bool hasRtsp;
+
   Camera copyWith({
     CameraStatus? status,
     DateTime? signalLostSince,
     String? liveStreamUrl,
     CameraAi? ai,
     String? thumbnailUrl,
+    bool? hasRtsp,
   }) => Camera(
     id: id,
     groupId: groupId,
@@ -161,6 +167,7 @@ final class Camera {
     deviceName: deviceName,
     ai: ai ?? this.ai,
     thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+    hasRtsp: hasRtsp ?? this.hasRtsp,
   );
 
   @override
@@ -177,7 +184,8 @@ final class Camera {
       other.liveStreamUrl == liveStreamUrl &&
       other.deviceName == deviceName &&
       other.ai == ai &&
-      other.thumbnailUrl == thumbnailUrl;
+      other.thumbnailUrl == thumbnailUrl &&
+      other.hasRtsp == hasRtsp;
 
   @override
   int get hashCode => Object.hash(
@@ -193,6 +201,7 @@ final class Camera {
     deviceName,
     ai,
     thumbnailUrl,
+    hasRtsp,
   );
 }
 

@@ -83,6 +83,11 @@ final class FakeNotificationService implements NotificationService {
   Future<void> showTestAlert() async =>
       shown.add((title: testAlertTitle, body: testAlertBody, eventId: null));
 
+  int sirenStops = 0;
+
+  @override
+  Future<void> stopSiren() async => sirenStops++;
+
   @override
   Stream<AlertTap> get taps => _taps.stream;
 

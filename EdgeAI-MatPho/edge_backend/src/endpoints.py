@@ -31,13 +31,14 @@ class StreamInfo:
     def from_stream(cls, stream: av.video.stream.VideoStream) -> StreamInfo:
         """Read properties from an opened input video stream."""
         ctx = stream.codec_context
-        if not ctx.width or not ctx.height:
-            raise ValueError("source did not report a picture size")
+        width = ctx.width or getattr(stream, "width", 0) or 1280
+        height = ctx.height or getattr(stream, "height", 0) or 720
+        codec = ctx.name or getattr(stream, "name", "h264") or "h264"
         rate = stream.average_rate or stream.guessed_rate
         fps = float(rate) if rate else _DEFAULT_FPS
         if not 0 < fps <= 120:
             fps = _DEFAULT_FPS
-        return cls(ctx.name, ctx.width, ctx.height, fps)
+        return cls(codec, width, height, fps)
 
 
 def open_source(url: str, settings: DecoderSettings) -> InputContainer:

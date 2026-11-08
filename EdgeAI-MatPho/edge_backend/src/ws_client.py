@@ -49,6 +49,32 @@ class OutboundCloudWSClient:
     def stop(self) -> None:
         self._stop = True
 
+    async def announce_camera_sync(self) -> bool:
+        """Immediately announce updated camera list to Cloud Backend."""
+        if not self._active_ws:
+            return False
+        snap = self.get_status_snapshot()
+        public_url = self.get_public_hls_url() if self.get_public_hls_url else ""
+        try:
+            cams = [c["cam_id"] for c in await self.db.list_cameras(only_active=True)]
+        except Exception:
+            cams = list(snap.keys())
+        self._push_gateway_to_redis(public_url, cams)
+        try:
+            await self._active_ws.send(
+                json.dumps({
+                    "type": "EDGE_GATEWAY_ANNOUNCE",
+                    "edge_device_id": self.edge_id,
+                    "active_streams": len(snap),
+                    "public_hls_base_url": public_url,
+                    "cameras": cams,
+                    "timestamp": time.time(),
+                })
+            )
+            return True
+        except Exception:
+            return False
+
     async def announce_gateway_url(self, public_hls_url: str) -> bool:
         """Instantly publish newly discovered Cloudflare public tunnel URL to Cloud."""
         if not self._active_ws:

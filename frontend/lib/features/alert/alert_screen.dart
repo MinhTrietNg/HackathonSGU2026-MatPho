@@ -43,6 +43,8 @@ class _AlertScreenState extends ConsumerState<AlertScreen> {
     super.initState();
     _notifications = ref.read(notificationServiceProvider);
     hideMpAlertBanner();
+    // User is viewing the alert: immediately stop vibrating and silence the siren sound
+    unawaited(ref.read(notificationServiceProvider).clearFireAlert(widget.eventId));
   }
 
   // The siren rings while F2/F4 is open; leaving it means the alert was seen.

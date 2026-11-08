@@ -424,12 +424,19 @@ async def call_114(
         escalation_level=1,
     )
 
-    # 2. Dispatch FCM High Priority Push to ALL members (Cấp 2 Escalation)
+    # 2. Dispatch FCM High Priority Push to ALL members (Cấp 2 Escalation) - Exclude caller & do not duplicate
     fcm = get_fcm_service()
+    already_escalated = bool(a.escalation_level and a.escalation_level >= 1)
+
     async def dispatch_fcm():
+        if already_escalated:
+            return
         members = group_repo.list_members(a.group_id)
         all_tokens = []
         for m in members:
+            # Exclude caller to avoid blaring siren into phone while talking to 114
+            if m.user_id == actor_id:
+                continue
             u = user_repo.get_user_by_id(m.user_id)
             if u and u.fcm_tokens:
                 all_tokens.extend(u.fcm_tokens)
@@ -440,6 +447,14 @@ async def call_114(
                 alert_id=alert_id,
                 escalation_level=1,
             )
+
+    try:
+        alert_repo.collection.document(alert_id).update({
+            "escalation_level": 1,
+            "updated_at": datetime.now(timezone.utc),
+        })
+    except Exception:
+        pass
 
     await asyncio.gather(ws_broadcast, dispatch_fcm(), return_exceptions=True)
 
@@ -502,12 +517,18 @@ async def report_real_fire(
         escalation_level=1,
     )
 
-    # 2. Dispatch FCM to ALL members
+    # 2. Dispatch FCM to ALL members (Exclude reporter & do not duplicate)
     fcm = get_fcm_service()
+    already_escalated = bool(a.escalation_level and a.escalation_level >= 1)
+
     async def dispatch_fcm():
+        if already_escalated:
+            return
         members = group_repo.list_members(a.group_id)
         all_tokens = []
         for m in members:
+            if m.user_id == actor_id:
+                continue
             u = user_repo.get_user_by_id(m.user_id)
             if u and u.fcm_tokens:
                 all_tokens.extend(u.fcm_tokens)
@@ -518,6 +539,14 @@ async def report_real_fire(
                 alert_id=alert_id,
                 escalation_level=1,
             )
+
+    try:
+        alert_repo.collection.document(alert_id).update({
+            "escalation_level": 1,
+            "updated_at": datetime.now(timezone.utc),
+        })
+    except Exception:
+        pass
 
     await asyncio.gather(ws_broadcast, dispatch_fcm(), return_exceptions=True)
 

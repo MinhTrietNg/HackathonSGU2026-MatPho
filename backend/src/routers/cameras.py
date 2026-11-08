@@ -175,6 +175,7 @@ async def create_camera(
         raise PermissionDeniedException("Chỉ Trưởng nhóm hoặc Quản lý mới có quyền thêm camera.")
 
     camera_repo = get_camera_repo()
+    target_edge_id = payload.edge_device_id or "edg_local_01"
     camera = camera_repo.create_camera(
         group_id=payload.group_id,
         subgroup_id=payload.subgroup_id,
@@ -183,7 +184,7 @@ async def create_camera(
         created_by=current_user.user_id,
         device_name=payload.device_name,
         watch_area=payload.watch_area,
-        edge_device_id=payload.edge_device_id,
+        edge_device_id=target_edge_id,
     )
 
     # Register path in MediaMTX & push SYNC_CAMERA to connected Edge Node
@@ -191,7 +192,6 @@ async def create_camera(
     mtx.add_path(camera.cam_id, payload.rtsp_url)
     try:
         ws_mgr = get_websocket_manager()
-        target_edge_id = payload.edge_device_id or "edg_local_01"
         sync_msg = {
             "action": "SYNC_CAMERA",
             "cam_id": camera.cam_id,
@@ -204,7 +204,7 @@ async def create_camera(
     except Exception as exc:
         logger.warning(f"Failed to dispatch SYNC_CAMERA: {exc}")
 
-    hls_url = build_hls_url(camera.cam_id, request)
+    hls_url = build_hls_url(camera.cam_id, request, edge_device_id=target_edge_id)
     return {
         "cam_id": camera.cam_id,
         "cam_name": camera.cam_name,
@@ -256,7 +256,8 @@ def list_cameras(
             if cam.cam_id not in user_camera_ids:
                 has_access = False
 
-        hls_url = build_hls_url(cam.cam_id, request) if has_access else None
+        edge_dev = getattr(cam, "edge_device_id", None) or "edg_local_01"
+        hls_url = build_hls_url(cam.cam_id, request, edge_device_id=edge_dev) if has_access else None
 
         results.append({
             "cam_id": cam.cam_id,
@@ -583,7 +584,8 @@ def get_camera_detail(
         if cam.cam_id not in user_camera_ids:
             has_access = False
 
-    hls_url = build_hls_url(cam.cam_id, request) if has_access else None
+    edge_dev = getattr(cam, "edge_device_id", None) or "edg_local_01"
+    hls_url = build_hls_url(cam.cam_id, request, edge_device_id=edge_dev) if has_access else None
 
     # Find members who receive alerts for this camera
     all_members = group_repo.list_members(cam.group_id)

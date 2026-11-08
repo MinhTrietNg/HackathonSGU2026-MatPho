@@ -169,6 +169,10 @@ class EscalationService:
         if not alert:
             return False
 
+        if alert.escalation_level and alert.escalation_level >= 1:
+            logger.info(f"Alert {alert_id} is already at escalation level {alert.escalation_level}, skipping duplicate escalation.")
+            return False
+
         gid = group_id or alert.group_id
         ws = get_websocket_manager()
         fcm = get_fcm_service()

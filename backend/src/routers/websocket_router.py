@@ -217,8 +217,26 @@ async def edge_websocket_endpoint(
                 "server_time": time.time(),
             }, ensure_ascii=False)
         )
+        # Auto-sync registered cameras from Cloud to Edge Node upon connection
+        camera_repo = get_camera_repo()
+        edge_cameras = camera_repo.list_cameras_for_edge_node(req_edge_id)
+        for c in edge_cameras:
+            sync_payload = {
+                "action": "SYNC_CAMERA",
+                "cam_id": c.cam_id,
+                "cam_name": c.cam_name,
+                "rtsp_url": c.rtsp_url,
+                "watch_area": c.watch_area.model_dump() if c.watch_area else None,
+                "is_active": c.is_active,
+                "is_ai_enabled": c.is_ai_enabled,
+                "ai_mode": c.ai_mode.value if hasattr(c.ai_mode, "value") else str(c.ai_mode or "ALWAYS"),
+                "ai_schedules": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (c.ai_schedule or [])],
+            }
+            await websocket.send_text(json.dumps(sync_payload, ensure_ascii=False))
+        if edge_cameras:
+            logger.info(f"Auto-synced {len(edge_cameras)} cameras to Edge Node {req_edge_id}")
     except Exception as e:
-        logger.warning(f"Error sending EDGE_CONNECTED_ACK: {e}")
+        logger.warning(f"Error sending EDGE_CONNECTED_ACK or SYNC_CAMERA: {e}")
 
     try:
         while True:

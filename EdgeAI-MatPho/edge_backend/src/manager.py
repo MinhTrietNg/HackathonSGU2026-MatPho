@@ -31,11 +31,30 @@ class DecodeManager:
         self._sessions: dict[str, DecodeSession] = {}
         self._lock = threading.Lock()
 
+    def get_session(self, cam_id: str) -> DecodeSession | None:
+        """Return the active session for cam_id if present."""
+        with self._lock:
+            return self._sessions.get(cam_id)
+
     def is_running(self, cam_id: str) -> bool:
         """Return True if session exists and is alive."""
         with self._lock:
             session = self._sessions.get(cam_id)
             return session is not None and session.alive
+
+    def wake_up(self, cam_id: str) -> bool:
+        """Interrupt backoff wait on an existing session."""
+        with self._lock:
+            session = self._sessions.get(cam_id)
+        if session is not None and session.alive:
+            session.wake_up()
+            return True
+        return False
+
+    def restart(self, cam_id: str, source_url: str | None = None) -> StreamSpec:
+        """Stop existing session and start anew with given or existing source."""
+        self.stop(cam_id)
+        return self.start(cam_id, source_url)
 
     def start(self, cam_id: str, source_url: str | None = None) -> StreamSpec:
         """Begin decoding/remuxing a camera."""

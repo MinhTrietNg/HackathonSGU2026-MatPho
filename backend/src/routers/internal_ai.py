@@ -4,9 +4,9 @@ Internal AI Webhooks Router for Edge AI & FireWatch Engine (Phase 6)
 
 import time
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from ..core.security import verify_internal_secret
 from ..core.exceptions import NotFoundException
@@ -181,6 +181,20 @@ async def receive_ai_fire_events(
         async def dispatch_fcm_async():
             if not is_new_timer:
                 return
+            # Anti-spam: Strict FCM Level 0 deduplication per incident and camera cooldown (90s)
+            r = getattr(esc_svc, "_redis", None)
+            fcm_incident_key = f"fcm:sent:{alert_record.alert_id}:level_0"
+            fcm_camera_cooldown_key = f"fcm:cooldown:camera:{target_cam_id}"
+
+            if r:
+                try:
+                    if r.exists(fcm_incident_key) or r.exists(fcm_camera_cooldown_key):
+                        return
+                    r.set(fcm_incident_key, "1", ex=3600)
+                    r.set(fcm_camera_cooldown_key, "1", ex=90)
+                except Exception:
+                    pass
+
             members = group_repo.list_members(group_id)
             leader_tokens = []
             for m in members:
@@ -270,6 +284,13 @@ async def upload_ai_snapshot(
         frame_h=payload.frame_h or 1080,
     )
 
+    if not updated_alert:
+        return {
+            "status": "alert_not_found_or_ignored",
+            "event_id": event_id,
+            "message": "Incident alert not found or snapshot already ready",
+        }
+
     ws = get_websocket_manager()
     await ws.broadcast_alert_snapshot_ready(
         group_id=updated_alert.group_id,
@@ -287,4 +308,36 @@ async def upload_ai_snapshot(
         "alert_id": updated_alert.alert_id,
         "event_id": event_id,
         "still_url": updated_alert.still_url or updated_alert.fire_image_url,
+    }
+
+
+@router.get("/api/v1/internal/edge/cameras", summary="Internal camera sync for Edge Nodes")
+@router.get("/internal/edge/cameras", summary="Internal camera sync for Edge Nodes")
+def get_internal_edge_cameras(
+    edge_device_id: Optional[str] = Query(None),
+    authorized: bool = Depends(verify_internal_secret),
+) -> Dict[str, Any]:
+    """
+    Return all active cameras configured for an Edge Node.
+    Called by Edge Backend on startup and periodic polling to ensure zero camera drift.
+    """
+    camera_repo = get_camera_repository()
+    edge_id = edge_device_id or "edg_local_01"
+    cams = camera_repo.list_cameras_for_edge_node(edge_id)
+    return {
+        "status": "ok",
+        "edge_device_id": edge_id,
+        "cameras": [
+            {
+                "cam_id": c.cam_id,
+                "cam_name": c.cam_name,
+                "rtsp_url": c.rtsp_url,
+                "watch_area": c.watch_area.model_dump() if c.watch_area else None,
+                "is_active": c.is_active,
+                "is_ai_enabled": c.is_ai_enabled,
+                "ai_mode": c.ai_mode.value if hasattr(c.ai_mode, "value") else str(c.ai_mode or "ALWAYS"),
+                "ai_schedules": [s.model_dump(by_alias=True) if hasattr(s, "model_dump") else s for s in (c.ai_schedule or [])],
+            }
+            for c in cams
+        ],
     }

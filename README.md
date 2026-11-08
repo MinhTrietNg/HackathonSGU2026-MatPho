@@ -30,3 +30,10 @@ Cách chạy FireWatch ở [EdgeAI-MatPho/FireWatchAI/README.md](EdgeAI-MatPho/F
   FireWatch dùng lấy từ đây.
 - [Model-Mat-Pho-](https://github.com/MinhTrietNg/Model-Mat-Pho-): repo cũ, chỉ lưu trữ,
   không cập nhật.
+
+## Thành viên
+- Nguyễn Minh Triết
+- Phi Công Tài
+- Nguyễn Hoàng Khả
+- Nguyễn Ngọc Thu Ngân
+- Vũ Đình Phi

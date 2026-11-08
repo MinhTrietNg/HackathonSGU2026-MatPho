@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 from .config import ConfigError, DecoderSettings, redact_url
 from .db import EdgeDatabase, WatchAreaType
 from .gateway_discovery import discover_public_hls_url
-from .relay_rules import la_dia_chi_noi_bo, match_cam_id
+from .relay_rules import bo_su_kien_bi_tu_choi, la_dia_chi_noi_bo, match_cam_id
 from .manager import DecodeManager, StreamAlreadyRunning
 from .probe import get_lan_probe_service
 from .ws_client import OutboundCloudWSClient
@@ -847,6 +847,7 @@ async def relay_ai_fire_event(
     }
 
     forward_success = False
+    rejected = False
     cloud_response_data = {}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -858,17 +859,28 @@ async def relay_ai_fire_event(
                     cloud_response_data = await val if asyncio.iscoroutine(val) else val
                 except Exception:
                     cloud_response_data = {}
+            elif bo_su_kien_bi_tu_choi(resp.status_code):
+                # Final rejection (404 CAMERA_NOT_FOUND: this cam_id is not registered in
+                # the backend): retrying from the offline queue cannot succeed.
+                rejected = True
+                logger.error(
+                    "Backend rejected fire event %s for camera %r with HTTP %d: %s. "
+                    "The camera must exist in the backend (create it in the app); edge "
+                    "cameras: GET /api/v1/edge/cameras.",
+                    event_id, resolved_cam_id, resp.status_code, resp.text[:300],
+                )
             else:
-                logger.warning("Cloud backend returned %d on fast signal forward", resp.status_code)
+                logger.warning("Cloud backend returned %d on fast signal forward: %s",
+                               resp.status_code, resp.text[:300])
     except Exception as exc:
         logger.warning("Cloud backend unreachable for fast signal (%s). Storing to local SQLite queue...", exc)
 
-    if not forward_success:
+    if not forward_success and not rejected:
         queue_id = await state.db.enqueue_offline_event(resolved_cam_id, "FIRE_SIGNAL", payload)
         logger.info("Enqueued fire signal offline: queue_id=%d, event_id=%s", queue_id, event_id)
 
     # 2. Phase 2: Background Snapshot Upload (Single Image per incident)
-    if snapshot_b64 and event_id not in state.uploaded_snapshot_events:
+    if snapshot_b64 and not rejected and event_id not in state.uploaded_snapshot_events:
         boxes_data = payload.get("boxes", [])
         fw = payload.get("frame_w", 1920)
         fh = payload.get("frame_h", 1080)
@@ -903,7 +915,8 @@ async def relay_ai_fire_event(
         "status": "accepted",
         "cam_id": resolved_cam_id,
         "event_id": event_id,
-        "relay_signal": "forwarded" if forward_success else "queued_offline",
+        "relay_signal": "forwarded" if forward_success else (
+            "rejected" if rejected else "queued_offline"),
         "cloud_response": cloud_response_data,
     }
 

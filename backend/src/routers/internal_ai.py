@@ -116,6 +116,20 @@ async def receive_ai_fire_events(
             }
 
     # Ingest signal into Firestore (fast upsert)
+    if not cam_obj:
+        # Camera chưa đăng ký: FireWatch/edge đang quét một cam_id backend không biết
+        # (cam_01 mặc định, camera chỉ khai ở edge). Ghi rõ để không phải đoán từ "404".
+        logger.warning(
+            "Fire event %s rejected: camera %r is not registered (edge cam ids must match "
+            "backend cam ids; check edge CLOUD_BACKEND_WS_URL sync)",
+            payload.event_id, target_cam_id,
+        )
+        raise NotFoundException(
+            f"Không tìm thấy camera tương ứng ({target_cam_id}). Camera phải được tạo trong "
+            "app để backend đồng bộ xuống edge.",
+            code="CAMERA_NOT_FOUND",
+        )
+
     alert_record, is_new, ghep = alert_repo.upsert_fire_incident_signal(payload)
     tai_bung = bool(ghep.get("tai_bung"))
     group_id = alert_record.group_id

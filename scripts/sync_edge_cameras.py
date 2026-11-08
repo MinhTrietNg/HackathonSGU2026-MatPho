@@ -1,5 +1,9 @@
 """Auto-sync 3 RTSP cameras into Edge Backend (:8090).
 
+CHỈ để thử luồng video: các camera này chỉ có ở edge, backend không biết chúng, nên
+FireWatch vẫn phát hiện cháy nhưng backend trả 404 CAMERA_NOT_FOUND và app không hú.
+Muốn thử báo cháy tới app: tạo camera trong app với RTSP trỏ vào luồng nguồn.
+
 Cameras:
 - cam-kitchen : Nhà Bếp (samples/street_fire.mp4 -> Fire scene for AI detection)
 - cam-living  : Phòng Khách (samples/street_normal.mp4 -> Normal street scene)

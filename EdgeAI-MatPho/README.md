@@ -3,7 +3,7 @@
 
 > **Vị trí tài liệu**: `docs/EDGE_AI_KNOWLEDGE_BASE.md` (Bản sao tại `EdgeAI-MatPho/README.md`)  
 > **Mục đích**: Đây là **Bản Tri Thức Chuẩn Hóa Duy Nhất (Single Source of Truth)** của toàn bộ khối `EdgeAI-MatPho`.  
-> Bất kỳ Agent hoặc Developer nào làm việc ở **Cloud Backend (`backend/`)**, **Flutter App (`frontend/`)**, hoặc **Team AI Model (`ai_service/`)** chỉ cần đọc file này là nắm được **100% kiến trúc, luồng video, cổng mạng, schema SQLite, hợp đồng API/WebSocket và chỗ gắn model AI** mà **KHÔNG CẦN đọc lại từng file code bên trong `EdgeAI-MatPho`**.
+> Bất kỳ Agent hoặc Developer nào làm việc ở **Cloud Backend (`backend/`)**, **Flutter App (`frontend/`)**, hoặc **FireWatch (`FireWatchAI/`)** chỉ cần đọc file này là nắm được **100% kiến trúc, luồng video, cổng mạng, schema SQLite, hợp đồng API/WebSocket và chỗ gắn model AI** mà **KHÔNG CẦN đọc lại từng file code bên trong `EdgeAI-MatPho`**.
 
 ---
 
@@ -20,8 +20,9 @@ Khối `EdgeAI-MatPho` là cụm dịch vụ chạy tại hiện trường (trê
    - **LAN Camera Probe (`probe.py`)**: Thăm dò trực tiếp Camera IP trong mạng LAN (Port 554), trích xuất độ phân giải, FPS, nhận diện hãng camera (Hikvision, Dahua, Imou, Ezviz...) và chụp 1 ảnh tĩnh JPEG Base64.
    - **Cơ sở dữ liệu Nội bộ (`SQLite WAL - edge_local.db`)**: Lưu danh sách camera (`local_cameras`) để tự khởi chạy khi mất mạng Internet, và hàng đợi sự kiện cháy (`offline_events_queue`) để tự động đồng bộ bù (Store-and-Forward) khi có mạng lại.
    - **Kênh WebSocket Chủ động (`ws_client.py`)**: Kết nối chiều đi (Outbound) lên Cloud Backend (`/api/v1/internal/edge/ws`) giúp điều khiển Edge xuyên tường lửa/NAT mà không cần mở port router (Zero Inbound Ports).
-3. **`firewatch-ai` (Clean AI Plug-and-Play Skeleton)**:
-   - Được thiết kế dạng **Khung chờ tối giản (1 Đường Input RTSP $\to$ Khung gắn Model trống $\to$ 1 Đường Output Webhook)** để Team AI độc lập gắn trọng số (`best.pt`) và thuật toán nhận diện mà không ảnh hưởng tới luồng stream video của App.
+3. **`firewatch-ai` (FireWatchAI, build từ `./FireWatchAI`)**:
+   - Đọc `rtsp://mediamtx:8554/live/{cam_id}` của mọi camera mà edge-backend đang quét (lịch quét đồng bộ mỗi 2 s qua `GET /api/v1/edge/cameras`), phát hiện lửa/khói bằng FireWatch-v2.0 (YOLO26n ONNX, CPU), voting 6/10, xác minh Gemini, gom mỗi đám cháy thành một `event_id`.
+   - Gửi event qua cổng chuyển tiếp `POST /api/v1/edge/ai-events` của edge-backend; trọng số đặt ở `FireWatchAI/models/` (kiểm SHA-256 lúc khởi động). Chi tiết: `FireWatchAI/docs/van_hanh.md` mục 11, hợp đồng event: `FireWatchAI/docs/ban_giao_backend.md`.
 
 ---
 
@@ -33,7 +34,7 @@ flowchart LR
         CAM["Camera IP Thực Tế\nhoặc scripts/mock_camera.py\n(rtsp://.../mock/cam_test)"]
         EB["edge-backend (:8090)\nPyAV Stream Worker\n+ SQLite WAL + LAN Probe"]
         MTX["MediaMTX Gateway\nPath chuẩn: live/{cam_id}"]
-        AI["firewatch-ai (Skeleton)\n1 Input RTSP -> Model Slot -> 1 Output"]
+        AI["firewatch-ai (FireWatchAI)\nYOLO26n + voting + VLM"]
     end
 
     subgraph CLOUD ["Cloud Backend & App"]
@@ -90,19 +91,13 @@ EdgeAI-MatPho/
 │   │   ├── backoff.py              # ExponentialBackoff có jitter ngẫu nhiên chống bão kết nối
 │   │   └── stats.py                # SessionStats & SessionState: theo dõi số gói tin, số frame, trạng thái luồng
 │   └── tests/                      # 156 Unit & Media Integration Tests (100% PASS)
-└── ai_service/                     # [DỊCH VỤ 3] Khung chờ AI tối giản (1 Input RTSP -> Model Slot -> 1 Output Webhook)
-    ├── Dockerfile
-    ├── requirements.txt
-    ├── pytest.ini
-    ├── weights/
-    │   └── README.md               # Thư mục để Team AI bỏ file trọng số (ví dụ: best.pt)
-    ├── src/
-    │   ├── main.py                 # CameraAIWorker: đọc RTSP live/{cam_id} -> mask watch_area -> gọi Model -> bắn Webhook
-    │   ├── inference_stub.py       # [CHỖ GẮN MODEL CỦA TEAM AI] MockFireModel / FireDetectionModelStub (đang để trống)
-    │   ├── masking.py              # Hỗ trợ kép watch_area (Hình chữ nhật {left,top,width,height} & Đa giác [[x,y],...])
-    │   ├── webhook_client.py       # CloudWebhookClient: bắn 3 HTTP Webhooks lên Cloud kèm X-Internal-Secret
-    │   └── config.py               # AISettings: cấu hình RTSP input, FPS lấy mẫu, ngưỡng confidence, cooldown
-    └── tests/                      # 7 Unit Tests kiểm thử masking kép, stub model & webhook (100% PASS)
+└── FireWatchAI/                    # [DỊCH VỤ 3] FireWatch: phát hiện lửa/khói, voting, xác minh VLM, gom sự cố
+    ├── Dockerfile                  # Lệnh mặc định "edge": mọi camera của nút biên trong một container
+    ├── config.yaml                 # Ngưỡng, voting 6/10, VLM, gom sự cố (một file cấu hình duy nhất)
+    ├── models/README.md            # Cách lấy trọng số FireWatch-v2.0 (.pt + .onnx) và SHA-256
+    ├── src/firewatch/              # pipeline, detector, voting, vlm, su_co, nut_bien (chế độ edge)
+    ├── docs/                       # van_hanh.md, ban_giao_backend.md, kien_truc.md, mau_event.json
+    └── tests/                      # pytest (chạy bằng .venv của FireWatchAI)
 ```
 
 ---
@@ -239,27 +234,12 @@ Tất cả request đều đính kèm Header: `X-Internal-Secret: <INTERNAL_API_
 
 ---
 
-### C. Hợp đồng với **Team AI (`EdgeAI-MatPho/ai_service/`)**
+### C. Hợp đồng với **FireWatch (`EdgeAI-MatPho/FireWatchAI/`)**
 
-Khối `ai_service` đã được chuẩn bị sẵn **1 Đường Input RTSP** và **1 Đường Output Webhook**. Khi Team AI tích hợp model, **chỉ cần chỉnh sửa duy nhất file `EdgeAI-MatPho/ai_service/src/inference_stub.py`**:
-
-1. **Đường Input đã có sẵn (`main.py`)**:
-   - Tự động mở luồng `rtsp://mediamtx:8554/live/{cam_id}` qua TCP.
-   - Tự động cắt/tô đen vùng ngoài `watch_area` bằng `apply_watch_area_mask(frame, watch_area)`.
-   - Truyền `masked_frame` (ảnh `np.ndarray` định dạng BGR của OpenCV) vào hàm `model.predict(masked_frame, conf_threshold)`.
-2. **Chỗ gắn Model (`ai_service/src/inference_stub.py`)**:
-   - Bỏ file trọng số (ví dụ `best.pt`) vào thư mục `EdgeAI-MatPho/ai_service/weights/`.
-   - Trong `MockFireModel.__init__()`: Load model (YOLO / ONNX / PyTorch).
-   - Trong `MockFireModel.predict(frame, conf_threshold)`: Trả về danh sách `List[DetectionResult]`:
-     ```python
-     DetectionResult(
-         class_name="fire",                 # "fire" hoặc "smoke"
-         confidence=0.88,                   # float từ 0.0 -> 1.0
-         bbox=[120.0, 80.0, 340.0, 290.0],  # [x1, y1, x2, y2]
-     )
-     ```
-3. **Đường Output đã có sẵn (`main.py` + `webhook_client.py`)**:
-   - Ngay khi `predict()` trả về danh sách khác rỗng, `CameraAIWorker` tự động nén frame gốc sang JPEG Base64 và gọi `CloudWebhookClient.report_fire_event()` đẩy thẳng lên Cloud Backend (kèm cơ chế chống spam theo `alert_cooldown_seconds`).
+- **Đầu vào:** `rtsp://mediamtx:8554/live/{cam_id}` cho mỗi camera trong `GET /api/v1/edge/cameras` có `should_ai_scan_now = true` (cộng các camera khai trong `AI_CAMERA_STREAMS`, mặc định trống).
+- **Đầu ra:** `POST /api/v1/edge/ai-events` (header bí mật nội bộ); edge-backend đổi `camera_id` -> `cam_id`, chuyển tín hiệu lên backend và tải ảnh pha 2 một lần mỗi `event_id`.
+- **Điều kiện để app hú:** `cam_id` phải là camera đã tạo trong app (backend đồng bộ xuống edge qua `CLOUD_BACKEND_WS_URL`). Camera chỉ khai ở edge bị backend trả 404 `CAMERA_NOT_FOUND`; edge ghi log `Backend rejected fire event`.
+- **Trọng số và cấu hình:** `FireWatchAI/models/README.md`, `FireWatchAI/config.yaml`; các biến `AI_TARGET_FPS`, `AI_CONFIDENCE_THRESHOLD`, `AI_ALERT_COOLDOWN_S`, `AI_MODEL_WEIGHTS_PATH` bị FireWatch bỏ qua.
 
 ---
 
@@ -349,13 +329,13 @@ Khối Edge đã được trang bị sẵn 3 script điều khiển tự động
    docker compose --profile gateway --profile mock up -d --build
    ```
 
-5. **Chạy Bộ Kiểm Thử Tự Động (168 Unit & Media Tests)**:
+5. **Chạy Bộ Kiểm Thử Tự Động**:
    ```powershell
    # Test Edge Backend, PyAV Worker, Gateway Discovery & On-Demand Controller (161 tests)
    Push-Location EdgeAI-MatPho/edge_backend; pytest -q; Pop-Location
 
-   # Test AI Service Skeleton & Watch Area Masking (7 tests)
-   Push-Location EdgeAI-MatPho/ai_service; pytest -q; Pop-Location
+   # Test FireWatch (dùng .venv của FireWatchAI, xem FireWatchAI/README.md)
+   Push-Location EdgeAI-MatPho/FireWatchAI; .venv\Scripts\python -m pytest -q; Pop-Location
    ```
 
 ---

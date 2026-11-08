@@ -49,6 +49,7 @@ class AIVerifierModel(BaseModel):
 class FireAlertModel(BaseModel):
     alert_id: str = Field(..., description="Khóa chính sự cố cháy (alt_xxx)")
     event_id: Optional[str] = Field(None, description="Mã sự cố duy nhất từ khối AI")
+    event_ids: List[str] = Field(default_factory=list, description="Mọi event_id của FireWatch đã ghép vào sự cố này (FireWatch chạy lại, bùng lại)")
     group_id: str = Field(..., description="Mã Group Lớn nhận cảnh báo còi hú")
     subgroup_id: Optional[str] = Field(default="sub_general", description="Mã khu vực/vị trí xảy ra cháy (sub_xxx)")
     subgroup_name: Optional[str] = Field(default="Khu vực chung", description="Snapshot tên khu vực hiển thị pop-up")

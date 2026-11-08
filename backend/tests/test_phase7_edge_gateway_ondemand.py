@@ -59,9 +59,11 @@ def test_build_hls_url_with_and_without_edge_gateway():
     assert url_with_edge.startswith("https://my-edge-box.trycloudflare.com/")
     assert "cam_tunnel_99/index.m3u8" in url_with_edge
 
-    # 2. Without registered edge_device_id and unknown cam -> fallback to standard URL
-    url_fallback = build_hls_url("cam_local_only")
-    assert "cam_local_only/index.m3u8" in url_fallback
+    # 2. Without edge gateway, MEDIAMTX_HOST or request host -> no reachable address:
+    #    None (never "http://localhost:8888/..." which the phone cannot open)
+    with patch.dict("os.environ", {"MEDIAMTX_HOST": ""}):
+        assert build_hls_url("cam_local_only") is None
+        assert build_hls_url("cam_local_only", edge_device_id="edg_khong_ton_tai") is None
 
 
 def test_camera_stream_keepalive_and_stop_endpoints(test_client):

@@ -4,6 +4,7 @@ Internal AI Webhooks Router for Edge AI & FireWatch Engine (Phase 6)
 
 import time
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, status
@@ -27,6 +28,8 @@ from ..services.repositories.user_repo import get_user_repository
 from ..services.websocket_manager import get_websocket_manager
 from ..services.fcm_service import get_fcm_service
 from ..services.escalation_service import get_escalation_service
+
+logger = logging.getLogger("backend.routers.internal_ai")
 
 router = APIRouter(tags=["Internal AI"])
 
@@ -113,7 +116,8 @@ async def receive_ai_fire_events(
             }
 
     # Ingest signal into Firestore (fast upsert)
-    alert_record, is_new = alert_repo.upsert_fire_incident_signal(payload)
+    alert_record, is_new, ghep = alert_repo.upsert_fire_incident_signal(payload)
+    tai_bung = bool(ghep.get("tai_bung"))
     group_id = alert_record.group_id
     cam_name = alert_record.cam_name
     location_name = alert_record.location_name or alert_record.subgroup_name
@@ -145,7 +149,12 @@ async def receive_ai_fire_events(
         }
 
     is_new_timer = False
-    if is_new:
+    if is_new or tai_bung:
+        # tai_bung: FireWatch opened a new event_id on a camera whose alert is still open
+        # (restart, fire flared up again): same alert_id, re-alert the app; FCM stays
+        # deduplicated per alert by the Redis keys below.
+        if tai_bung:
+            logger.info("Fire event %s merged into open alert %s (re-alert)", payload.event_id, alert_record.alert_id)
         if not esc_svc.is_timer_active(alert_record.alert_id):
             esc_svc.start_timer(
                 alert_id=alert_record.alert_id,

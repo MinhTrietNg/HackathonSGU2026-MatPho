@@ -45,20 +45,38 @@ from ..services.storage_service import get_storage_service
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
 
-def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id: Optional[str] = None) -> str:
+LY_DO_KHONG_CO_STREAM = (
+    "Nút biên chưa công bố địa chỉ phát HLS tới được từ điện thoại: đặt EDGE_PUBLIC_HLS_URL "
+    "hoặc EDGE_LAN_IP cho edge-backend, hoặc bật tunnel (edge-gateway)."
+)
+
+
+def _la_dia_chi_noi_bo(url: str) -> bool:
+    """URL chỉ tới được từ chính máy chạy backend (vô nghĩa với điện thoại)."""
+    host = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0].strip().lower()
+    return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "mediamtx", "host.docker.internal")
+
+
+def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id: Optional[str] = None) -> Optional[str]:
+    """
+    HLS URL the phone can actually open, or None when no reachable address is known.
+    Never hands out localhost / 127.0.0.1 / docker-internal hosts: the app would fail
+    silently. Order: edge node's announced public URL -> MEDIAMTX_HOST -> host of the
+    incoming request (backend and MediaMTX on the same LAN machine).
+    """
     path_template = os.getenv("HLS_PATH_TEMPLATE", "live/{cam_id}")
     stream_path = path_template.format(cam_id=cam_id)
     # MediaMTX v1.18+ bypass cookie check handshake directly for ExoPlayer / Flutter
     query_suffix = "?cookieCheck=1"
 
-    # 1. Edge Gateway Public URL Discovery (xuyên mạng qua Cloudflare Tunnel)
+    # 1. Edge Gateway Public URL Discovery (tunnel, public IP or LAN IP announced by edge)
     try:
         from ..services.websocket_manager import get_websocket_manager
         ws_mgr = get_websocket_manager()
         target_edge_id = edge_device_id or ws_mgr.get_edge_for_camera(cam_id)
         if target_edge_id:
             edge_pub_url = ws_mgr.get_edge_public_hls_url(target_edge_id)
-            if edge_pub_url:
+            if edge_pub_url and not _la_dia_chi_noi_bo(edge_pub_url):
                 return f"{edge_pub_url}/{stream_path}/index.m3u8{query_suffix}"
     except Exception:
         pass
@@ -67,21 +85,24 @@ def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id
     env_host = os.getenv("MEDIAMTX_HOST")
     if env_host and env_host.strip() and "stream.matpho.vn" not in env_host:
         host_clean = env_host.strip().rstrip("/")
-        if host_clean.startswith("http://") or host_clean.startswith("https://"):
+        if not host_clean.startswith(("http://", "https://")):
+            host_clean = f"https://{host_clean}"
+        if not _la_dia_chi_noi_bo(host_clean):
             return f"{host_clean}/{stream_path}/index.m3u8{query_suffix}"
-        return f"https://{host_clean}/{stream_path}/index.m3u8{query_suffix}"
 
-    # 3. Dynamic Host Resolution based on incoming request header (LAN IP / Emulator / Localhost fallback)
+    # 3. Host of the incoming request: backend and MediaMTX on the same LAN machine
     if request:
         host_header = request.headers.get("host", "")
         if host_header:
             client_host = host_header.split(":")[0]
             if client_host == "testserver":
                 return f"https://stream.matpho.vn/{stream_path}/index.m3u8"
-            if not client_host.endswith(".run.app") and not client_host.endswith(".trycloudflare.com"):
+            if (not client_host.endswith(".run.app") and not client_host.endswith(".trycloudflare.com")
+                    and not _la_dia_chi_noi_bo(f"http://{client_host}")):
                 return f"http://{client_host}:8888/{stream_path}/index.m3u8{query_suffix}"
 
-    return f"http://localhost:8888/{stream_path}/index.m3u8{query_suffix}"
+    logger.warning("Không có địa chỉ HLS tới được cho camera %s (edge %s)", cam_id, edge_device_id)
+    return None
 
 
 # ==============================================================================
@@ -664,11 +685,13 @@ def get_camera_stream(
         logger.debug(f"Could not dispatch START_LIVE to edge: {exc}")
 
     edge_dev_id = getattr(cam, "edge_device_id", None)
+    stream_url = build_hls_url(cam.cam_id, request, edge_device_id=edge_dev_id)
     return {
         "cam_id": cam.cam_id,
         "status": cam.status.value if hasattr(cam.status, "value") else str(cam.status),
         "stream_type": "HLS",
-        "stream_url": build_hls_url(cam.cam_id, request, edge_device_id=edge_dev_id),
+        "stream_url": stream_url,
+        "stream_error": None if stream_url else LY_DO_KHONG_CO_STREAM,
     }
 
 

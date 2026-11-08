@@ -29,6 +29,7 @@ from ...models.common import (
 from ...core.exceptions import NotFoundException
 from ...core.formatters import current_utc_iso, format_iso_utc
 from ..storage_service import get_storage_service
+from ..incident_rules import chon_su_co_dang_mo, cung_event, tai_bung
 
 
 class AlertRepository(BaseRepository):
@@ -136,17 +137,67 @@ class AlertRepository(BaseRepository):
     # FIRE ALERTS & INCIDENT AGGREGATION ENGINE (Two-Phase: Signal + 1 Snapshot)
     # =========================================================================
 
+    def _tim_su_co_dang_mo(self, cam_id: str, event_id: Optional[str], now: datetime):
+        """
+        Find the alert document to merge a new fire signal into (see services/incident_rules).
+        Candidates: alt_{event_id}, alerts carrying event_id (field or alias list), and the
+        latest alerts of the camera. Returns a Firestore snapshot or None.
+        """
+        snaps: Dict[str, Any] = {}
+
+        def them(doc) -> None:
+            if doc is not None and getattr(doc, "exists", True) and doc.id not in snaps:
+                snaps[doc.id] = doc
+
+        if event_id:
+            try:
+                them(self.collection.document(f"alt_{event_id}").get())
+            except Exception:
+                pass
+            for field, op in (("event_id", "=="), ("event_ids", "array_contains")):
+                try:
+                    for doc in self.collection.where(filter=FieldFilter(field, op, event_id)).limit(1).stream():
+                        them(doc)
+                except Exception:
+                    pass
+        try:
+            stream = (
+                self.collection
+                .where(filter=FieldFilter("cam_id", "==", cam_id))
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(5)
+                .stream()
+            )
+            for doc in stream:
+                them(doc)
+        except Exception:
+            try:
+                for doc in self.collection.where(filter=FieldFilter("cam_id", "==", cam_id)).stream():
+                    them(doc)
+            except Exception:
+                pass
+
+        docs = []
+        for doc_id, snap in snaps.items():
+            d = snap.to_dict() or {}
+            d["alert_id"] = doc_id
+            docs.append(d)
+        chon = chon_su_co_dang_mo(docs, event_id=event_id, cam_id=cam_id, now=now)
+        return snaps[chon["alert_id"]] if chon else None
+
     def upsert_fire_incident_signal(
         self,
         payload: AIFireEventPayload,
-    ) -> Tuple[FireAlertModel, bool]:
+    ) -> Tuple[FireAlertModel, bool, Dict[str, Any]]:
         """
         Fast Phase 1 ingestion (<30ms, no snapshot upload waiting):
         1. Look up camera info.
         2. Format boxes (xyxy, xyxyn, cls, conf), compute primary_bbox, sign, max_conf.
-        3. Upsert by event_id (or 90s debounce if event_id omitted):
-           - If existing: update fields, status, verification, vlm, verifier. Returns (alert, False).
-           - If new: create alert with snapshot_status="PENDING". Returns (alert, True).
+        3. Upsert into the camera's open incident (incident_rules.chon_su_co_dang_mo):
+           - If existing: update fields, status, verification, vlm, verifier.
+             Returns (alert, False, ghep) with ghep["tai_bung"] True when a ``created``
+             carrying a new event_id was merged (fire flared up again on the same alert).
+           - If new: create alert with snapshot_status="PENDING". Returns (alert, True, ghep).
         """
         cam_id = payload.cam_id or payload.camera_id
         if not cam_id or str(cam_id).strip().lower() in ("null", "none", ""):
@@ -161,7 +212,6 @@ class AlertRepository(BaseRepository):
         subgroup_name = cam.subgroup_name
 
         now = datetime.now(timezone.utc)
-        debounce_cutoff = now - timedelta(seconds=90)
 
         # 1. Parse Boxes & Coordinates
         formatted_boxes = []
@@ -232,70 +282,11 @@ class AlertRepository(BaseRepository):
             or (payload.verifier and payload.verifier.status == "REJECTED")
         )
 
-        # 3. Locate Existing Alert by event_id or fallback 90s debounce
-        existing_alert_doc = None
+        # 3. Locate the open incident of this camera (one open incident per camera):
+        #    same event_id / alias, else the alert still NEW/CONFIRMED and active within
+        #    INCIDENT_MERGE_WINDOW_S (services/incident_rules.py).
         event_id = payload.event_id
-
-        if event_id:
-            # Query by event_id or check direct document ID
-            try:
-                doc_by_id = self.collection.document(f"alt_{event_id}").get()
-                if doc_by_id.exists:
-                    existing_alert_doc = doc_by_id
-            except Exception:
-                pass
-
-            if not existing_alert_doc:
-                try:
-                    stream = self.collection.where(filter=FieldFilter("event_id", "==", event_id)).limit(1).stream()
-                    for doc in stream:
-                        existing_alert_doc = doc
-                        break
-                except Exception:
-                    pass
-
-        # Fallback to 90s camera debounce if event_id omitted or not yet matched
-        if not existing_alert_doc:
-            try:
-                ordered_stream = (
-                    self.collection
-                    .where(filter=FieldFilter("cam_id", "==", cam_id))
-                    .order_by("created_at", direction=firestore.Query.DESCENDING)
-                    .limit(5)
-                    .stream()
-                )
-                for doc in ordered_stream:
-                    d = doc.to_dict()
-                    if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
-                        continue
-                    c_at = d.get("created_at")
-                    if not c_at:
-                        continue
-                    if isinstance(c_at, str):
-                        try:
-                            c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
-                        except Exception:
-                            continue
-                    if c_at >= debounce_cutoff:
-                        existing_alert_doc = doc
-                        break
-            except Exception:
-                fallback_stream = self.collection.where(filter=FieldFilter("cam_id", "==", cam_id)).stream()
-                for doc in fallback_stream:
-                    d = doc.to_dict()
-                    if d.get("status") not in (AlertStatus.NEW.value, AlertStatus.CONFIRMED.value):
-                        continue
-                    c_at = d.get("created_at")
-                    if not c_at:
-                        continue
-                    if isinstance(c_at, str):
-                        try:
-                            c_at = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
-                        except Exception:
-                            continue
-                    if c_at >= debounce_cutoff:
-                        existing_alert_doc = doc
-                        break
+        existing_alert_doc = self._tim_su_co_dang_mo(cam_id, event_id, now)
 
         # 4. Handle Existing Alert (type == "updated" or repeat within debounce)
         if existing_alert_doc:
@@ -331,9 +322,16 @@ class AlertRepository(BaseRepository):
             elif payload.verification == "VERIFIED":
                 update_data["verification"] = AlertVerification.VERIFIED.value
 
+            ghep = {"tai_bung": tai_bung(alert_dict, payload.type, event_id),
+                    "event_id_moi": bool(event_id) and not cung_event(alert_dict, event_id)}
+            if ghep["event_id_moi"]:
+                update_data["event_ids"] = firestore.ArrayUnion([event_id])
+                update_data["ai_status"] = payload.status or "open"
             self.collection.document(alert_id).update(update_data)
+            if ghep["event_id_moi"]:
+                update_data["event_ids"] = list(alert_dict.get("event_ids") or []) + [event_id]
             alert_dict.update(update_data)
-            return self._parse_alert(alert_dict), False
+            return self._parse_alert(alert_dict), False, ghep
 
         # 5. Handle New Alert (type == "created")
         alert_id = f"alt_{event_id}" if event_id else generate_semantic_id("alt")
@@ -348,6 +346,7 @@ class AlertRepository(BaseRepository):
         alert_data = {
             "alert_id": alert_id,
             "event_id": event_id or alert_id,
+            "event_ids": [event_id] if event_id else [],
             "group_id": group_id,
             "subgroup_id": subgroup_id,
             "subgroup_name": subgroup_name,
@@ -406,7 +405,7 @@ class AlertRepository(BaseRepository):
             details={"cam_id": cam_id, "confidence": max_conf, "sign": sign.value, "event_id": event_id},
         )
 
-        return self._parse_alert(alert_data), True
+        return self._parse_alert(alert_data), True, {"tai_bung": False, "event_id_moi": False}
 
     def attach_incident_snapshot(
         self,
@@ -521,7 +520,7 @@ class AlertRepository(BaseRepository):
             bbox=bbox,
             snapshot_base64=image_data,
         )
-        alert_record, _ = self.upsert_fire_incident_signal(payload)
+        alert_record, _, _ = self.upsert_fire_incident_signal(payload)
         if image_data:
             updated = self.attach_incident_snapshot(
                 event_id=alert_record.event_id or alert_record.alert_id,

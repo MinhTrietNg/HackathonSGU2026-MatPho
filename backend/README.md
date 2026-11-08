@@ -9,7 +9,7 @@ Thư mục chứa toàn bộ mã nguồn và cấu hình Docker phục vụ cho 
 Hệ thống Mắt Phố được thiết kế theo mô hình **Hybrid Cloud & Edge**:
 - **Cụm Backend (Thư mục này)**:
   - **FastAPI Core Gateway**: Quản lý người dùng, nhóm, phân quyền, API đăng ký/thăm dò camera, nhận webhook báo cháy từ Edge, điều phối còi báo động khẩn cấp 2 tầng qua Firebase Cloud Messaging (FCM) & WebSocket, và điều phối cuộc gọi 114.
-  - **Redis Cache**: Quản lý in-memory debounce state (khóa chống trùng lặp sự cố báo cháy trong 90s) và heartbeat.
+  - **Redis Cache**: Quản lý in-memory debounce state (khóa chống trùng lặp FCM theo sự cố) và heartbeat. Tín hiệu cháy được ghép theo luật "một camera một sự cố đang mở" (`src/services/incident_rules.py`, cửa sổ `INCIDENT_MERGE_WINDOW_S`, mặc định 900 s).
   - **MediaMTX (Cloud Stream Gateway)**: Tiếp nhận luồng HLS/WebRTC và cấp quyền chiếu xem trực tiếp cho Flutter Mobile App & Web Dashboard.
 - **Cụm EdgeAI (Riêng biệt - On-premise LAN)**:
   - Chạy tại hiện trường (Mini PC / Box AI kết nối trực tiếp Camera IP qua mạng LAN nội bộ).

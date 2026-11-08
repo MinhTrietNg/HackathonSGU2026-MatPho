@@ -48,7 +48,7 @@ call "%~dp0scripts\01_start_backend.bat" auto
 echo.
 call "%~dp0scripts\02_start_tunnel.bat" auto
 echo.
-call "%~dp0scripts\03_start_edge.bat" auto
+call "%~dp0EdgeAI-MatPho\run_eag_ai.bat" auto
 echo.
 call "%~dp0scripts\04_start_rtsp_test.bat" auto
 echo.
@@ -69,7 +69,7 @@ call "%~dp0scripts\02_start_tunnel.bat"
 goto menu
 
 :step3
-call "%~dp0scripts\03_start_edge.bat"
+call "%~dp0EdgeAI-MatPho\run_eag_ai.bat"
 goto menu
 
 :step4

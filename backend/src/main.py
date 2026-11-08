@@ -45,14 +45,18 @@ async def lifespan(app: FastAPI):
     logger.info(f"Initializing {settings.PROJECT_NAME} (v{settings.VERSION})...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
 
-    # 1. Initialize Firebase Admin SDK
+    # 1. Store server event loop for thread-safe cross-thread dispatch
+    from .services.websocket_manager import set_server_loop
+    set_server_loop(asyncio.get_running_loop())
+
+    # 2. Initialize Firebase Admin SDK
     try:
         init_firebase()
         logger.info("Firebase Admin SDK initialized successfully.")
     except Exception as e:
         logger.warning(f"Firebase initialization warning: {e}")
 
-    # 2. Start Background Workers
+    # 3. Start Background Workers
     heartbeat_task = asyncio.create_task(camera_heartbeat_loop())
     escalation_task = asyncio.create_task(escalation_loop())
 

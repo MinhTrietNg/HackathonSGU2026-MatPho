@@ -63,7 +63,7 @@ class WebSocketConnectionManager:
         public_hls_base_url: Optional[str] = None,
         cameras: Optional[List[str]] = None,
     ):
-        """Update active Edge Node metadata from WebSocket handshake or heartbeat."""
+        """Update active Edge Node metadata from WebSocket handshake or heartbeat, synced to Redis."""
         now = time.time()
         record = self.edge_registry.get(edge_id, {})
         if public_hls_base_url:
@@ -72,23 +72,88 @@ class WebSocketConnectionManager:
             record["cameras"] = cameras
         record["last_seen"] = now
         self.edge_registry[edge_id] = record
+        try:
+            from .escalation_service import get_escalation_service
+            r = get_escalation_service()._redis
+            if r:
+                r.setex(f"edge:node:{edge_id}", 300, json.dumps(record))
+        except Exception:
+            pass
+        if public_hls_base_url and not public_hls_base_url.startswith("http://localhost") and not public_hls_base_url.startswith("http://127.0.0.1"):
+            try:
+                from firebase_admin import firestore
+                db = firestore.client()
+                db.collection("edge_nodes").document(edge_id).set(record, merge=True)
+            except Exception:
+                pass
         logger.info(
             f"Edge node registered: {edge_id} (HLS Gateway: {record.get('public_hls_base_url')}, {len(record.get('cameras', []))} cameras)"
         )
 
-    def get_edge_public_hls_url(self, edge_id: str) -> Optional[str]:
-        """Return the public HLS base URL of an active Edge node."""
-        node = self.edge_registry.get(edge_id)
-        if node and node.get("public_hls_base_url"):
-            return node["public_hls_base_url"]
+    def get_edge_public_hls_url(self, edge_id: Optional[str] = None) -> Optional[str]:
+        """Return the public HLS base URL of an active Edge node (or first available edge node)."""
+        if edge_id:
+            node = self.edge_registry.get(edge_id)
+            if node and node.get("public_hls_base_url"):
+                url = node["public_hls_base_url"]
+                if not url.startswith("http://localhost") and not url.startswith("http://127.0.0.1"):
+                    return url
+            try:
+                from .escalation_service import get_escalation_service
+                r = get_escalation_service()._redis
+                if r:
+                    raw = r.get(f"edge:node:{edge_id}")
+                    if raw:
+                        data = json.loads(raw)
+                        url = data.get("public_hls_base_url")
+                        if url and not url.startswith("http://localhost") and not url.startswith("http://127.0.0.1"):
+                            self.edge_registry[edge_id] = data
+                            return url
+            except Exception:
+                pass
+
+        # Fallback to any registered Edge Node with a valid public HLS URL
+        for eid, node in self.edge_registry.items():
+            url = node.get("public_hls_base_url")
+            if url and not url.startswith("http://localhost") and not url.startswith("http://127.0.0.1"):
+                return url
+
+        try:
+            from .escalation_service import get_escalation_service
+            r = get_escalation_service()._redis
+            if r:
+                raw = r.get("edge:node:edg_local_01")
+                if raw:
+                    data = json.loads(raw)
+                    url = data.get("public_hls_base_url")
+                    if url and not url.startswith("http://localhost") and not url.startswith("http://127.0.0.1"):
+                        self.edge_registry["edg_local_01"] = data
+                        return url
+        except Exception:
+            pass
+
+        try:
+            from firebase_admin import firestore
+            db = firestore.client()
+            doc = db.collection("edge_nodes").document(edge_id or "edg_local_01").get()
+            if doc.exists:
+                data = doc.to_dict() or {}
+                url = data.get("public_hls_base_url")
+                if url and not url.startswith("http://localhost") and not url.startswith("http://127.0.0.1"):
+                    self.edge_registry[edge_id or "edg_local_01"] = data
+                    return url
+        except Exception:
+            pass
         return None
 
     def get_edge_for_camera(self, cam_id: str) -> Optional[str]:
-        """Find the edge_id managing this cam_id."""
+        """Find the edge_id managing this cam_id (defaults to first active edge node)."""
         for edge_id, node in self.edge_registry.items():
             if cam_id in node.get("cameras", []):
                 return edge_id
-        return None
+        if self.edge_registry:
+            return next(iter(self.edge_registry.keys()))
+        return "edg_local_01"
 
     async def send_to_edge(self, edge_id: str, message: Dict[str, Any]) -> bool:
         """Send command JSON message to a connected Edge node via its dedicated room."""
@@ -295,6 +360,44 @@ class WebSocketConnectionManager:
 
 
 _ws_manager_instance: Optional[WebSocketConnectionManager] = None
+_main_server_loop: Optional[Any] = None
+
+
+def set_server_loop(loop: Any) -> None:
+    """Store reference to the main FastAPI/Uvicorn asyncio event loop."""
+    global _main_server_loop
+    _main_server_loop = loop
+
+
+def get_server_loop() -> Optional[Any]:
+    global _main_server_loop
+    return _main_server_loop
+
+
+def safe_dispatch_task(coro: Any) -> Any:
+    """
+    Safely schedule an asynchronous coroutine onto the server's main event loop.
+    Works seamlessly whether invoked from an async coroutine, a background worker,
+    or a synchronous AnyIO worker thread without throwing RuntimeError.
+    """
+    import asyncio
+    global _main_server_loop
+
+    try:
+        current_loop = asyncio.get_running_loop()
+        if current_loop and current_loop.is_running():
+            return current_loop.create_task(coro)
+    except RuntimeError:
+        pass
+
+    if _main_server_loop and _main_server_loop.is_running():
+        return asyncio.run_coroutine_threadsafe(coro, _main_server_loop)
+
+    try:
+        return asyncio.run(coro)
+    except Exception as exc:
+        logger.warning(f"safe_dispatch_task failed: {exc}")
+        return None
 
 
 def get_websocket_manager() -> WebSocketConnectionManager:

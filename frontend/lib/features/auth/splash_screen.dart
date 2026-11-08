@@ -25,8 +25,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _restore() async {
-    final session = await ref.read(authSessionProvider.notifier).restore();
-    if (mounted) widget.onSessionRestored?.call(session);
+    try {
+      final session = await ref.read(authSessionProvider.notifier).restore();
+      if (mounted) widget.onSessionRestored?.call(session);
+    } catch (_) {
+      if (mounted) widget.onSessionRestored?.call(const SignedOut());
+    }
   }
 
   @override

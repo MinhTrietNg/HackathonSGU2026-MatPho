@@ -18,10 +18,12 @@
 **/google-services.json
 **/GoogleService-Info.plist
 
-# Docker local overrides
+# Docker local overrides & Cloud Run env
 docker-compose.override.yml
 **/docker-compose.override.yml
 *.override.yml
+**/env.cloudrun.yaml
+!**/env.cloudrun.example.yaml
 
 # Service account JSON & Private keys
 firebase-service-account*.json
@@ -87,6 +89,9 @@ active_tunnel.txt
 
 # Ngoại lệ: Cho phép script run.ps1 của FireWatchAI chạy kiểm tra SHA-256
 !EdgeAI-MatPho/FireWatchAI/run.ps1
+!RUN_MATPHO_SYSTEM.bat
+!run_eag_ai.bat
+!EdgeAI-MatPho/run_eag_ai.bat
 !scripts/
 
 # Chặn công cụ test RTSP nội bộ
@@ -155,11 +160,11 @@ htmlcov/
 # Kết quả chạy training/inference
 runs/
 
-# ------------------------------------------------------------------------------
-# 5. LOGS & TEMPORARY MEDIA
-# ------------------------------------------------------------------------------
+# Logs & Temporary Media
 *.log
 logs/
+active_tunnel.txt
+active_camera_tunnel.txt
 static/snapshots/temp_*
 static/temp/
 **/static/snapshots/temp_*

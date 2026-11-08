@@ -16,7 +16,7 @@ final class ApiConfig {
             )
           : const String.fromEnvironment(
               'PROD_BASE_URL',
-              defaultValue: 'https://api.matpho.vn/api/v1',
+              defaultValue: 'https://matpho-backend-afpzgiifaq-as.a.run.app/api/v1',
             ),
       wsUrl = const bool.hasEnvironment('WS_URL')
           ? const String.fromEnvironment('WS_URL')
@@ -27,7 +27,7 @@ final class ApiConfig {
             )
           : const String.fromEnvironment(
               'PROD_WS_URL',
-              defaultValue: 'wss://api.matpho.vn/api/v1/ws',
+              defaultValue: 'wss://matpho-backend-afpzgiifaq-as.a.run.app/api/v1/ws',
             );
 
   static Future<ApiConfig> resolveActive() async {
@@ -48,11 +48,11 @@ final class ApiConfig {
     );
     const prodBase = String.fromEnvironment(
       'PROD_BASE_URL',
-      defaultValue: 'https://api.matpho.vn/api/v1',
+      defaultValue: 'https://matpho-backend-afpzgiifaq-as.a.run.app/api/v1',
     );
     const prodWs = String.fromEnvironment(
       'PROD_WS_URL',
-      defaultValue: 'wss://api.matpho.vn/api/v1/ws',
+      defaultValue: 'wss://matpho-backend-afpzgiifaq-as.a.run.app/api/v1/ws',
     );
 
     const envMode = String.fromEnvironment('ENV', defaultValue: 'auto');

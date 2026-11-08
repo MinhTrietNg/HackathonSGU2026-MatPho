@@ -55,7 +55,7 @@ class CameraProbeService:
         url_lower = rtsp_url.lower()
 
         # 2. Simulated probe scenarios for automated testing & CI without physical CCTV
-        if any(k in url_lower for k in ("mock", "test-valid", "valid", "demo")):
+        if any(k in url_lower for k in ("mock", "test-valid", "demo")):
             return {
                 "device_name": f"{device_name} (Thử nghiệm)",
                 "resolution": "1920x1080",
@@ -79,10 +79,31 @@ class CameraProbeService:
                 host=host,
             )
 
-        # 3. Real RTSP probe using OpenCV if available
+        # 3. Real RTSP probe using OpenCV with strict 3-second FFmpeg socket timeout
         try:
             import cv2
-            cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+            import uuid
+            from .storage_service import get_storage_service
+
+            # Configure FFmpeg C-API socket timeout to 3,000,000 microseconds (3.0 seconds)
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "stimeout;3000000|rtsp_transport;tcp"
+
+            probe_target = rtsp_url.strip()
+            is_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+            if is_docker and ":8554/" in probe_target:
+                for local_alias in ("rtsp://127.0.0.1:8554/", "rtsp://localhost:8554/", "rtsp://0.0.0.0:8554/", "rtsp://10.0.2.2:8554/"):
+                    if probe_target.lower().startswith(local_alias):
+                        probe_target = "rtsp://host.docker.internal:8554/" + probe_target[len(local_alias):]
+                        break
+
+            # Modern OpenCV 4.5.3+ property parameters
+            capture_params = []
+            if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+                capture_params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000])
+            if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+                capture_params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
+
+            cap = cv2.VideoCapture(probe_target, cv2.CAP_FFMPEG, capture_params) if capture_params else cv2.VideoCapture(probe_target, cv2.CAP_FFMPEG)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             success, frame = False, None
@@ -92,11 +113,22 @@ class CameraProbeService:
 
             if success and frame is not None:
                 h, w = frame.shape[:2]
+                snap_url = "https://storage.googleapis.com/matpho-c7e77.firebasestorage.app/probes/preview_captured.jpg"
+                try:
+                    ret, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                    if ret:
+                        _, snap_url = get_storage_service().upload_camera_thumbnail(
+                            cam_id=f"probe_{uuid.uuid4().hex[:8]}",
+                            image_data=bytes(buf),
+                            content_type="image/jpeg",
+                        )
+                except Exception:
+                    pass
                 return {
                     "device_name": device_name,
                     "resolution": f"{w}x{h}",
                     "fps": 25,
-                    "preview_snapshot_url": "https://storage.googleapis.com/matpho-c7e77.firebasestorage.app/probes/preview_captured.jpg",
+                    "preview_snapshot_url": snap_url,
                 }
         except Exception as e:
             logger.warning(f"OpenCV probe failed: {e}")

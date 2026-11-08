@@ -13,6 +13,9 @@ scripts/
 # Ignore local env and credentials
 .env
 .env.*
+*.cloudrun.yaml
+*.ps1
+*.bat
 credentials/*.json
 !credentials/.gitkeep
 

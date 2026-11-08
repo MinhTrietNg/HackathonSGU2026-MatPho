@@ -4,10 +4,13 @@ Phase 4: Quản lý Camera, Thùng rác 30 ngày, Thăm dò RTSP & Stream HLS
 """
 
 import os
+import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query, status, Response, Request
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("backend.routers.cameras")
 
 from ..core.security import get_current_user
 from ..core.exceptions import (
@@ -75,7 +78,8 @@ def build_hls_url(cam_id: str, request: Optional[Request] = None, edge_device_id
             client_host = host_header.split(":")[0]
             if client_host == "testserver":
                 return f"https://stream.matpho.vn/{stream_path}/index.m3u8"
-            return f"http://{client_host}:8888/{stream_path}/index.m3u8{query_suffix}"
+            if not client_host.endswith(".run.app") and not client_host.endswith(".trycloudflare.com"):
+                return f"http://{client_host}:8888/{stream_path}/index.m3u8{query_suffix}"
 
     return f"http://localhost:8888/{stream_path}/index.m3u8{query_suffix}"
 
@@ -94,32 +98,58 @@ async def probe_camera(
     If an Edge Node is connected via Outbound WebSocket, delegates LAN probing to the Edge Node first.
     Figma screens I2, I4, I5.
     """
+    import asyncio
+    from ..core.exceptions import CameraConnectException
+    from ..services.websocket_manager import get_websocket_manager
+
     url_lower = payload.rtsp_url.lower()
-    is_mock = any(k in url_lower for k in ("mock", "test-valid", "valid", "demo", "auth-fail", "vendor-blocked"))
+    is_mock = any(k in url_lower for k in ("mock", "test-valid", "demo", "auth-fail", "vendor-blocked"))
     if not is_mock and payload.rtsp_url.startswith("rtsp://"):
         try:
-            from ..services.websocket_manager import get_websocket_manager
             ws_mgr = get_websocket_manager()
-            # Delegate to first active Edge Node if connected
+            # Delegate to first active Edge Node if connected with strict 3.5s timeout
             for edge_id in list(ws_mgr.edge_registry.keys()) or ["edg_local_01"]:
                 edge_res = await ws_mgr.request_from_edge(
                     edge_id=edge_id,
                     message={"action": "PROBE_CAMERA", "rtsp_url": payload.rtsp_url},
-                    timeout_s=4.5,
+                    timeout_s=3.5,
                 )
-                if edge_res and edge_res.get("reachable"):
-                    return {
-                        "device_name": edge_res.get("vendor") or "Camera IP (Edge LAN)",
-                        "resolution": edge_res.get("resolution") or "1920x1080",
-                        "fps": int(edge_res.get("fps") or 25),
-                        "preview_snapshot_url": edge_res.get("preview_snapshot_base64")
-                        or "https://storage.googleapis.com/matpho-c7e77.firebasestorage.app/probes/preview_captured.jpg",
-                    }
-        except Exception:
-            pass
+                if edge_res:
+                    if edge_res.get("is_accessible") or edge_res.get("reachable"):
+                        snap_b64 = edge_res.get("preview_snapshot_base64")
+                        snap_url = "https://storage.googleapis.com/matpho-c7e77.firebasestorage.app/probes/preview_captured.jpg"
+                        if snap_b64 and len(snap_b64) > 60:
+                            try:
+                                import uuid as _uuid
+                                _, snap_url = get_storage_service().upload_camera_thumbnail(
+                                    cam_id=f"probe_{_uuid.uuid4().hex[:8]}",
+                                    image_data=snap_b64,
+                                    content_type="image/jpeg",
+                                )
+                            except Exception:
+                                pass
+                        return {
+                            "device_name": edge_res.get("device_name") or edge_res.get("vendor") or "Camera IP (Edge LAN)",
+                            "resolution": edge_res.get("resolution") or "1920x1080",
+                            "fps": int(edge_res.get("fps") or 25),
+                            "preview_snapshot_url": snap_url,
+                        }
+                    else:
+                        # Edge probe specifically failed with detailed error code - do NOT re-probe from cloud
+                        raise CameraConnectException(
+                            code=edge_res.get("error_code") or "CAMERA_NOT_REACHABLE",
+                            message=edge_res.get("message") or "Không thể kết nối đến camera.",
+                            device_name=edge_res.get("device_name") or "Camera IP",
+                            host=edge_res.get("host") or "camera",
+                        )
+        except CameraConnectException:
+            raise
+        except Exception as exc:
+            logger.debug(f"Edge probe error or timeout: {exc}")
 
+    # Fallback to local probe in a dedicated worker thread (NEVER blocks ASGI event loop!)
     probe_svc = get_camera_probe_service()
-    return probe_svc.probe_rtsp(payload.rtsp_url)
+    return await asyncio.to_thread(probe_svc.probe_rtsp, payload.rtsp_url)
 
 
 # ==============================================================================
@@ -127,7 +157,7 @@ async def probe_camera(
 # ==============================================================================
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Add a new camera")
-def create_camera(
+async def create_camera(
     payload: CameraCreateRequest,
     request: Request,
     current_user: UserModel = Depends(get_current_user),
@@ -136,6 +166,9 @@ def create_camera(
     Save a new camera to a group and subgroup.
     Permission: LEADER or MEMBER_MANAGER.
     """
+    import asyncio
+    from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
+
     group_repo = get_group_repo()
     member = group_repo.get_member(payload.group_id, current_user.user_id)
     if not member or member.role not in (UserRole.LEADER, UserRole.MEMBER_MANAGER):
@@ -157,8 +190,6 @@ def create_camera(
     mtx = get_mediamtx_service()
     mtx.add_path(camera.cam_id, payload.rtsp_url)
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
         ws_mgr = get_websocket_manager()
         target_edge_id = payload.edge_device_id or "edg_local_01"
         sync_msg = {
@@ -169,11 +200,9 @@ def create_camera(
             "watch_area": camera.watch_area.model_dump() if camera.watch_area else None,
             "is_active": True,
         }
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
-    except Exception:
-        pass
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch SYNC_CAMERA: {exc}")
 
     hls_url = build_hls_url(camera.cam_id, request)
     return {
@@ -500,16 +529,12 @@ def update_camera_ai_config(
             "status_text": format_ai_status_text(mode_val, raw_slots, is_editable=True),
             "schedules": raw_slots,
         }
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(ws_mgr.send_to_edge(target_edge_id, edge_msg))
-                loop.create_task(ws_mgr.broadcast_to_room(f"group_{updated.group_id}", group_event))
-                edge_cmd_dispatched = True
-        except RuntimeError:
-            pass
-    except Exception:
-        pass
+        from ..services.websocket_manager import safe_dispatch_task
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, edge_msg))
+        safe_dispatch_task(ws_mgr.broadcast_to_room(f"group_{updated.group_id}", group_event))
+        edge_cmd_dispatched = True
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch AI config update: {exc}")
 
     return {
         "status": "updated",
@@ -628,19 +653,13 @@ def get_camera_stream(
 
     # Trigger on-demand wake-up to Edge Node if connected
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
         if edge_id:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "START_LIVE", "cam_id": cam.cam_id}))
-            except Exception:
-                pass
-    except Exception:
-        pass
+            safe_dispatch_task(ws_mgr.send_to_edge(edge_id, {"type": "START_LIVE", "cam_id": cam.cam_id}))
+    except Exception as exc:
+        logger.debug(f"Could not dispatch START_LIVE to edge: {exc}")
 
     edge_dev_id = getattr(cam, "edge_device_id", None)
     return {
@@ -663,19 +682,13 @@ def keepalive_camera_stream(
         raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
 
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
         if edge_id:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "KEEPALIVE_LIVE", "cam_id": cam.cam_id}))
-            except Exception:
-                pass
-    except Exception:
-        pass
+            safe_dispatch_task(ws_mgr.send_to_edge(edge_id, {"type": "KEEPALIVE_LIVE", "cam_id": cam.cam_id}))
+    except Exception as exc:
+        logger.debug(f"Could not dispatch KEEPALIVE_LIVE to edge: {exc}")
 
     return {"status": "ok", "cam_id": cam.cam_id}
 
@@ -692,19 +705,15 @@ def stop_camera_stream(
         raise NotFoundException("Không tìm thấy camera.", code="CAMERA_NOT_FOUND")
 
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam.cam_id)
         if edge_id:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(ws_mgr.send_to_edge(edge_id, {"type": "STOP_LIVE", "cam_id": cam.cam_id}))
-            except Exception:
-                pass
-    except Exception:
-        pass
+            safe_dispatch_task(ws_mgr.send_to_edge(edge_id, {"type": "STOP_LIVE", "cam_id": cam.cam_id}))
+    except Exception as exc:
+        logger.debug(f"Could not dispatch STOP_LIVE to edge: {exc}")
+
+    return {"status": "ok", "cam_id": cam.cam_id}
 
     return {"status": "ok", "cam_id": cam.cam_id}
 
@@ -819,8 +828,7 @@ def update_camera(
     stream_action = "CONNECT_AI_RTSP" if scanning_now else "DISCONNECT_AI_RTSP"
 
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         target_edge_id = getattr(updated, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
         sync_msg = {
@@ -835,11 +843,9 @@ def update_camera(
             "should_ai_scan_now": scanning_now,
             "stream_action": stream_action,
         }
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
-    except Exception:
-        pass
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch SYNC_CAMERA on update: {exc}")
 
     return {
         "cam_id": updated.cam_id,
@@ -882,8 +888,7 @@ def update_watch_area(
         watch_area=payload,
     )
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         target_edge_id = getattr(updated, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
         sync_msg = {
@@ -894,11 +899,9 @@ def update_watch_area(
             "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
             "is_active": updated.is_active,
         }
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
-    except Exception:
-        pass
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, sync_msg))
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch SYNC_CAMERA on watch-area update: {exc}")
     return {
         "cam_id": updated.cam_id,
         "watch_area": updated.watch_area.model_dump() if updated.watch_area else None,
@@ -929,15 +932,12 @@ def delete_camera(
     mtx = get_mediamtx_service()
     mtx.remove_path(cam_id)
     try:
-        from ..services.websocket_manager import get_websocket_manager
-        import asyncio
+        from ..services.websocket_manager import get_websocket_manager, safe_dispatch_task
         ws_mgr = get_websocket_manager()
         target_edge_id = getattr(cam, "edge_device_id", None) or ws_mgr.get_edge_for_camera(cam_id) or "edg_local_01"
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_mgr.send_to_edge(target_edge_id, {"action": "REMOVE_CAMERA", "cam_id": cam_id}))
-    except Exception:
-        pass
+        safe_dispatch_task(ws_mgr.send_to_edge(target_edge_id, {"action": "REMOVE_CAMERA", "cam_id": cam_id}))
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch REMOVE_CAMERA to edge: {exc}")
 
     purge_at_dt = datetime.now(timezone.utc) + timedelta(days=30)
     return {

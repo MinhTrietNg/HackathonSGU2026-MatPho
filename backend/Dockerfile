@@ -12,9 +12,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies (curl for healthcheck)
+# Install system dependencies (curl for healthcheck + shared libs for opencv-python-headless)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies

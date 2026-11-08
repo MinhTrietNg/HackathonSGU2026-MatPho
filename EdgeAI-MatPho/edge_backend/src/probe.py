@@ -7,6 +7,7 @@ and captures 1 clean static frame encoded as JPEG Base64.
 from __future__ import annotations
 
 import base64
+import os
 import logging
 import urllib.parse
 from typing import Any
@@ -89,8 +90,25 @@ class CameraProbeService:
                 "host": host,
             }
 
+        # Normalize localhost / 127.0.0.1 RTSP URLs to internal docker mediamtx service
+        probe_target = rtsp_url.strip()
+        if ":8554/" in probe_target:
+            for local_alias in ("rtsp://127.0.0.1:8554/", "rtsp://localhost:8554/", "rtsp://0.0.0.0:8554/", "rtsp://10.0.2.2:8554/"):
+                if probe_target.lower().startswith(local_alias):
+                    probe_target = "rtsp://mediamtx:8554/" + probe_target[len(local_alias):]
+                    break
+
+        # Configure FFmpeg C-API socket timeout to 3.0 seconds (3,000,000 microseconds)
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "stimeout;3000000|rtsp_transport;tcp"
+
+        capture_params = []
+        if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+            capture_params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000])
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            capture_params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
+
         # Open video capture with OpenCV
-        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+        cap = cv2.VideoCapture(probe_target, cv2.CAP_FFMPEG, capture_params) if capture_params else cv2.VideoCapture(probe_target, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         success = False

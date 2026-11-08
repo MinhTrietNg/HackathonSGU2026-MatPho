@@ -267,10 +267,15 @@ async def gateway_url_watchdog() -> None:
 
 
 def resolve_safe_source_url(cam_id: str, rtsp_url: str) -> str:
-    """Prevent self-loopback if a caller passes the MediaMTX output path or a mock alias."""
+    """Prevent self-loopback if a caller passes the MediaMTX output path or a mock alias, and normalize localhost:8554."""
     app_rtsp = state.settings.url_for(state.settings.app_path_template, cam_id)
     ai_rtsp = state.settings.url_for(state.settings.ai_path_template, cam_id)
     cleaned = rtsp_url.strip()
+    if ":8554/" in cleaned:
+        for local_alias in ("rtsp://127.0.0.1:8554/", "rtsp://localhost:8554/", "rtsp://0.0.0.0:8554/", "rtsp://10.0.2.2:8554/"):
+            if cleaned.lower().startswith(local_alias):
+                cleaned = f"{state.settings.mediamtx_rtsp_url}/" + cleaned[len(local_alias):]
+                break
     if "mock-camera" in cleaned.lower() or "test-valid" in cleaned.lower():
         return f"{state.settings.mediamtx_rtsp_url}/mock/cam_test"
     if cleaned.rstrip("/") in (app_rtsp.rstrip("/"), ai_rtsp.rstrip("/")):

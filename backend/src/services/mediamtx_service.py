@@ -18,6 +18,13 @@ class MediaMTXService:
         self.api_url = api_url.rstrip("/")
 
     def _candidate_urls(self, path: str) -> List[str]:
+        # On Google Cloud Run (K_SERVICE env is set), MediaMTX does not run on localhost/container;
+        # camera sync goes through Outbound Edge WebSocket (/internal/edge/ws) instead.
+        if os.getenv("K_SERVICE"):
+            if "mediamtx" not in self.api_url and "localhost" not in self.api_url and "127.0.0.1" not in self.api_url:
+                return [f"{self.api_url}{path}"]
+            return []
+
         is_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
         if not is_docker:
             urls = [f"http://127.0.0.1:9997{path}", f"http://localhost:9997{path}"]
@@ -39,13 +46,18 @@ class MediaMTXService:
           - RTSP: rtsp://mediamtx:8554/live/{cam_id}
           - HLS: http://mediamtx:8888/live/{cam_id}/index.m3u8
         """
-        actual_source = rtsp_source
-        if any(k in rtsp_source.lower() for k in ("mock", "test", "demo")):
+        actual_source = rtsp_source.strip()
+        if any(k in actual_source.lower() for k in ("mock", "test", "demo")):
             actual_source = "rtsp://127.0.0.1:8554/mock/cam_test"
+        elif ":8554/" in actual_source:
+            for local_alias in ("rtsp://127.0.0.1:8554/", "rtsp://localhost:8554/", "rtsp://0.0.0.0:8554/", "rtsp://10.0.2.2:8554/", "rtsp://mediamtx:8554/"):
+                if actual_source.lower().startswith(local_alias):
+                    actual_source = "rtsp://127.0.0.1:8554/" + actual_source[len(local_alias):]
+                    break
 
         payload = {
-            "source": actual_source,
-            "sourceOnDemand": False,
+            "source": "publisher",
+            "fallback": f"/{actual_source.split(':8554/', 1)[1]}" if ":8554/" in actual_source else "/mock/cam_test",
         }
 
         prefixes = ["live", "app"]

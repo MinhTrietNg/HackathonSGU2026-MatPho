@@ -291,7 +291,7 @@ void main() {
     final (outcome, where, undo) = h.toasts.calls.single;
     expect(outcome, AlertOutcome.falseAlarm);
     expect(where, 'Hầm xe');
-    expect(h.notifications.cleared, [_fire.id]);
+    expect(h.notifications.cleared.toSet(), {_fire.id});
     expect(find.byType(MpAlertBanner), findsNothing);
     expect(h.event(_fire.id).status, EventStatus.fire);
 
@@ -360,7 +360,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(h.location, AppRoutes.monitor);
-    expect(h.notifications.cleared, [_fire.id]);
+    expect(h.notifications.cleared.toSet(), {_fire.id});
     expect(h.event(_fire.id).resolved, isFalse);
     final (outcome, where, undo) = h.toasts.calls.single;
     expect(outcome, AlertOutcome.resolved);
@@ -533,6 +533,47 @@ void main() {
     expect(find.text('watch ${FakeData.fireCameraId}'), findsOneWidget);
   });
 
+  testWidgets('leaving F4 silences the siren of that alert', (tester) async {
+    final h = await _pump(tester, AppRoutes.monitor);
+    h.router.push(AppRoutes.alert('evt-unverified'));
+    await tester.pumpAndSettle();
+    expect(h.notifications.cleared, isEmpty);
+
+    h.router.pop();
+    await tester.pumpAndSettle();
+    expect(h.notifications.cleared, ['evt-unverified']);
+  });
+
+  testWidgets('Gọi 114 silences the siren before the dialer opens', (
+    tester,
+  ) async {
+    final h = await _pump(tester, AppRoutes.alert(_fire.id));
+
+    await tester.tap(find.text('Gọi 114'));
+    await tester.pumpAndSettle();
+    expect(h.dialer.dialed, ['114']);
+    expect(h.notifications.cleared, [_fire.id]);
+  });
+
+  testWidgets('F4 "Xem camera" still opens the camera once the network drops', (
+    tester,
+  ) async {
+    final h = await _pump(
+      tester,
+      AppRoutes.alert('evt-unverified'),
+      overrides: [
+        alertRepositoryProvider.overrideWith(
+          (ref) => _OfflineAfterFirstFetch(
+            FakeAlertRepository(ref.watch(fakeWorldProvider)),
+          ),
+        ),
+      ],
+    );
+    await tester.tap(find.text('Xem camera'));
+    await tester.pumpAndSettle();
+    expect(h.location, AppRoutes.watch(FakeData.fireCameraId));
+  });
+
   testWidgets('no F6 banner on the watch screen of the alert camera', (
     tester,
   ) async {
@@ -671,6 +712,30 @@ void main() {
       expect(find.text('Báo nhầm'), findsNothing);
     });
   });
+}
+
+/// Answers getAlert once, then fails as if the network dropped.
+final class _OfflineAfterFirstFetch implements AlertRepository {
+  _OfflineAfterFirstFetch(this._inner);
+
+  final AlertRepository _inner;
+  var _fetched = false;
+
+  @override
+  Stream<FireEvent> incomingAlerts() => _inner.incomingAlerts();
+
+  @override
+  Stream<AlertUpdate> alertUpdates() => _inner.alertUpdates();
+
+  @override
+  Future<FireEvent> getAlert(String eventId) {
+    if (_fetched) return Future.error(const NetworkException());
+    _fetched = true;
+    return _inner.getAlert(eventId);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _UpdatingAlerts implements AlertRepository {

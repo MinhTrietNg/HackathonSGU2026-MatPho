@@ -18,12 +18,16 @@ import 'pending_alert_actions.dart';
 
 export 'pending_alert_actions.dart' show AlertOutcome;
 
+const cameraUnavailableNote = 'Không mở được camera. Kiểm tra kết nối rồi thử lại.';
+
 Future<void> dial114(
   BuildContext context,
   WidgetRef ref,
   String eventId,
 ) async {
   final repository = ref.read(alertRepositoryProvider);
+  // No siren over the call to 114.
+  unawaited(ref.read(notificationServiceProvider).clearFireAlert(eventId));
   if (!await callEmergency(context, ref)) return;
   try {
     await repository.recordCall114(eventId);
@@ -107,14 +111,25 @@ Future<void> openEventCamera(
   String eventId,
 ) async {
   final router = GoRouter.of(context);
-  final event = await ref.read(alertRepositoryProvider).getAlert(eventId);
-  final provider = cameraDetailProvider(event.cameraId);
-  final hold = ref.listenManual(provider, (_, _) {});
   final CameraDetail detail;
+  final String cameraId;
   try {
-    detail = await ref.read(provider.future);
-  } finally {
-    hold.close();
+    // The alert on screen already names its camera; fetch only without it.
+    cameraId =
+        ref.read(alertProvider(eventId)).value?.event.cameraId ??
+        (await ref.read(alertRepositoryProvider).getAlert(eventId)).cameraId;
+    final provider = cameraDetailProvider(cameraId);
+    final hold = ref.listenManual(provider, (_, _) {});
+    try {
+      detail = await ref.read(provider.future);
+    } finally {
+      hold.close();
+    }
+  } on MpException {
+    if (context.mounted) {
+      showMpToast(context, const MpToast(title: cameraUnavailableNote));
+    }
+    return;
   }
   if (!detail.group.myRole.canWatch) {
     if (context.mounted) {
@@ -122,7 +137,7 @@ Future<void> openEventCamera(
     }
     return;
   }
-  final watch = AppRoutes.watch(event.cameraId);
+  final watch = AppRoutes.watch(cameraId);
   if (!_inStack(router.routerDelegate.currentConfiguration.matches, watch)) {
     router.go(watch);
     return;

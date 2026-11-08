@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +19,7 @@ import '../../core/widgets/mp_illustration.dart';
 import '../../core/widgets/mp_info_card.dart';
 import '../../data/models/fire_event.dart';
 import '../../data/providers.dart';
+import '../../data/services/notification_service.dart';
 import '../auth/auth_session.dart' show SignedIn, authSessionProvider;
 import 'alert_actions.dart';
 import 'alert_controller.dart';
@@ -33,10 +36,20 @@ class AlertScreen extends ConsumerStatefulWidget {
 }
 
 class _AlertScreenState extends ConsumerState<AlertScreen> {
+  late final NotificationService _notifications;
+
   @override
   void initState() {
     super.initState();
+    _notifications = ref.read(notificationServiceProvider);
     hideMpAlertBanner();
+  }
+
+  // The siren rings while F2/F4 is open; leaving it means the alert was seen.
+  @override
+  void dispose() {
+    unawaited(_notifications.clearFireAlert(widget.eventId));
+    super.dispose();
   }
 
   @override

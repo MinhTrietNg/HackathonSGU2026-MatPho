@@ -52,6 +52,11 @@ services:
       - EDGE_DEVICE_ID=${EDGE_DEVICE_ID:-edg_local_01}
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
       - MEDIAMTX_HLS_URL=${MEDIAMTX_HLS_URL:-http://localhost:8888}
+      # Địa chỉ HLS điện thoại tới được, công bố lên Cloud: URL công khai (tunnel) hoặc
+      # IP LAN của máy này (run_edge.sh / run_eag_ai.bat tự dò và truyền EDGE_LAN_IP).
+      - EDGE_PUBLIC_HLS_URL=${EDGE_PUBLIC_HLS_URL:-}
+      - EDGE_LAN_IP=${EDGE_LAN_IP:-}
+      - MEDIAMTX_HLS_PORT=${MEDIAMTX_HLS_PORT:-8888}
       - PATH_SOURCE_TEMPLATE=${PATH_SOURCE_TEMPLATE:-source/{cam_id}}
       - PATH_APP_TEMPLATE=${PATH_APP_TEMPLATE:-live/{cam_id}}
       - PATH_AI_TEMPLATE=${PATH_AI_TEMPLATE:-ai/{cam_id}}

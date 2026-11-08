@@ -32,6 +32,32 @@ assert_docker() {
     fi
 }
 
+# IP LAN của máy này để Cloud trả cho điện thoại địa chỉ HLS mở được (không tunnel).
+# Ưu tiên EDGE_LAN_IP / EDGE_PUBLIC_HLS_URL đã đặt sẵn trong môi trường hoặc .env.
+detect_lan_ip() {
+    if [ -n "${EDGE_LAN_IP:-}" ] || [ -n "${EDGE_PUBLIC_HLS_URL:-}" ]; then
+        return
+    fi
+    if [ -f ".env" ] && grep -Eq '^(EDGE_LAN_IP|EDGE_PUBLIC_HLS_URL)=.+$' .env; then
+        return
+    fi
+    local ip=""
+    if command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then
+        ip="$(hostname -I | awk '{print $1}')"
+    elif command -v ipconfig >/dev/null 2>&1 && ipconfig getifaddr en0 >/dev/null 2>&1; then
+        ip="$(ipconfig getifaddr en0)"
+    elif command -v ipconfig.exe >/dev/null 2>&1; then
+        ip="$(ipconfig.exe | tr -d '
+' | grep -m1 'IPv4' | sed 's/.*: *//')"
+    fi
+    if [ -n "$ip" ]; then
+        export EDGE_LAN_IP="$ip"
+        echo -e "${GREEN}[OK] IP LAN cho luồng HLS: ${ip} (ghi đè bằng EDGE_LAN_IP hoặc EDGE_PUBLIC_HLS_URL)${NC}"
+    else
+        echo -e "${YELLOW}[CẢNH BÁO] Không dò được IP LAN; đặt EDGE_LAN_IP trong .env nếu xem camera trong LAN.${NC}"
+    fi
+}
+
 ensure_env() {
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
@@ -61,6 +87,7 @@ cmd_up() {
     local with_gateway="${2:-false}"
     assert_docker
     ensure_env
+    detect_lan_ip
     local profiles=()
     if [ "$with_mock" = "true" ]; then profiles+=("--profile" "mock"); fi
     if [ "$with_gateway" = "true" ]; then profiles+=("--profile" "gateway"); fi

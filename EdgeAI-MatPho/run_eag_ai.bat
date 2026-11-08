@@ -29,6 +29,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM IP LAN cua may nay de Cloud tra cho dien thoai dia chi HLS mo duoc (khong can tunnel).
+REM Bo qua neu EDGE_LAN_IP / EDGE_PUBLIC_HLS_URL da dat trong moi truong hoac .env.
+if "%EDGE_LAN_IP%"=="" if "%EDGE_PUBLIC_HLS_URL%"=="" (
+    findstr /R "^EDGE_LAN_IP=. ^EDGE_PUBLIC_HLS_URL=." .env >nul 2>&1
+    if errorlevel 1 (
+        for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /C:"IPv4"') do (
+            if "!EDGE_LAN_IP!"=="" set "EDGE_LAN_IP=%%A"
+        )
+        set "EDGE_LAN_IP=!EDGE_LAN_IP: =!"
+        if not "!EDGE_LAN_IP!"=="" (
+            echo [OK] IP LAN cho luong HLS: !EDGE_LAN_IP! [ghi de bang EDGE_LAN_IP hoac EDGE_PUBLIC_HLS_URL]
+        ) else (
+            echo [CANH BAO] Khong do duoc IP LAN; dat EDGE_LAN_IP trong .env neu xem camera trong LAN.
+        )
+    )
+)
+
 REM Kiem tra xem co tham so mock hay khong
 set "PROFILE_ARG="
 if /i "%1"=="mock" set "PROFILE_ARG=--profile mock"

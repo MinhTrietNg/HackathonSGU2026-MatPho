@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,6 +39,8 @@ class _AlertScreenState extends ConsumerState<AlertScreen> {
   void initState() {
     super.initState();
     hideMpAlertBanner();
+    // User is viewing the alert: immediately stop vibrating and silence the siren sound
+    unawaited(ref.read(notificationServiceProvider).clearFireAlert(widget.eventId));
   }
 
   @override

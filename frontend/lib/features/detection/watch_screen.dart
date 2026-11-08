@@ -44,6 +44,8 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
   @override
   void initState() {
     super.initState();
+    // User is viewing the camera: immediately stop any ringing fire siren/vibration
+    unawaited(ref.read(notificationServiceProvider).clearFireAlerts());
     ref.listenManual(detectionControllerProvider(widget.cameraId), _onState);
     ref.listenManual(watchCameraProvider(widget.cameraId), (_, next) {
       if (next case AsyncData(:final value)) _autoStart(value.camera);

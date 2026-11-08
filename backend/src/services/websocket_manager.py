@@ -147,13 +147,11 @@ class WebSocketConnectionManager:
         return None
 
     def get_edge_for_camera(self, cam_id: str) -> Optional[str]:
-        """Find the edge_id managing this cam_id (defaults to first active edge node)."""
+        """Find the edge_id managing this cam_id (or None if unassigned)."""
         for edge_id, node in self.edge_registry.items():
             if cam_id in node.get("cameras", []):
                 return edge_id
-        if self.edge_registry:
-            return next(iter(self.edge_registry.keys()))
-        return "edg_local_01"
+        return None
 
     async def send_to_edge(self, edge_id: str, message: Dict[str, Any]) -> bool:
         """Send command JSON message to a connected Edge node via its dedicated room."""

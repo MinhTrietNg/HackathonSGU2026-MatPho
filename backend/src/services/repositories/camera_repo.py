@@ -178,6 +178,22 @@ class CameraRepository(BaseFirestoreRepository):
                         results.append(self._parse_camera(data))
             return results
 
+    def list_cameras_for_edge_node(self, edge_device_id: str = "edg_local_01") -> List[CameraModel]:
+        """Fetch all active, non-deleted cameras designated for a given Edge Node (or local edge fallback)."""
+        all_cams = self.list_all_online_cameras()
+        if not edge_device_id or edge_device_id in ("edg_local_01", "edg_unknown"):
+            # In local dev / single edge deployment, match edg_local_01 or unassigned cameras
+            return [
+                c for c in all_cams
+                if not getattr(c, "is_deleted", False) and getattr(c, "is_active", True)
+                and (not getattr(c, "edge_device_id", None) or getattr(c, "edge_device_id", None) in ("edg_local_01", "edg_unknown", edge_device_id))
+            ]
+        return [
+            c for c in all_cams
+            if not getattr(c, "is_deleted", False) and getattr(c, "is_active", True)
+            and getattr(c, "edge_device_id", None) == edge_device_id
+        ]
+
     def list_trash_cameras(self, group_id: str) -> List[CameraModel]:
         """List soft-deleted cameras in the 30-day trash bin (auto-purging expired items)."""
         now_dt = datetime.now(timezone.utc)

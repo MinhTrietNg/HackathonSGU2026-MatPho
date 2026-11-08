@@ -57,7 +57,6 @@ class MediaMTXService:
 
         payload = {
             "source": "publisher",
-            "fallback": f"/{actual_source.split(':8554/', 1)[1]}" if ":8554/" in actual_source else "/mock/cam_test",
         }
 
         prefixes = ["live", "app"]

@@ -19,6 +19,8 @@ abstract interface class NotificationService {
 
   Future<void> clearFireAlert(String eventId);
 
+  Future<void> stopSiren();
+
   Future<void> showTestAlert();
 
   Stream<AlertTap> get taps;

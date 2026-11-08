@@ -23,6 +23,8 @@ Future<void> dial114(
   WidgetRef ref,
   String eventId,
 ) async {
+  // Immediately silence siren sound and stop device vibration
+  unawaited(ref.read(notificationServiceProvider).clearFireAlerts());
   final repository = ref.read(alertRepositoryProvider);
   if (!await callEmergency(context, ref)) return;
   try {
@@ -33,6 +35,8 @@ Future<void> dial114(
 }
 
 Future<bool> callEmergency(BuildContext context, WidgetRef ref) async {
+  // Immediately silence siren sound and stop device vibration
+  unawaited(ref.read(notificationServiceProvider).clearFireAlerts());
   final opened = await ref.read(phoneDialerProvider).dial(emergencyNumber);
   if (!opened && context.mounted) {
     showMpToast(
@@ -106,6 +110,8 @@ Future<void> openEventCamera(
   WidgetRef ref,
   String eventId,
 ) async {
+  // Immediately silence siren sound and stop device vibration when viewing camera
+  unawaited(ref.read(notificationServiceProvider).clearFireAlerts());
   final router = GoRouter.of(context);
   final event = await ref.read(alertRepositoryProvider).getAlert(eventId);
   final provider = cameraDetailProvider(event.cameraId);

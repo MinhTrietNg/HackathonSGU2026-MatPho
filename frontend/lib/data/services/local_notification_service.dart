@@ -15,6 +15,9 @@ final class LocalNotificationService implements NotificationService {
   final _taps = StreamController<AlertTap>.broadcast();
   String? _launchAlertId;
   bool _launchCall114 = false;
+  Timer? _testSirenStop;
+
+  static const testSirenDuration = Duration(seconds: 5);
 
   static const _androidIcon = 'ic_notification';
 
@@ -36,7 +39,8 @@ final class LocalNotificationService implements NotificationService {
     presentSound: true,
     sound: 'fire_alarm_siren.wav',
     categoryIdentifier: _iosFireCategory,
-    interruptionLevel: InterruptionLevel.critical,
+    // critical/timeSensitive need entitlements a free Apple ID cannot sign.
+    interruptionLevel: InterruptionLevel.active,
   );
 
   static AndroidNotificationDetails _android({
@@ -73,7 +77,7 @@ final class LocalNotificationService implements NotificationService {
             requestAlertPermission: false,
             requestBadgePermission: false,
             requestSoundPermission: false,
-            requestCriticalPermission: true,
+            requestCriticalPermission: false,
             notificationCategories: [
               DarwinNotificationCategory(
                 _iosFireCategory,
@@ -184,6 +188,8 @@ final class LocalNotificationService implements NotificationService {
     required String body,
     Uint8List? picture,
   }) async {
+    // A real alarm must not be silenced by a test siren's stop timer.
+    _testSirenStop?.cancel();
     unawaited(_startSiren());
     await _show(
       id: _fireAlertId(eventId),
@@ -244,12 +250,21 @@ final class LocalNotificationService implements NotificationService {
   }
 
   @override
-  Future<void> showTestAlert() => _show(
-    id: 0,
-    title: testAlertTitle,
-    body: testAlertBody,
-    android: _android(),
-  );
+  Future<void> showTestAlert() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      // iOS notification sounds obey the silent switch; the in-app siren
+      // (AVAudioSession .playback) does not, so ring it briefly as well.
+      unawaited(_startSiren());
+      _testSirenStop?.cancel();
+      _testSirenStop = Timer(testSirenDuration, () => unawaited(_stopSiren()));
+    }
+    await _show(
+      id: 0,
+      title: testAlertTitle,
+      body: testAlertBody,
+      android: _android(),
+    );
+  }
 
   Future<void> _show({
     required int id,

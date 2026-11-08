@@ -177,7 +177,6 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
   };
 
   List<Widget> _body(CameraDetail camera, DetectionState state) {
-    final c = context.mpColors;
     final clock = ref.watch(clockProvider);
     final place = camera.areaName ?? camera.camera.name;
     final video = ref.watch(cameraFeedProvider(camera.camera));
@@ -202,7 +201,7 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
             builder: (now) => WatchStatusCard(
               rows: [
                 switch (aiActivityAt(camera.camera.ai, now)) {
-                  AiActivity.scanning => _scanning(_fpsOf(state)),
+                  AiActivity.scanning => _scanning(),
                   final idle => _aiIdle(idle),
                 },
               ],
@@ -213,14 +212,13 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
       case DetectionVerifying(
         :final steps,
         :final verdict,
-        :final fps,
         :final awaitingVerdict,
       ):
         return [
           feed(border: verdict == null ? null : (c) => c.statusFire),
           WatchStatusCard(
             rows: [
-              _scanning(fps),
+              _scanning(),
               ..._steps(steps, fireConfidence: verdict?.confidence),
             ],
             link: awaitingVerdict ? 'Không phải cháy? Bỏ qua' : null,
@@ -228,13 +226,13 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
           ),
         ];
 
-      case DetectionNotified(:final alert, :final fps):
+      case DetectionNotified(:final alert):
         final latency = alert.notifyLatency;
         return [
           feed(border: (c) => c.statusFire),
           WatchStatusCard(
             rows: [
-              _scanning(fps),
+              _scanning(),
               ..._steps(alert.timeline, fireConfidence: alert.confidence),
             ],
             summary: latency == null
@@ -243,10 +241,10 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
           ),
         ];
 
-      case DetectionDismissed(:final reason, :final event, :final fps):
+      case DetectionDismissed(:final reason, :final event):
         return [
           feed(),
-          WatchStatusCard(rows: [_scanning(fps)]),
+          WatchStatusCard(rows: [_scanning()]),
           const WatchNote(
             icon: MpIcons.shield,
             text: 'Hình ảnh chỉ nằm trên máy này.',
@@ -264,7 +262,7 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
           ),
         ];
 
-      case DetectionOffline(:final fps):
+      case DetectionOffline():
         return [
           const MpBanner(
             tone: MpBannerTone.warn,
@@ -278,10 +276,7 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
           feed(),
           WatchStatusCard(
             rows: [
-              _scanning(
-                fps,
-                description: 'Mất kết nối · Có mạng sẽ tự nối lại',
-              ),
+              _scanning(description: 'Mất kết nối · Có mạng sẽ tự nối lại'),
             ],
           ),
           const Spacer(),
@@ -293,7 +288,7 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
           ),
         ];
 
-      case DetectionDegraded(:final fps):
+      case DetectionDegraded():
         return [
           const MpBanner(
             tone: MpBannerTone.accent,
@@ -305,7 +300,7 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
             body: 'Vẫn phát hiện được cháy, chậm hơn khoảng 1 giây.',
           ),
           feed(),
-          WatchStatusCard(rows: [_scanning(fps, valueColor: c.statusWarn)]),
+          WatchStatusCard(rows: [_scanning()]),
           const MpTipsCard(
             tips: [
               (MpIcons.battery, 'Cắm sạc'),
@@ -316,20 +311,14 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
     }
   }
 
-  int _fpsOf(DetectionState state) => switch (state) {
-    DetectionWatching(:final fps) || DetectionUnverified(:final fps) => fps,
-    _ => normalFps,
-  };
-
-  WatchStatusRow _scanning(int fps, {String? description, Color? valueColor}) =>
-      (
-        dot: context.mpColors.statusOk,
-        title: 'AI đang quét',
-        value: '$fps khung/giây',
-        valueColor: valueColor,
-        description: description,
-        bold: false,
-      );
+  WatchStatusRow _scanning({String? description}) => (
+    dot: context.mpColors.statusOk,
+    title: 'AI đang quét',
+    value: null,
+    valueColor: null,
+    description: description,
+    bold: false,
+  );
 
   WatchStatusRow _aiIdle(AiActivity activity) => (
     dot: activity == AiActivity.off

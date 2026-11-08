@@ -95,10 +95,21 @@ ping 127.0.0.1 -n 3 >nul
 
 REM Kiem tra xem FireWatch AI co goi duoc vao Edge Backend khong
 set "AI_STATUS=DANG KHOI DONG"
-docker logs matpho_edge_firewatch_ai --tail 10 2>nul | findstr /I "edge-backend:8090" >nul
+REM Log cua Python di ra stderr nen phai gop 2^>^&1, neu bo 2^>nul thi khong doc duoc gi.
+docker logs matpho_edge_firewatch_ai --tail 40 2>&1 | findstr /I "edge-backend:8090" >nul
 if not errorlevel 1 (
     set "AI_STATUS=KET NOI THANH CONG [SYNC CAMERA OK]"
 )
+REM Khong co luong camera thi /health tra 503 va container bao unhealthy.
+docker logs matpho_edge_firewatch_ai --tail 20 2>&1 | findstr /C:"DESCRIBE failed" >nul
+if not errorlevel 1 (
+    set "AI_STATUS=CHUA CO LUONG CAMERA [chay: run_eag_ai.bat mock]"
+)
+REM Healthcheck cua Docker la nguon dang tin nhat: healthy thi AI dang doc duoc camera.
+set "AI_HEALTH="
+for /f "delims=" %%H in ('docker inspect -f "{{.State.Health.Status}}" matpho_edge_firewatch_ai 2^>nul') do set "AI_HEALTH=%%H"
+if /i "!AI_HEALTH!"=="healthy" set "AI_STATUS=HOAT DONG [healthy]"
+if /i "!AI_HEALTH!"=="unhealthy" set "AI_STATUS=KHONG KHOE [unhealthy, thuong do chua co luong camera]"
 
 echo.
 echo ======================================================================
@@ -118,7 +129,7 @@ docker ps --filter "name=matpho_edge" --format "table {{.Names}}\t{{.Status}}\t{
 echo.
 
 echo [*] 5 dong log moi nhat cua Mo hinh AI:
-docker logs matpho_edge_firewatch_ai --tail 5 2>nul
+docker logs matpho_edge_firewatch_ai --tail 5 2>&1
 echo.
 
 if "%~1"=="auto" goto end

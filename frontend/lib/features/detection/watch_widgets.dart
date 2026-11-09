@@ -110,7 +110,8 @@ class WatchFeed extends StatelessWidget {
   const WatchFeed({
     super.key,
     required this.art,
-    required this.place,
+    required this.cameraName,
+    this.areaName,
     required this.clock,
     this.border,
     this.onFullScreen,
@@ -121,7 +122,9 @@ class WatchFeed extends StatelessWidget {
 
   final WatchArt art;
 
-  final String place;
+  final String cameraName;
+
+  final String? areaName;
 
   final DateTime Function() clock;
   final Color Function(MpColors c)? border;
@@ -140,19 +143,16 @@ class WatchFeed extends StatelessWidget {
   Widget _buildFeed(BuildContext context) {
     final c = context.mpColors;
     final radius = BorderRadius.circular(16);
-    final placeText = place.toUpperCase();
     return AspectRatio(
       aspectRatio: MpStill.aspectRatio,
-      child: _buildBox(context, c, radius, placeText),
+      child: _buildBox(context, c, radius),
     );
   }
 
-  Widget _buildBox(
-    BuildContext context,
-    MpColors c,
-    BorderRadius radius,
-    String placeText,
-  ) {
+  // Time top left, camera top right, area bottom left; the full-screen pill
+  // keeps bottom right. Long names are cut, never pushed into their
+  // neighbour.
+  Widget _buildBox(BuildContext context, MpColors c, BorderRadius radius) {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: c.bgSurface, borderRadius: radius),
@@ -174,18 +174,42 @@ class WatchFeed extends StatelessWidget {
           Positioned(
             left: 10,
             top: 10,
-            child: WatchTicker(
-              clock: clock,
-              builder: (now) =>
-                  MpFeedTag('$placeText · ${formatFeedTime(now)}'),
+            right: 10,
+            child: Row(
+              spacing: 12,
+              children: [
+                WatchTicker(
+                  clock: clock,
+                  builder: (now) => MpFeedTag(formatFeedTime(now)),
+                ),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: MpFeedTag(cameraName.toUpperCase()),
+                  ),
+                ),
+              ],
             ),
           ),
-          if (onFullScreen case final open?)
-            Positioned(
-              right: 10,
-              bottom: 10,
-              child: _FullScreenPill(onTap: open),
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: Row(
+              spacing: 12,
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: areaName == null
+                        ? null
+                        : MpFeedTag(areaName!.toUpperCase()),
+                  ),
+                ),
+                if (onFullScreen case final open?) _FullScreenPill(onTap: open),
+              ],
             ),
+          ),
         ],
       ),
     );

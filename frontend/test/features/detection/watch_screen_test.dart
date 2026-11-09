@@ -151,7 +151,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('AI đang quét'), findsOneWidget);
     expect(find.textContaining('khung/giây'), findsNothing);
-    expect(find.text('HẦM B1 · 23/10/2025 21:47:43'), findsOneWidget);
+    expect(find.text('23/10/2025 21:47:43'), findsOneWidget);
+    expect(find.text('KHU SẠC XE'), findsOneWidget);
+    expect(find.text('HẦM B1'), findsOneWidget);
     expect(find.text('Toàn màn hình'), findsOneWidget);
     expect(find.text('Dừng theo dõi'), findsNothing);
   });
@@ -410,7 +412,9 @@ void main() {
     unawaited(list.push(AppRoutes.watch(_fire)));
     await tester.pump();
     expect(find.text('Hầm B1 · Khu sạc xe'), findsOneWidget);
-    expect(find.text('HẦM B1 · 23/10/2025 21:47:43'), findsOneWidget);
+    expect(find.text('23/10/2025 21:47:43'), findsOneWidget);
+    expect(find.text('KHU SẠC XE'), findsOneWidget);
+    expect(find.text('HẦM B1'), findsOneWidget);
     expect(find.text('Toàn màn hình'), findsOneWidget);
     expect(find.text('AI đang quét'), findsOneWidget);
     await tester.pump();

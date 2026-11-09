@@ -192,11 +192,11 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
 
   List<Widget> _body(CameraDetail camera, DetectionState state) {
     final clock = ref.watch(clockProvider);
-    final place = camera.areaName ?? camera.camera.name;
     final video = ref.watch(cameraFeedProvider(camera.camera));
     WatchFeed feed({Color Function(MpColors c)? border}) => WatchFeed(
       art: watchArtOf(state),
-      place: place,
+      cameraName: camera.camera.name,
+      areaName: camera.areaName,
       clock: clock,
       border: border,
       video: video,

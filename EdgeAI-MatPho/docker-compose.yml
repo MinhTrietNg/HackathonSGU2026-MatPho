@@ -31,7 +31,10 @@ services:
       - "${MEDIAMTX_WEBRTC_PORT:-8889}:8889"       # WebRTC / WHEP Playback
       - "${MEDIAMTX_API_PORT:-9997}:9997"       # MediaMTX Control REST API
     volumes:
-      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      # Chế độ demo (luồng luôn có hình): MEDIAMTX_CONFIG=./mediamtx/mediamtx.demo.yml
+      # trong .env, cần video trong ./demo (xem demo/README.md).
+      - ${MEDIAMTX_CONFIG:-./mediamtx/mediamtx.yml}:/mediamtx.yml:ro
+      - ./demo:/demo:ro
     networks:
       - edge-net
 
@@ -67,6 +70,9 @@ services:
       - EDGE_SQLITE_PATH=/app/data/edge_local.db
       - 'DECODER_STREAMS=${DECODER_STREAMS:-[{"cam_id": "cam_01", "source_url": "rtsp://mediamtx:8554/mock/cam_test"}]}'
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Trần thời gian chờ nối lại nguồn camera: nguồn vừa có hình lại thì luồng
+      # trực tiếp hiện lại trong vài giây thay vì tới 30 giây (mặc định trong code).
+      - RECONNECT_BACKOFF_MAX_S=${RECONNECT_BACKOFF_MAX_S:-5}
     volumes:
       - edge_local_data:/app/data
     depends_on:

@@ -29,6 +29,31 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Demo: "run_eag_ai.bat chay <ten>" phat clip demo\<ten>_chay.mp4 MOT LAN vao luong camera
+REM demo; het clip MediaMTX tu quay ve canh thuong nen luong khong mat. Can chay cum Edge
+REM voi MEDIAMTX_CONFIG=./mediamtx/mediamtx.demo.yml trong .env, xem demo\README.md.
+if /i "%~1"=="chay" (
+    if "%~2"=="" (
+        echo [LOI] Thieu ten. Vi du: run_eag_ai.bat chay cam_gara
+        echo       Ten hop le: cam_gara, cam_xe_dien, cam_nha_xe, cam_bai_xe, fire_demo, cam_01
+        exit /b 1
+    )
+    if not exist "%CD%\demo\%~2_chay.mp4" (
+        echo [LOI] Khong co file demo\%~2_chay.mp4, xem demo\README.md
+        exit /b 1
+    )
+    set "DEMO_PATH=mock/%~2"
+    if /i "%~2"=="cam_01" set "DEMO_PATH=source/cam_01"
+    docker rm -f matpho_demo_chay_%~2 >nul 2>&1
+    docker run -d --rm --name matpho_demo_chay_%~2 --network matpho_edge_net -v "%CD%\demo:/demo:ro" --entrypoint ffmpeg edgeai-matpho-edge-backend -hide_banner -loglevel warning -re -i /demo/%~2_chay.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://mediamtx:8554/!DEMO_PATH! >nul
+    if errorlevel 1 (
+        echo [LOI] Khong phat duoc clip chay.
+        exit /b 1
+    )
+    echo [OK] Dang phat clip chay vao !DEMO_PATH!, het clip se tu ve canh thuong.
+    exit /b 0
+)
+
 REM IP LAN cua may nay de Cloud tra cho dien thoai dia chi HLS mo duoc (khong can tunnel).
 REM Bo qua neu EDGE_LAN_IP / EDGE_PUBLIC_HLS_URL da dat trong moi truong hoac .env.
 if "%EDGE_LAN_IP%"=="" if "%EDGE_PUBLIC_HLS_URL%"=="" (

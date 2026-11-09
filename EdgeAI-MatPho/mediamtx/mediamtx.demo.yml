@@ -1,0 +1,103 @@
+###############################################
+# Cấu hình MediaMTX cho chế độ DEMO: giống hệt mediamtx.yml, thêm các path demo
+# luôn có hình (alwaysAvailable). Bật bằng MEDIAMTX_CONFIG trong EdgeAI-MatPho/.env,
+# chỉ khi đã có video trong EdgeAI-MatPho/demo/ (xem demo/README.md): thiếu file
+# thì MediaMTX không khởi động. Sửa mediamtx.yml thì sửa cả file này.
+###############################################
+
+###############################################
+# MediaMTX Configuration - Edge Stream Gateway
+# Standardized Stream Path: live/{cam_id}
+# - Input RTSP : Pushed by edge-backend (from LAN IP Camera or mock/cam_test)
+# - Output HLS : http://<edge>:8888/live/{cam_id}/index.m3u8 (for Mobile/Web App)
+# - Output RTSP: rtsp://mediamtx:8554/live/{cam_id} (for AI Service Input)
+###############################################
+
+logLevel: info
+logDestinations: [stdout]
+
+api: yes
+apiAddress: :9997
+
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
+
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp, udp]
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: '*'
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+hlsAlwaysRemux: no
+# HLS on-demand: chỉ đóng gói khi có người xem, ngắt 10 s sau request cuối (sơ đồ kiến
+# trúc, luồng C). Luồng RTSP live/{cam_id} cho FireWatch không bị ảnh hưởng.
+hlsMuxerCloseAfter: 10s
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  - url: stun:stun.cloudflare.com:3478
+
+paths:
+  # 0. Nguồn demo: khi không ai phát, MediaMTX tự phát lặp cảnh thường từ file nên
+  #    luồng không bao giờ mất; "run_eag_ai.bat chay <ten>" phát clip cháy một lần vào
+  #    cùng path, hết clip thì tự quay về cảnh thường. Người đọc (edge-backend) không
+  #    bị ngắt khi đổi nguồn. Clip cháy phải cùng định dạng với file (H.264, không tiếng).
+  mock/cam_gara:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/cam_gara_thuong.mp4
+  mock/cam_xe_dien:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/cam_xe_dien_thuong.mp4
+  mock/cam_nha_xe:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/cam_nha_xe_thuong.mp4
+  mock/cam_bai_xe:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/cam_bai_xe_thuong.mp4
+  mock/fire_demo:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/fire_demo_thuong.mp4
+  source/cam_01:
+    source: publisher
+    alwaysAvailable: yes
+    alwaysAvailableFile: /demo/fire_demo_thuong.mp4
+
+  # 1. Mock Camera Source (pushed by scripts/mock_camera.py)
+  mock/cam_test:
+    source: publisher
+
+  # 2. Standalone Direct Alias (optional zero-copy test without edge-backend)
+  live/cam_mock:
+    source: rtsp://localhost:8554/mock/cam_test
+    sourceOnDemand: no
+
+  # 3. Dynamic camera source streams published by tool_test_rtsp or external IP cameras
+  ~^source/(.*)$:
+    source: publisher
+
+  # 4. All active live & output streams published by edge-backend or tool_test_rtsp
+  ~^live/(.*)$:
+    source: publisher
+
+  all_others:
+    source: publisher

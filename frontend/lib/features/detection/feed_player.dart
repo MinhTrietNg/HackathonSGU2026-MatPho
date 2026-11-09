@@ -67,7 +67,7 @@ final feedPlayerProvider = Provider.autoDispose
       return controller;
     });
 
-const feedRetryDelay = Duration(seconds: 3);
+const feedRetryDelay = Duration(seconds: 1);
 
 /// Calls [retry] once, [delay] after [controller] reports an error.
 ///

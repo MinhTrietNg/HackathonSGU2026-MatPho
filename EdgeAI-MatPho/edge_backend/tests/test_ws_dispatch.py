@@ -3,8 +3,10 @@
 import asyncio
 from types import SimpleNamespace
 
+import aiosqlite
 import pytest
 
+import src.main as edge_main
 from src import ws_client as wsc
 from src.db import EdgeDatabase
 from src.main import handle_cloud_command, state
@@ -112,3 +114,38 @@ async def test_sync_camera_restarts_only_when_source_changes(tmp_path, monkeypat
     await handle_cloud_command({**sync, "rtsp_url": "rtsp://10.0.0.6:554/stream1"})
     assert manager.restarts == [("cam_x", "rtsp://10.0.0.6:554/stream1")]
 
+
+@pytest.mark.asyncio
+async def test_sync_complete_prunes_cameras_deleted_on_cloud(tmp_path, monkeypatch):
+    db =EdgeDatabase(db_path=str(tmp_path / "edge.db"))
+    await db.init_db()
+    for cam_id in ("cam_keep", "cam_gone", "cam_seed", "cam_new"):
+        await db.upsert_camera(
+            cam_id=cam_id, rtsp_url="rtsp://10.0.0.5/s", cam_name=cam_id, is_active=True
+        )
+    # Everything but cam_new was last changed long ago.
+    async with aiosqlite.connect(db.db_path) as conn:
+        await conn.execute(
+            "UPDATE local_cameras SET updated_at = 0 WHERE cam_id != 'cam_new'"
+        )
+        await conn.commit()
+    stopped: list[str] = []
+    manager = _FakeManager("rtsp://10.0.0.5/s")
+    manager.stop = lambda cam_id: stopped.append(cam_id) or True
+    monkeypatch.setattr(state, "db", db)
+    monkeypatch.setattr(state, "manager", manager)
+    monkeypatch.setattr(state, "ws_client", None)
+    monkeypatch.setenv(
+        "DECODER_STREAMS", '[{"cam_id": "cam_seed", "source_url": "rtsp://x/y"}]'
+    )
+
+    # An empty list (failed Cloud query) must never wipe the edge.
+    assert await edge_main.prune_cameras_missing_from_cloud([]) == []
+
+    reply = await handle_cloud_command(
+        {"action": "SYNC_COMPLETE", "cam_ids": ["cam_keep"]}
+    )
+    assert reply["removed"] == ["cam_gone"]
+    assert stopped == ["cam_gone"]
+    left = {c["cam_id"] for c in await db.list_cameras()}
+    assert left == {"cam_keep", "cam_seed", "cam_new"}

@@ -324,6 +324,38 @@ def _load_initial_cameras_from_env() -> List[Dict[str, Any]]:
     return []
 
 
+SYNC_PRUNE_GRACE_S = 60.0
+
+
+async def prune_cameras_missing_from_cloud(cloud_cam_ids: Any) -> List[str]:
+    """Drop local cameras the Cloud no longer has, after a full SYNC on connect.
+
+    A REMOVE_CAMERA sent while the link was down is lost, and the camera then kept a
+    session retrying its source forever. Cameras seeded from DECODER_STREAMS and
+    cameras changed in the last SYNC_PRUNE_GRACE_S (an ADD racing this list) stay.
+    An empty or malformed list prunes nothing, so a failed Cloud query cannot wipe
+    the edge.
+    """
+    if not isinstance(cloud_cam_ids, list) or not cloud_cam_ids:
+        return []
+    keep = {str(c) for c in cloud_cam_ids}
+    keep |= {item["cam_id"] for item in _load_initial_cameras_from_env()}
+    cutoff = time.time() - SYNC_PRUNE_GRACE_S
+    removed: List[str] = []
+    for cam in await state.db.list_cameras():
+        cam_id = cam["cam_id"]
+        if cam_id in keep or float(cam.get("updated_at") or 0) > cutoff:
+            continue
+        await asyncio.to_thread(state.manager.stop, cam_id)
+        await state.db.remove_camera(cam_id)
+        removed.append(cam_id)
+    if removed:
+        logger.info("Removed %d cameras no longer on Cloud: %s", len(removed), removed)
+        if state.ws_client:
+            state.ws_client.schedule_camera_announce()
+    return removed
+
+
 async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Handle remote commands pushed down from Cloud Backend via WebSocket."""
     action = payload.get("action") or payload.get("type")
@@ -436,6 +468,10 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             if state.ws_client:
                 state.ws_client.schedule_camera_announce()
         return {"type": "CAMERA_REMOVED", "cam_id": cam_id}
+
+    if action == "SYNC_COMPLETE":
+        removed = await prune_cameras_missing_from_cloud(payload.get("cam_ids"))
+        return {"type": "SYNC_PRUNED", "removed": removed}
 
     if action in ("START_LIVE", "WATCH_CAMERA"):
         cam_id = payload.get("cam_id")

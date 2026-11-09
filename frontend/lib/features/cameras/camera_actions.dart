@@ -54,12 +54,20 @@ class CameraActions {
   CameraRepository get _repo => _ref.read(cameraRepositoryProvider);
 
   Future<void> delete(Camera camera) async {
-    await _repo.deleteCamera(camera.id);
+    final deleted = _ref.read(deletedCameraIdsProvider.notifier)
+      ..hide(camera.id);
+    try {
+      await _repo.deleteCamera(camera.id);
+    } on Object {
+      deleted.show(camera.id);
+      rethrow;
+    }
     _refresh(camera);
   }
 
   Future<Camera> restore(String cameraId) async {
     final camera = await _repo.restoreCamera(cameraId);
+    _ref.read(deletedCameraIdsProvider.notifier).show(cameraId);
     _refresh(camera);
     return camera;
   }

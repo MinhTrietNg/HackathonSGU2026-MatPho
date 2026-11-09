@@ -98,6 +98,29 @@ void main() {
     ]);
   });
 
+  test(
+    'by default G1 shows the first page only, even with a next_cursor',
+    () async {
+      reply = (_) => jsonResponse({
+        'items': [item('alt_2', detectedAt: '2026-11-04T21:00:00.000Z')],
+        'next_cursor': '2026-11-04T21:00:00+00:00',
+      });
+      final rows = await RemoteHistoryRepository(
+        ApiClient(
+          config: testApiConfig,
+          tokens: FakeAuthTokenSource(token: 'tok-1'),
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            return reply(request);
+          }),
+        ),
+        now: () => DateTime.utc(2026, 11, 4, 22),
+      ).list();
+      expect(rows.map((e) => e.id), ['alt_2']);
+      expect(requests, hasLength(1));
+    },
+  );
+
   test('a server that ignores cursor stops after its first page', () async {
     reply = (_) => jsonResponse({
       'items': [item('alt_1', detectedAt: '2026-11-04T21:00:00.000Z')],

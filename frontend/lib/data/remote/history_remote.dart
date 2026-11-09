@@ -13,7 +13,9 @@ final class RemoteHistoryRepository implements HistoryRepository {
   RemoteHistoryRepository(
     this._api, {
     this.pageSize = 20,
-    this.maxPages = 10,
+    // Only the newest page: each call takes ~3s through the tunnel, and
+    // following every page (6 for 115 alerts) ran past the load timeout.
+    this.maxPages = 1,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 

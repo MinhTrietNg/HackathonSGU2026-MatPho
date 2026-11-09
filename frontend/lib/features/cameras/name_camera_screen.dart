@@ -65,8 +65,7 @@ class _NameCameraScreenState extends ConsumerState<NameCameraScreen> {
     final selected =
         areas.where((a) => a.id == state.areaId).firstOrNull ??
         areas.firstOrNull;
-    final canSave =
-        !state.busy && selected != null && state.name.trim().isNotEmpty;
+    final canSave = selected != null && state.name.trim().isNotEmpty;
     return MpPage(
       header: MpHeader.back(
         title: 'Đặt tên camera',
@@ -109,6 +108,7 @@ class _NameCameraScreenState extends ConsumerState<NameCameraScreen> {
         MpButton(
           label: 'Lưu',
           onPressed: canSave ? () => _save(selected) : null,
+          busy: state.busy,
         ),
       ],
     );

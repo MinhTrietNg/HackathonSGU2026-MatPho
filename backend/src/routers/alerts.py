@@ -102,11 +102,17 @@ async def list_alerts(
             raise PermissionDeniedException("Bạn không thuộc nhóm này.")
         target_group_ids = [group_id]
     else:
-        target_group_ids = [g.group_id for g, _, _ in group_repo.list_groups_for_user(current_user.user_id)]
+        groups = await asyncio.to_thread(group_repo.list_groups_for_user, current_user.user_id)
+        target_group_ids = [g.group_id for g, _, _ in groups]
 
-    all_alerts = []
-    for gid in target_group_ids:
-        all_alerts.extend(alert_repo.list_alerts_by_group(gid, limit=100))
+    # Firestore reads block: run them in threads, one per group at once, so a
+    # history load neither stalls the event loop (WebSocket alerts) nor waits
+    # on each group in turn.
+    per_group = await asyncio.gather(*(
+        asyncio.to_thread(alert_repo.list_alerts_by_group, gid, 100)
+        for gid in target_group_ids
+    ))
+    all_alerts = [a for alerts in per_group for a in alerts]
 
     # Apply filter
     filtered = []

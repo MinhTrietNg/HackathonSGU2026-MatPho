@@ -33,12 +33,31 @@ const noLiveViewNote = 'Vai trò "Chỉ báo cháy" không xem được camera.'
 
 typedef CameraSection = ({Area? area, List<Camera> cameras});
 
+/// Cameras deleted from this phone. The list drops them at once instead of
+/// keeping them until the place reloads (groups, then cameras: ~3s).
+final deletedCameraIdsProvider =
+    NotifierProvider<DeletedCameraIds, Set<String>>(DeletedCameraIds.new);
+
+class DeletedCameraIds extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  void hide(String cameraId) => state = {...state, cameraId};
+
+  void show(String cameraId) => state = {...state}..remove(cameraId);
+}
+
 final placeCamerasProvider = FutureProvider<List<CameraSection>>((ref) async {
   final group = await ref.watch(currentPlaceProvider.future);
-  final (areas, cameras) = await (
+  final deleted = ref.watch(deletedCameraIdsProvider);
+  final (areas, all) = await (
     ref.watch(groupAreasProvider(group.id).future),
     ref.watch(groupCamerasProvider(group.id).future),
   ).wait;
+  final cameras = [
+    for (final c in all)
+      if (!deleted.contains(c.id)) c,
+  ];
   final sections = <CameraSection>[
     for (final area in areas)
       (
@@ -264,9 +283,20 @@ class AddCameraNotifier extends Notifier<AddCameraState> {
           watchArea: WatchArea.full,
           deviceName: state.probe?.deviceName,
         );
-        ref.invalidate(groupsProvider);
       }
       ref.invalidate(groupCamerasProvider(camera.groupId));
+      if (state.replacing == null) {
+        // The watch screen draws a new camera from this list while its own
+        // detail still loads (camera, then the reloading groups: ~3s of a
+        // blank screen). So wait here, with the button busy, for the list to
+        // hold it; the groups reload (camera counts) comes after.
+        try {
+          await ref.read(placeCamerasProvider.future);
+        } on Object {
+          // The watch screen loads the camera on its own.
+        }
+        ref.invalidate(groupsProvider);
+      }
       return camera;
     } finally {
       state = state.copyWith(busy: false);

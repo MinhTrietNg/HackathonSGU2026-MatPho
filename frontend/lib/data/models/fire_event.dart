@@ -245,4 +245,4 @@ const escalationSteps = [Duration(seconds: 60)];
 
 const historyRetention = Duration(days: 30);
 
-const historyLoadTimeout = Duration(seconds: 8);
+const historyLoadTimeout = Duration(seconds: 20);

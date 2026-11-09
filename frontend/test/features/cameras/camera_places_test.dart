@@ -4,6 +4,7 @@ import '../../fakes/fake_overrides.dart';
 import '../../fakes/fake_data.dart';
 import '../../fakes/fake_scenario.dart';
 import 'package:mat_pho/data/models/models.dart';
+import 'package:mat_pho/features/cameras/camera_actions.dart';
 import 'package:mat_pho/features/cameras/camera_state.dart';
 import 'package:mat_pho/features/groups/current_group.dart';
 import 'package:mat_pho/features/groups/group_state.dart';
@@ -163,6 +164,46 @@ void main() {
     )).firstWhere((g) => g.id == 'g-sky');
     expect(sky.cameraCount, 5);
     expect((await container.read(currentPlaceProvider.future)).id, 'g-sky');
+  });
+
+  List<String> listed() => [
+    for (final s in container.read(placeCamerasProvider).value ?? const [])
+      for (final c in s.cameras) c.id,
+  ];
+
+  test('a camera saved on I5 is in the E1 list once save returns, so E2 '
+      'draws it at once', () async {
+    container.listen(placeCamerasProvider, (_, _) {});
+    await container.read(placeCamerasProvider.future);
+
+    final flow = container.read(addCameraProvider.notifier)..start();
+    await flow.connect('rtsp://10.0.0.9:554/stream1');
+    flow.setName('Cổng sau');
+    final camera = await flow.save(areaId: 'a-b1');
+
+    expect(listed(), contains(camera.id));
+  });
+
+  test('I17 · a deleted camera leaves the E1 list before the server answers; '
+      'undo brings it back', () async {
+    container.listen(placeCamerasProvider, (_, _) {});
+    final camera = [
+      for (final s in await container.read(placeCamerasProvider.future))
+        ...s.cameras,
+    ].firstWhere((c) => c.id == 'cam-ramp');
+
+    final actions = container.read(cameraActionsProvider);
+    final deleting = actions.delete(camera);
+    await container.read(placeCamerasProvider.future);
+    expect(listed(), isNot(contains('cam-ramp')));
+
+    await deleting;
+    await container.read(placeCamerasProvider.future);
+    expect(listed(), isNot(contains('cam-ramp')));
+
+    await actions.restore('cam-ramp');
+    await container.read(placeCamerasProvider.future);
+    expect(listed(), contains('cam-ramp'));
   });
 
   test('a group left (J14) leaves the place picker too', () async {

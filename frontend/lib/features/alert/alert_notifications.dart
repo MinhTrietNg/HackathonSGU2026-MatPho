@@ -107,11 +107,14 @@ class _AlertNotificationsState extends ConsumerState<AlertNotifications> {
     }
     ref.read(receivedAlertsProvider.notifier).remember(event);
     _ring(event.id);
+    // In the app, F2 itself is the alert and rings the siren until handled;
+    // a system notification only for when the app is not on screen.
+    if (_inForeground) {
+      await _openAlert(event.id, clearNotification: false);
+      return;
+    }
     final notifications = ref.read(notificationServiceProvider);
     await notifications.showFireAlert(event, picture: await _picture(event));
-    if (_inForeground) {
-      await _openAlert(event.id, clearNotification: true);
-    }
   }
 
   void _ring(String eventId) => _ringing

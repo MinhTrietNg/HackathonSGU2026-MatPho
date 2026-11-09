@@ -24,6 +24,13 @@ final class AlertState {
 
 enum AlertClosing { unknown, denied, allowed }
 
+/// Still to be handled: the siren rings and F2/F4 holds the user until
+/// "Gọi 114", "Đã xử lý" or "Báo nhầm" (or someone else closes it).
+bool alertStillOpen(FireEvent event) =>
+    !event.resolved &&
+    (event.status == EventStatus.fire ||
+        event.status == EventStatus.unverified);
+
 /// FIRE_ALERT events already received over the WebSocket, by id. F2/F4 shows
 /// one at once instead of a blank screen, and keeps it if the fetch fails.
 final receivedAlertsProvider =

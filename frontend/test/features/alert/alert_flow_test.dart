@@ -292,6 +292,7 @@ void main() {
     expect(outcome, AlertOutcome.falseAlarm);
     expect(where, 'Hầm xe');
     expect(h.notifications.cleared.toSet(), {_fire.id});
+    expect(h.notifications.ringing, isFalse);
     expect(find.byType(MpAlertBanner), findsNothing);
     expect(h.event(_fire.id).status, EventStatus.fire);
 
@@ -361,6 +362,7 @@ void main() {
 
     expect(h.location, AppRoutes.monitor);
     expect(h.notifications.cleared.toSet(), {_fire.id});
+    expect(h.notifications.ringing, isFalse);
     expect(h.event(_fire.id).resolved, isFalse);
     final (outcome, where, undo) = h.toasts.calls.single;
     expect(outcome, AlertOutcome.resolved);
@@ -523,36 +525,57 @@ void main() {
     expect(find.byType(MpAlertBanner), findsNothing);
   });
 
-  testWidgets('F4 "Xem camera" opens the watch screen of its camera', (
-    tester,
-  ) async {
+  testWidgets('F4 "Xem camera" opens its camera full screen over F4, still '
+      'ringing; closing it returns to F4', (tester) async {
     final h = await _pump(tester, AppRoutes.alert('evt-unverified'));
     await tester.tap(find.text('Xem camera'));
     await tester.pumpAndSettle();
-    expect(h.location, AppRoutes.watch(FakeData.fireCameraId));
-    expect(find.text('watch ${FakeData.fireCameraId}'), findsOneWidget);
-  });
-
-  testWidgets('leaving F4 silences the siren of that alert', (tester) async {
-    final h = await _pump(tester, AppRoutes.monitor);
-    h.router.push(AppRoutes.alert('evt-unverified'));
-    await tester.pumpAndSettle();
-    expect(h.notifications.cleared, isEmpty);
+    expect(h.location, '${AppRoutes.watch(FakeData.fireCameraId)}/full');
+    expect(find.text('full'), findsOneWidget);
+    expect(h.notifications.ringing, isTrue);
 
     h.router.pop();
     await tester.pumpAndSettle();
+    expect(h.location, AppRoutes.alert('evt-unverified'));
+    expect(find.text('Xem camera'), findsOneWidget);
+  });
+
+  testWidgets('F4 rings the siren in place of its notification; leaving it '
+      'does not stop it, only handling it does', (tester) async {
+    final h = await _pump(tester, AppRoutes.monitor);
+    h.router.push(AppRoutes.alert('evt-unverified'));
+    await tester.pumpAndSettle();
     expect(h.notifications.cleared, ['evt-unverified']);
+    expect(h.notifications.ringing, isTrue);
+
+    h.router.pop();
+    await tester.pumpAndSettle();
+    expect(h.notifications.ringing, isTrue);
+  });
+
+  testWidgets('back does not leave F2 while its alert is still open', (
+    tester,
+  ) async {
+    final h = await _pump(tester, AppRoutes.monitor);
+    h.router.push(AppRoutes.alert(_fire.id));
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(h.location, AppRoutes.alert(_fire.id));
+    expect(h.notifications.ringing, isTrue);
   });
 
   testWidgets('Gọi 114 silences the siren before the dialer opens', (
     tester,
   ) async {
     final h = await _pump(tester, AppRoutes.alert(_fire.id));
+    expect(h.notifications.ringing, isTrue);
 
     await tester.tap(find.text('Gọi 114'));
     await tester.pumpAndSettle();
     expect(h.dialer.dialed, ['114']);
-    expect(h.notifications.cleared, [_fire.id]);
+    expect(h.notifications.ringing, isFalse);
   });
 
   testWidgets('F4 "Xem camera" still opens the camera once the network drops', (
@@ -571,7 +594,7 @@ void main() {
     );
     await tester.tap(find.text('Xem camera'));
     await tester.pumpAndSettle();
-    expect(h.location, AppRoutes.watch(FakeData.fireCameraId));
+    expect(h.location, '${AppRoutes.watch(FakeData.fireCameraId)}/full');
   });
 
   testWidgets('no F6 banner on the watch screen of the alert camera', (

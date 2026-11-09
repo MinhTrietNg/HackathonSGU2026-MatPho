@@ -13,7 +13,8 @@ import '../../data/services/phone_dialer.dart';
 import '../cameras/camera_state.dart'
     show CameraDetail, cameraDetailProvider, noLiveViewNote;
 import '../cameras/monitor_toasts.dart';
-import 'alert_controller.dart' show AlertClosing, alertProvider;
+import '../detection/detection_routes.dart' show DetectionPaths;
+import 'alert_controller.dart' show AlertClosing, alertProvider, alertStillOpen;
 import 'pending_alert_actions.dart';
 
 export 'pending_alert_actions.dart' show AlertOutcome;
@@ -114,8 +115,6 @@ Future<void> openEventCamera(
   WidgetRef ref,
   String eventId,
 ) async {
-  // Immediately silence siren sound and stop device vibration when viewing camera
-  unawaited(ref.read(notificationServiceProvider).clearFireAlerts());
   final router = GoRouter.of(context);
   final CameraDetail detail;
   final String cameraId;
@@ -144,6 +143,14 @@ Future<void> openEventCamera(
     return;
   }
   final watch = AppRoutes.watch(cameraId);
+  // An alert still to be handled keeps ringing: the camera opens full screen
+  // (E8, on the root navigator) over F2, so × returns to its "Gọi 114" /
+  // "Đã xử lý" / "Báo nhầm". The shell's E2 cannot be pushed over F2.
+  if (ref.read(alertProvider(eventId)).value?.event case final event?
+      when alertStillOpen(event)) {
+    unawaited(router.push<void>(DetectionPaths.fullScreen(cameraId)));
+    return;
+  }
   if (!_inStack(router.routerDelegate.currentConfiguration.matches, watch)) {
     router.go(watch);
     return;

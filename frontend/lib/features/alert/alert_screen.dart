@@ -37,28 +37,43 @@ class AlertScreen extends ConsumerStatefulWidget {
 
 class _AlertScreenState extends ConsumerState<AlertScreen> {
   late final NotificationService _notifications;
+  bool _rang = false;
 
   @override
   void initState() {
     super.initState();
     _notifications = ref.read(notificationServiceProvider);
     hideMpAlertBanner();
-    // User is viewing the alert: immediately stop vibrating and silence the siren sound
-    unawaited(ref.read(notificationServiceProvider).clearFireAlert(widget.eventId));
+    ref.listenManual(alertProvider(widget.eventId), (_, next) {
+      if (next.value case final state? when alertStillOpen(state.event)) {
+        _ring();
+      }
+    }, fireImmediately: true);
   }
 
-  // The siren rings while F2/F4 is open; leaving it means the alert was seen.
-  @override
-  void dispose() {
-    unawaited(_notifications.clearFireAlert(widget.eventId));
-    super.dispose();
+  // The system notification goes (the user is on the alert), the in-app
+  // siren loops on. Only handling the alert stops it (alert_actions.dart),
+  // not opening or leaving this screen.
+  void _ring() {
+    if (_rang) return;
+    _rang = true;
+    unawaited(
+      _notifications
+          .clearFireAlert(widget.eventId)
+          .then((_) => _notifications.ringSiren()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final alert = ref.watch(alertProvider(widget.eventId));
     final state = alert.value;
-    if (state != null) return _AlertBody(eventId: widget.eventId, state: state);
+    if (state != null) {
+      return PopScope(
+        canPop: !alertStillOpen(state.event),
+        child: _AlertBody(eventId: widget.eventId, state: state),
+      );
+    }
     return alert.hasError ? const _AlertLoadFailed() : const Scaffold();
   }
 }

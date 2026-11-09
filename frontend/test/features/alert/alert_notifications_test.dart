@@ -116,21 +116,23 @@ void main() {
     expect(find.text('Cháy ở Hầm xe'), findsOneWidget);
   });
 
-  testWidgets('back in the app while it rings: ringing stops, F2 opens', (
-    tester,
-  ) async {
-    final c = await _launch(tester);
-    _lifecycle(tester, _toBackground);
-    final alert = _pushFire(c);
-    await tester.pump();
-    expect(_service(c).cleared, isEmpty);
-    _lifecycle(tester, _toForeground);
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 10));
-    await tester.pumpAndSettle();
-    expect(_service(c).cleared, [alert.id]);
-    expect(find.text('Cháy ở Hầm xe'), findsOneWidget);
-  });
+  testWidgets(
+    'back in the app while it rings: the notification goes, F2 opens and rings on',
+    (tester) async {
+      final c = await _launch(tester);
+      _lifecycle(tester, _toBackground);
+      final alert = _pushFire(c);
+      await tester.pump();
+      expect(_service(c).cleared, isEmpty);
+      _lifecycle(tester, _toForeground);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(_service(c).cleared.toSet(), {alert.id});
+      expect(_service(c).ringing, isTrue);
+      expect(find.text('Cháy ở Hầm xe'), findsOneWidget);
+    },
+  );
 
   testWidgets('F1 "Gọi 114" opens F2 and the dialer with 114', (tester) async {
     final dialer = FakePhoneDialer();

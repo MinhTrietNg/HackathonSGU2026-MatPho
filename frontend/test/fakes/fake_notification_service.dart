@@ -71,13 +71,25 @@ final class FakeNotificationService implements NotificationService {
 
   int clears = 0;
 
+  /// The in-app siren: on from [ringSiren] until a stop or a clear.
+  bool ringing = false;
+
   @override
-  Future<void> clearFireAlerts() async => clears++;
+  Future<void> clearFireAlerts() async {
+    clears++;
+    ringing = false;
+  }
 
   final cleared = <String>[];
 
   @override
-  Future<void> clearFireAlert(String eventId) async => cleared.add(eventId);
+  Future<void> clearFireAlert(String eventId) async {
+    cleared.add(eventId);
+    ringing = false;
+  }
+
+  @override
+  Future<void> ringSiren() async => ringing = true;
 
   @override
   Future<void> showTestAlert() async =>
@@ -86,7 +98,10 @@ final class FakeNotificationService implements NotificationService {
   int sirenStops = 0;
 
   @override
-  Future<void> stopSiren() async => sirenStops++;
+  Future<void> stopSiren() async {
+    sirenStops++;
+    ringing = false;
+  }
 
   @override
   Stream<AlertTap> get taps => _taps.stream;

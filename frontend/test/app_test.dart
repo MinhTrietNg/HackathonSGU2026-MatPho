@@ -166,7 +166,7 @@ void main() {
     expect(find.text('Cháy ở Hầm xe'), findsOneWidget);
   });
 
-  testWidgets('F4 "Xem camera" opens the watch screen in Theo dõi', (
+  testWidgets('F4 "Xem camera" opens the camera full screen over F4', (
     tester,
   ) async {
     await _launch(tester, const {FakeCase.verificationServerError});
@@ -174,19 +174,18 @@ void main() {
     await _pumpFrames(tester);
     expect(find.text('Xem camera'), findsOneWidget);
 
+    // Still to be handled: the camera opens full screen over F4, and × goes
+    // back to F4's actions.
     await tester.tap(find.text('Xem camera'));
     await _pumpFrames(tester);
-    expect(find.text('Hầm B1 · Khu sạc xe'), findsOneWidget);
-    expect(find.text('AI đang quét'), findsOneWidget);
-    expect(find.bySemanticsLabel('Lịch sử'), findsWidgets);
-    expect(find.text('Máy phát hiện khói'), findsNothing);
+    expect(find.text('Chạm × để thoát'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('Quay lại'));
+    await tester.tap(find.bySemanticsLabel('Thoát toàn màn hình'));
     await _settle(tester);
-    expect(find.text('Chung cư Sky Garden'), findsOneWidget);
+    expect(find.text('Xem camera'), findsOneWidget);
   });
 
-  testWidgets('"Xem camera" from an alert opened elsewhere opens E2', (
+  testWidgets('"Xem camera" from an alert opened elsewhere opens E8 over it', (
     tester,
   ) async {
     await _launch(tester, const {}, detection: _QuietDetection());
@@ -200,13 +199,16 @@ void main() {
 
     await tester.tap(find.text('Xem camera'));
     await _pumpFrames(tester);
-    expect(router.state.uri.path, AppRoutes.watch(FakeData.fireCameraId));
-    expect(find.text('Hầm B1 · Khu sạc xe'), findsOneWidget);
-    expect(find.text('AI đang quét'), findsOneWidget);
+    expect(
+      router.state.uri.path,
+      '${AppRoutes.watch(FakeData.fireCameraId)}/full',
+    );
+    expect(find.text('Chạm × để thoát'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('Quay lại'));
+    await tester.tap(find.bySemanticsLabel('Thoát toàn màn hình'));
     await _settle(tester);
-    expect(find.text('Chung cư Sky Garden'), findsOneWidget);
+    expect(router.state.uri.path, AppRoutes.alert('evt-unverified'));
+    expect(find.text('Xem camera'), findsOneWidget);
   });
 
   testWidgets('signed out: splash leads to the login screen', (tester) async {

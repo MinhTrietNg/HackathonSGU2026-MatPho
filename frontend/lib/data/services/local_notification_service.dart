@@ -253,6 +253,13 @@ final class LocalNotificationService implements NotificationService {
   @override
   Future<void> stopSiren() => _stopSiren();
 
+  @override
+  Future<void> ringSiren() {
+    // A real alarm must not be silenced by a test siren's stop timer.
+    _testSirenStop?.cancel();
+    return _startSiren();
+  }
+
   Future<void> _startSiren() async {
     try {
       await _sirenChannel.invokeMethod<void>('start');

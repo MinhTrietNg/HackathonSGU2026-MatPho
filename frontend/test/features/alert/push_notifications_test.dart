@@ -204,7 +204,8 @@ void main() {
     expect(app.notifications.shown, isEmpty);
     _lifecycle(tester, _toForeground);
     await _settle(tester);
-    expect(app.notifications.cleared, [fire.id]);
+    expect(app.notifications.cleared.toSet(), {fire.id});
+    expect(app.notifications.ringing, isTrue);
     expect(find.text('Cháy ở Hầm xe'), findsOneWidget);
   });
 
@@ -228,6 +229,7 @@ void main() {
     });
     await _settle(tester);
     expect(app.notifications.cleared, [fire.id]);
+    expect(app.notifications.ringing, isFalse);
     expect(app.path, AppRoutes.alert(fire.id));
     expect(app.fetches.where((id) => id == fire.id).length, loads + 1);
   });

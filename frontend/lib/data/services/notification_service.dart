@@ -21,6 +21,9 @@ abstract interface class NotificationService {
 
   Future<void> stopSiren();
 
+  /// The in-app siren, looping until [stopSiren] or a clear.
+  Future<void> ringSiren();
+
   Future<void> showTestAlert();
 
   Stream<AlertTap> get taps;

@@ -171,6 +171,7 @@ final class FireEvent {
     bool? called114,
     List<TimelineStep>? timeline,
     String? resolvedByName,
+    String? stillUrl,
   }) => FireEvent(
     id: id,
     cameraId: cameraId,
@@ -187,7 +188,7 @@ final class FireEvent {
     timeline: timeline ?? this.timeline,
     resolved: resolved ?? this.resolved,
     called114: called114 ?? this.called114,
-    stillUrl: stillUrl,
+    stillUrl: stillUrl ?? this.stillUrl,
     snapshots: snapshots,
     resolvedByName: resolvedByName ?? this.resolvedByName,
   );

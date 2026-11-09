@@ -31,6 +31,16 @@ bool alertStillOpen(FireEvent event) =>
     (event.status == EventStatus.fire ||
         event.status == EventStatus.unverified);
 
+/// How often, and for how long, an open alert without its evidence picture asks
+/// the server again. The backend sends the alarm without waiting longer than ~3 s
+/// for the picture, so on a slow upload the picture lands a little after it.
+const stillRetryEvery = Duration(seconds: 2);
+const stillRetryFor = Duration(seconds: 20);
+
+/// Only an alarm this recent can still be waiting for its picture; an older one
+/// without a picture will not get one.
+const stillMaxAge = Duration(minutes: 2);
+
 /// FIRE_ALERT events already received over the WebSocket, by id. F2/F4 shows
 /// one at once instead of a blank screen, and keeps it if the fetch fails.
 final receivedAlertsProvider =
@@ -53,6 +63,7 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
 
   final String eventId;
   Timer? _undoTimer;
+  Timer? _stillTimer;
   var _generation = 0;
 
   ({PendingAlertActions sender, FireEvent before})? _resolving;
@@ -64,6 +75,7 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
     final closing = state.value?.closing ?? AlertClosing.unknown;
     ref.onDispose(() {
       _undoTimer?.cancel();
+      _stillTimer?.cancel();
       final resolving = _resolving;
       _resolving = null;
       if (resolving != null) unawaited(resolving.sender.flush(eventId));
@@ -78,11 +90,64 @@ class AlertNotifier extends AsyncNotifier<AlertState> {
     if (received != null) {
       unawaited(_refetch(repository, received, generation));
       unawaited(_loadRole(received.cameraId, generation));
+      _waitForStill(repository, received, generation);
       return AlertState(received, closing: closing);
     }
     final event = await repository.getAlert(eventId);
     unawaited(_loadRole(event.cameraId, generation));
+    _waitForStill(repository, event, generation);
     return AlertState(event, closing: closing);
+  }
+
+  // The evidence picture can reach the server just after the alarm: ask again
+  // until it is there, then show it without touching anything else on screen.
+  void _waitForStill(
+    AlertRepository repository,
+    FireEvent shown,
+    int generation,
+  ) {
+    _stillTimer?.cancel();
+    if (shown.stillUrl != null ||
+        DateTime.now().difference(shown.detectedAt) > stillMaxAge) {
+      return;
+    }
+    final maxAsks =
+        stillRetryFor.inMilliseconds ~/ stillRetryEvery.inMilliseconds;
+    var asking = false;
+    _stillTimer = Timer.periodic(stillRetryEvery, (timer) async {
+      final now = state.value;
+      if (!ref.mounted ||
+          generation != _generation ||
+          timer.tick > maxAsks ||
+          (now != null && now.event.stillUrl != null)) {
+        timer.cancel();
+        return;
+      }
+      if (asking) return;
+      asking = true;
+      try {
+        final fetched = await repository.getAlert(eventId);
+        final current = state.value;
+        if (fetched.stillUrl == null ||
+            current == null ||
+            !ref.mounted ||
+            generation != _generation) {
+          return;
+        }
+        timer.cancel();
+        state = AsyncData(
+          AlertState(
+            current.event.copyWith(stillUrl: fetched.stillUrl),
+            closing: current.closing,
+            canUndo: current.canUndo,
+          ),
+        );
+      } on Object {
+        // Keep asking until the deadline.
+      } finally {
+        asking = false;
+      }
+    });
   }
 
   // Swaps the WebSocket copy for the server's once it arrives, unless the

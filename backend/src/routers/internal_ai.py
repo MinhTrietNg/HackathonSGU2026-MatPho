@@ -33,6 +33,11 @@ logger = logging.getLogger("backend.routers.internal_ai")
 
 router = APIRouter(tags=["Internal AI"])
 
+# Edge gửi ảnh ở pha 2, sau khi pha 1 được trả lời: báo động chạy nền và chờ ảnh tối đa
+# chừng này giây để thông báo và màn cảnh báo có ảnh ngay.
+CHO_ANH_BAO_CAO_S = 3.0
+_tac_vu_nen: set = set()
+
 
 @router.post("/api/v1/internal/ai/verifying", status_code=status.HTTP_202_ACCEPTED)
 @router.post("/internal/ai/verifying", status_code=status.HTTP_202_ACCEPTED)
@@ -177,28 +182,18 @@ async def receive_ai_fire_events(
             )
             is_new_timer = True
 
-        ws_broadcast_coro = ws.broadcast_fire_alert(
-            group_id=group_id,
-            alert_payload={
-                "alert_id": alert_record.alert_id,
-                "event_id": payload.event_id or alert_record.event_id,
-                "cam_id": target_cam_id,
-                "cam_name": cam_name,
-                "location_name": location_name,
-                "sign": alert_record.sign.value if hasattr(alert_record.sign, "value") else str(alert_record.sign),
-                "confidence": payload.confidence,
-                "still_url": alert_record.still_url or alert_record.fire_image_url,
-                "bbox": payload.bbox,
-                "boxes": [b.model_dump() for b in payload.boxes] if payload.boxes else [],
-                "frame_w": payload.frame_w,
-                "frame_h": payload.frame_h,
-                "summary": alert_record.summary,
-                "detail": alert_record.detail,
-                "verification": verification_str,
-                "detected_at": format_iso_utc(alert_record.detected_at) or (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"),
-            },
-            escalation_level=0,
-        )
+        async def cho_anh_bao_cao() -> Optional[str]:
+            url = alert_record.still_url or alert_record.fire_image_url
+            han = time.monotonic() + CHO_ANH_BAO_CAO_S
+            while not url and time.monotonic() < han:
+                await asyncio.sleep(0.2)
+                try:
+                    moi = await asyncio.to_thread(alert_repo.get_alert, alert_record.alert_id)
+                except Exception:
+                    moi = None
+                if moi is not None:
+                    url = moi.still_url or moi.fire_image_url
+            return url
 
         async def dispatch_fcm_async():
             if not is_new_timer:
@@ -233,7 +228,37 @@ async def receive_ai_fire_events(
                     escalation_level=0,
                 )
 
-        await asyncio.gather(ws_broadcast_coro, dispatch_fcm_async(), return_exceptions=True)
+        async def bao_dong_kem_anh() -> None:
+            still_url = await cho_anh_bao_cao()
+            ws_broadcast_coro = ws.broadcast_fire_alert(
+                group_id=group_id,
+                alert_payload={
+                    "alert_id": alert_record.alert_id,
+                    "event_id": payload.event_id or alert_record.event_id,
+                    "cam_id": target_cam_id,
+                    "cam_name": cam_name,
+                    "location_name": location_name,
+                    "sign": alert_record.sign.value if hasattr(alert_record.sign, "value") else str(alert_record.sign),
+                    "confidence": payload.confidence,
+                    "still_url": still_url,
+                    "bbox": payload.bbox,
+                    "boxes": [b.model_dump() for b in payload.boxes] if payload.boxes else [],
+                    "frame_w": payload.frame_w,
+                    "frame_h": payload.frame_h,
+                    "summary": alert_record.summary,
+                    "detail": alert_record.detail,
+                    "verification": verification_str,
+                    "detected_at": format_iso_utc(alert_record.detected_at) or (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"),
+                },
+                escalation_level=0,
+            )
+            await asyncio.gather(ws_broadcast_coro, dispatch_fcm_async(), return_exceptions=True)
+            logger.info("Báo động %s gửi %s ảnh", alert_record.alert_id,
+                        "kèm" if still_url else "chưa có")
+
+        tac_vu = asyncio.create_task(bao_dong_kem_anh())
+        _tac_vu_nen.add(tac_vu)
+        tac_vu.add_done_callback(_tac_vu_nen.discard)
     else:
         # Incident updated: notify subscribers via WebSocket
         await ws.broadcast_fire_alert_updated(

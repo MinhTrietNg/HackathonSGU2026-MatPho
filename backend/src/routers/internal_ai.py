@@ -38,6 +38,32 @@ router = APIRouter(tags=["Internal AI"])
 CHO_ANH_BAO_CAO_S = 3.0
 _tac_vu_nen: set = set()
 
+# Ảnh pha 2 theo event_id: endpoint snapshot ghi URL rồi bật Event, báo động đang chờ
+# thức dậy ngay thay vì đọc lại Firestore theo chu kỳ. Mục được gỡ sau GIU_ANH_S.
+GIU_ANH_S = 120.0
+_anh_san_sang: Dict[str, asyncio.Event] = {}
+_anh_url: Dict[str, Optional[str]] = {}
+
+
+def _su_kien_anh(event_id: str) -> asyncio.Event:
+    """Event của ảnh pha 2 cho ``event_id``; tạo nếu chưa có và hẹn giờ gỡ."""
+    ev = _anh_san_sang.get(event_id)
+    if ev is None:
+        ev = _anh_san_sang[event_id] = asyncio.Event()
+
+        def _go() -> None:
+            _anh_san_sang.pop(event_id, None)
+            _anh_url.pop(event_id, None)
+
+        asyncio.get_running_loop().call_later(GIU_ANH_S, _go)
+    return ev
+
+
+def _bao_anh_san_sang(event_id: str, url: Optional[str]) -> None:
+    """Endpoint snapshot gọi khi ảnh đã lên Storage: đánh thức báo động đang chờ."""
+    _anh_url[event_id] = url
+    _su_kien_anh(event_id).set()
+
 
 @router.post("/api/v1/internal/ai/verifying", status_code=status.HTTP_202_ACCEPTED)
 @router.post("/internal/ai/verifying", status_code=status.HTTP_202_ACCEPTED)
@@ -47,7 +73,7 @@ async def receive_ai_verifying(
 ):
     """Webhook phát tín hiệu AI đang thẩm định sự cố (Màn hình E2a–E2c viền vàng)."""
     camera_repo = get_camera_repository()
-    cam = camera_repo.get_camera(payload.cam_id)
+    cam = await asyncio.to_thread(camera_repo.get_camera, payload.cam_id)
     group_id = cam.group_id if cam else None
     ws = get_websocket_manager()
     await ws.broadcast_ai_verifying(
@@ -69,7 +95,7 @@ async def receive_ai_suppressed(
 ):
     """Webhook phát tín hiệu AI kết luận không phải cháy (Toast E4 xám không còi hú)."""
     camera_repo = get_camera_repository()
-    cam = camera_repo.get_camera(payload.cam_id)
+    cam = await asyncio.to_thread(camera_repo.get_camera, payload.cam_id)
     group_id = cam.group_id if cam else None
     ws = get_websocket_manager()
     await ws.broadcast_fire_alert_suppressed(
@@ -109,7 +135,11 @@ async def receive_ai_fire_events(
     if not target_cam_id or str(target_cam_id).strip().lower() in ("null", "none", ""):
         raise NotFoundException("Mã camera (cam_id / camera_id) không hợp lệ hoặc bị thiếu.", code="CAMERA_NOT_FOUND")
 
-    cam_obj = camera_repo.get_camera(target_cam_id)
+    # Firestore, Storage và Redis (Upstash) đều là I/O chặn: chạy trong thread, nếu không
+    # event loop đứng và mọi WebSocket, push, request khác của app phải chờ theo.
+    moc = [time.monotonic()]
+    cam_obj = await asyncio.to_thread(camera_repo.get_camera, target_cam_id)
+    moc.append(time.monotonic())
     if cam_obj:
         mode_val = cam_obj.ai_mode.value if hasattr(cam_obj.ai_mode, "value") else str(cam_obj.ai_mode or "ALWAYS")
         if not cam_obj.is_ai_enabled or not should_ai_scan_now(mode_val, cam_obj.ai_schedules):
@@ -135,7 +165,10 @@ async def receive_ai_fire_events(
             code="CAMERA_NOT_FOUND",
         )
 
-    alert_record, is_new, ghep = alert_repo.upsert_fire_incident_signal(payload)
+    alert_record, is_new, ghep = await asyncio.to_thread(
+        alert_repo.upsert_fire_incident_signal, payload
+    )
+    moc.append(time.monotonic())
     # tai_bung: event_id mới trên alert đang mở; mo_lai: lượt VLM sau xác nhận cháy trên
     # alert đã bị SUPPRESSED. Cả hai báo động lại trên cùng alert_id.
     tai_bung = bool(ghep.get("tai_bung")) or bool(ghep.get("mo_lai"))
@@ -150,7 +183,7 @@ async def receive_ai_fire_events(
     is_suppressed = status_str == AlertStatus.SUPPRESSED.value
 
     if is_suppressed:
-        esc_svc.cancel_timer(alert_record.alert_id)
+        await asyncio.to_thread(esc_svc.cancel_timer, alert_record.alert_id)
         await ws.broadcast_fire_alert_suppressed(
             cam_id=target_cam_id,
             alert_id=alert_record.alert_id,
@@ -173,53 +206,63 @@ async def receive_ai_fire_events(
         # deduplicated per alert by the Redis keys below.
         if tai_bung:
             logger.info("Fire event %s merged into open alert %s (re-alert)", payload.event_id, alert_record.alert_id)
-        if not esc_svc.is_timer_active(alert_record.alert_id):
+        def bat_dong_ho() -> bool:
+            if esc_svc.is_timer_active(alert_record.alert_id):
+                return False
             esc_svc.start_timer(
                 alert_id=alert_record.alert_id,
                 group_id=group_id,
                 alert_data=alert_record.model_dump() if hasattr(alert_record, "model_dump") else {},
                 ttl_seconds=60,
             )
-            is_new_timer = True
+            return True
+
+        is_new_timer = await asyncio.to_thread(bat_dong_ho)
+        moc.append(time.monotonic())
+        logger.info(
+            "Pha 1 sự cố %s: camera %.2f s, ghi sự cố %.2f s, đồng hồ leo thang %.2f s",
+            payload.event_id, moc[1] - moc[0], moc[2] - moc[1], moc[3] - moc[2],
+        )
+        su_kien_id = payload.event_id or alert_record.event_id
+        # Tạo Event trước khi trả lời edge: edge gửi ảnh ngay sau khi nhận 202.
+        su_kien_anh = _su_kien_anh(su_kien_id) if su_kien_id else None
 
         async def cho_anh_bao_cao() -> Optional[str]:
             url = alert_record.still_url or alert_record.fire_image_url
-            han = time.monotonic() + CHO_ANH_BAO_CAO_S
-            while not url and time.monotonic() < han:
-                await asyncio.sleep(0.2)
-                try:
-                    moi = await asyncio.to_thread(alert_repo.get_alert, alert_record.alert_id)
-                except Exception:
-                    moi = None
-                if moi is not None:
-                    url = moi.still_url or moi.fire_image_url
-            return url
+            if url or su_kien_anh is None:
+                return url
+            try:
+                await asyncio.wait_for(su_kien_anh.wait(), CHO_ANH_BAO_CAO_S)
+            except asyncio.TimeoutError:
+                return None
+            return _anh_url.get(su_kien_id)
 
-        async def dispatch_fcm_async():
-            if not is_new_timer:
-                return
+        def token_nguoi_nhan() -> list:
+            """Token FCM của trưởng nhóm/quản lý; rỗng nếu đã gửi hoặc camera đang nghỉ."""
             # Anti-spam: Strict FCM Level 0 deduplication per incident and camera cooldown (90s)
             r = getattr(esc_svc, "_redis", None)
             fcm_incident_key = f"fcm:sent:{alert_record.alert_id}:level_0"
             fcm_camera_cooldown_key = f"fcm:cooldown:camera:{target_cam_id}"
-
             if r:
                 try:
                     if r.exists(fcm_incident_key) or r.exists(fcm_camera_cooldown_key):
-                        return
+                        return []
                     r.set(fcm_incident_key, "1", ex=3600)
                     r.set(fcm_camera_cooldown_key, "1", ex=90)
                 except Exception:
                     pass
-
-            members = group_repo.list_members(group_id)
-            leader_tokens = []
-            for m in members:
+            tokens = []
+            for m in group_repo.list_members(group_id):
                 if m.role in ("LEADER", "MEMBER_MANAGER"):
                     u = user_repo.get_user_by_id(m.user_id)
                     if u and u.fcm_tokens:
-                        leader_tokens.extend(u.fcm_tokens)
+                        tokens.extend(u.fcm_tokens)
+            return tokens
 
+        async def dispatch_fcm_async():
+            if not is_new_timer:
+                return
+            leader_tokens = await asyncio.to_thread(token_nguoi_nhan)
             if leader_tokens:
                 await asyncio.to_thread(
                     fcm.send_fire_alert_push,
@@ -283,10 +326,12 @@ async def receive_ai_fire_events(
     raw_b64 = payload.snapshot_base64 or payload.image_base64
     if raw_b64 and not is_suppressed:
         box_dicts = [b.model_dump() for b in payload.boxes] if payload.boxes else []
-        asyncio.create_task(
-            asyncio.to_thread(
+        anh_event_id = payload.event_id or alert_record.alert_id
+
+        async def gan_anh_kem_tin_hieu() -> None:
+            capnhat = await asyncio.to_thread(
                 alert_repo.attach_incident_snapshot,
-                event_id=payload.event_id or alert_record.alert_id,
+                event_id=anh_event_id,
                 cam_id=target_cam_id,
                 snapshot_base64=raw_b64,
                 frame_ts=payload.frame_ts or payload.last_seen_ts,
@@ -294,7 +339,14 @@ async def receive_ai_fire_events(
                 frame_w=payload.frame_w or 1920,
                 frame_h=payload.frame_h or 1080,
             )
-        )
+            if capnhat is not None:
+                _bao_anh_san_sang(
+                    anh_event_id, capnhat.still_url or capnhat.fire_image_url
+                )
+
+        tac_vu_anh = asyncio.create_task(gan_anh_kem_tin_hieu())
+        _tac_vu_nen.add(tac_vu_anh)
+        tac_vu_anh.add_done_callback(_tac_vu_nen.discard)
 
     return {
         "status": "accepted",
@@ -321,7 +373,11 @@ async def upload_ai_snapshot(
     alert_repo = get_alert_repository()
     box_dicts = [b.model_dump() for b in payload.boxes] if payload.boxes else []
 
-    updated_alert = alert_repo.attach_incident_snapshot(
+    # Tải ảnh lên Storage mất vài giây: trong thread, để báo động đang chờ ảnh này (và mọi
+    # request khác) vẫn chạy; trước đây nó chặn cả event loop ~4 s.
+    bat_dau = time.monotonic()
+    updated_alert = await asyncio.to_thread(
+        alert_repo.attach_incident_snapshot,
         event_id=event_id,
         cam_id=payload.cam_id or payload.camera_id,
         snapshot_base64=payload.snapshot_base64,
@@ -330,6 +386,11 @@ async def upload_ai_snapshot(
         frame_w=payload.frame_w or 1920,
         frame_h=payload.frame_h or 1080,
     )
+    logger.info("Ảnh sự cố %s xử lý xong sau %.2f s", event_id, time.monotonic() - bat_dau)
+    if updated_alert:
+        _bao_anh_san_sang(
+            event_id, updated_alert.still_url or updated_alert.fire_image_url
+        )
 
     if not updated_alert:
         return {

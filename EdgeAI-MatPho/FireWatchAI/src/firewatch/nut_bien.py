@@ -258,6 +258,22 @@ class GiamSatBien:
                 self._bat(cam_id)
             else:
                 self._tat(cam_id)
+        # Camera bị xoá khỏi edge_backend không còn trong danh sách: trước đây worker
+        # của nó chạy mãi, mở RTSP hỏng liên tục và giữ /health ở 503.
+        with self._khoa:
+            da_xoa = [cid for cid in (*self._dang_chay, *self._tam_dung)
+                      if cid not in muon and cid not in self._context]
+        for cam_id in dict.fromkeys(da_xoa):
+            self._go(cam_id)
+
+    def _go(self, cam_id: str) -> None:
+        """Bỏ hẳn một camera không còn trên edge_backend (khác tạm dừng theo lịch)."""
+        with self._khoa:
+            worker = self._dang_chay.pop(cam_id, None)
+            self._tam_dung.discard(cam_id)
+        if worker is not None:
+            log.info("camera %s: đã bị xoá khỏi edge_backend, ngắt RTSP", cam_id)
+            worker.stop()
 
     def _bat(self, cam_id: str) -> None:
         with self._khoa:

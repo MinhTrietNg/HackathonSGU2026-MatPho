@@ -259,6 +259,23 @@ def test_giam_sat_theo_lich_quet_cua_edge():
     assert all(not c.chay for c in tao.values())
 
 
+def test_giam_sat_bo_camera_bi_xoa_khoi_edge():
+    hien: dict = {"cam_01": True, "cam_02": True, "cam_03": False}
+    gs, tao = _giam_sat(lambda: hien)
+    gs.bat_dau()
+    try:
+        assert _cho(lambda: "cam_02" in tao)
+        assert gs.trang_thai()[1]["paused"] == ["cam_03"]
+        del hien["cam_02"], hien["cam_03"]           # xoá trên app: edge bỏ hẳn
+        gs.dong_bo_mot_lan()
+        assert tao["cam_02"].da_dung
+        # cam_09 khai sẵn trong cấu hình nên vẫn chạy dù edge không liệt kê.
+        assert gs.camera_dang_chay() == ["cam_01", "cam_09"]
+        assert gs.trang_thai()[1]["paused"] == []
+    finally:
+        gs.dung_het()
+
+
 def test_giam_sat_mat_edge_thi_giu_nguyen_va_bao_loi():
     def hong():
         raise OSError("connection refused")

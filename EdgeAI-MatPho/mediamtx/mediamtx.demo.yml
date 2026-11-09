@@ -37,12 +37,17 @@ protocols: [tcp, udp]
 hls: yes
 hlsAddress: :8888
 hlsAllowOrigin: '*'
-hlsVariant: mpegts
+# Low-Latency HLS (fMP4, part 200 ms): hình trên app trễ ~1-2 s thay vì ~8-9 s của
+# mpegts segment 2 s. Trình phát không hỗ trợ LL vẫn phát như HLS thường (segment 1 s).
+# Segment chỉ cắt ở keyframe: camera có GOP dài hơn 1 s thì segment dài theo GOP.
+hlsVariant: lowLatency
 hlsSegmentCount: 7
-hlsSegmentDuration: 2s
-hlsAlwaysRemux: no
-# HLS on-demand: chỉ đóng gói khi có người xem, ngắt 10 s sau request cuối (sơ đồ kiến
-# trúc, luồng C). Luồng RTSP live/{cam_id} cho FireWatch không bị ảnh hưởng.
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+# Đóng gói sẵn mọi luồng: mở màn xem là có hình ngay thay vì chờ muxer mới tích đủ
+# segment (~6-8 s). Chỉ remux, không mã hoá lại. FireWatch đọc RTSP live/{cam_id}
+# trực tiếp, không qua HLS.
+hlsAlwaysRemux: yes
 hlsMuxerCloseAfter: 10s
 
 webrtc: yes

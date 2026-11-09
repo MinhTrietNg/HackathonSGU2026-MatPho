@@ -9,6 +9,14 @@ import AudioToolbox
   private var audioPlayer: AVAudioPlayer?
   private var vibrateTimer: Timer?
 
+  // iOS plays a notification sound once and never loops it, so a fire alert
+  // keeps ringing by re-delivering copies of itself back to back until the
+  // user acts on it. The gap equals the length of fire_alarm_siren.wav (28 s);
+  // iOS keeps at most 64 pending requests per app, so 60 copies ring ~28 min.
+  private static let repeatPrefix = "matpho-fire-repeat-"
+  private static let repeatGap: TimeInterval = 28
+  private static let repeatCount = 60
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -32,6 +40,13 @@ import AudioToolbox
           result(nil)
         case "stop":
           self?.stopSiren()
+          self?.cancelRepeats()
+          result(nil)
+        case "repeat":
+          if let args = call.arguments as? [String: Any],
+             let id = args["id"] as? Int {
+            self?.scheduleRepeats(of: String(id))
+          }
           result(nil)
         default:
           result(FlutterMethodNotImplemented)
@@ -90,6 +105,55 @@ import AudioToolbox
       self.vibrateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
         AudioServicesPlayAlertSound(SystemSoundID(kSystemSoundID_Vibrate))
       }
+    }
+  }
+
+  // Copies the delivered alert (keeping its userInfo, so a tap on any copy
+  // reaches Dart like a tap on the original) and schedules the copies.
+  private func scheduleRepeats(of identifier: String, attempt: Int = 0) {
+    let center = UNUserNotificationCenter.current()
+    center.getDeliveredNotifications { [weak self] delivered in
+      guard let self = self else { return }
+      guard let original = delivered.first(where: {
+        $0.request.identifier == identifier
+      }) else {
+        // The alert may not be delivered yet right after it was added.
+        if attempt < 10 {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.scheduleRepeats(of: identifier, attempt: attempt + 1)
+          }
+        }
+        return
+      }
+      guard let content = original.request.content.mutableCopy()
+        as? UNMutableNotificationContent else { return }
+      content.threadIdentifier = "matpho-fire-\(identifier)"
+      for k in 1...Self.repeatCount {
+        let trigger = UNTimeIntervalNotificationTrigger(
+          timeInterval: Self.repeatGap * Double(k),
+          repeats: false
+        )
+        center.add(UNNotificationRequest(
+          identifier: "\(Self.repeatPrefix)\(identifier)-\(k)",
+          content: content,
+          trigger: trigger
+        ))
+      }
+    }
+  }
+
+  private func cancelRepeats() {
+    let center = UNUserNotificationCenter.current()
+    let isRepeat: (String) -> Bool = { $0.hasPrefix(Self.repeatPrefix) }
+    center.getPendingNotificationRequests { requests in
+      center.removePendingNotificationRequests(
+        withIdentifiers: requests.map(\.identifier).filter(isRepeat)
+      )
+    }
+    center.getDeliveredNotifications { notifications in
+      center.removeDeliveredNotifications(
+        withIdentifiers: notifications.map(\.request.identifier).filter(isRepeat)
+      )
     }
   }
 

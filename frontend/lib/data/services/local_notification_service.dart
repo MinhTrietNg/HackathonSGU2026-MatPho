@@ -37,6 +37,9 @@ final class LocalNotificationService implements NotificationService {
     presentBanner: true,
     presentList: true,
     presentSound: true,
+    // iOS plays a notification sound once, never loops, and rejects files
+    // over 30 s, so the iOS copy of this file is the siren repeated to 28 s
+    // and fire alerts are re-delivered every 28 s (AppDelegate.swift).
     sound: 'fire_alarm_siren.wav',
     categoryIdentifier: _iosFireCategory,
     // critical/timeSensitive need entitlements a free Apple ID cannot sign.
@@ -129,6 +132,8 @@ final class LocalNotificationService implements NotificationService {
       }
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch != null && launch.didNotificationLaunchApp) {
+        // Repeats scheduled before the app was killed must stop on this tap.
+        unawaited(_stopSiren());
         final resp = launch.notificationResponse;
         final eventId = resp?.payload;
         if (eventId != null && eventId.isNotEmpty) {
@@ -191,8 +196,9 @@ final class LocalNotificationService implements NotificationService {
     // A real alarm must not be silenced by a test siren's stop timer.
     _testSirenStop?.cancel();
     unawaited(_startSiren());
+    final id = _fireAlertId(eventId);
     await _show(
-      id: _fireAlertId(eventId),
+      id: id,
       title: title,
       body: body,
       payload: eventId,
@@ -215,6 +221,13 @@ final class LocalNotificationService implements NotificationService {
         ],
       ),
     );
+    // Android loops the siren itself (FLAG_INSISTENT); iOS re-delivers the
+    // alert until the user acts on it, see AppDelegate.scheduleRepeats.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await _sirenChannel.invokeMethod<void>('repeat', {'id': id});
+      } on Object catch (_) {}
+    }
   }
 
   @override

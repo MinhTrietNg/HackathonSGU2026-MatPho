@@ -5,6 +5,7 @@ Phase 5: WebSocket Realtime Hub, Two-Tier Isolation & Outbound Edge Duplex Chann
 
 import os
 import json
+import asyncio
 import time
 import base64
 import logging
@@ -219,7 +220,9 @@ async def edge_websocket_endpoint(
         )
         # Auto-sync registered cameras from Cloud to Edge Node upon connection
         camera_repo = get_camera_repo()
-        edge_cameras = camera_repo.list_cameras_for_edge_node(req_edge_id)
+        edge_cameras = await asyncio.to_thread(
+            camera_repo.list_cameras_for_edge_node, req_edge_id
+        )
         for c in edge_cameras:
             sync_payload = {
                 "action": "SYNC_CAMERA",
@@ -234,6 +237,12 @@ async def edge_websocket_endpoint(
             }
             await websocket.send_text(json.dumps(sync_payload, ensure_ascii=False))
         if edge_cameras:
+            # Full list last: the edge drops cameras deleted while the link was down
+            # (their REMOVE_CAMERA never arrived). Sent only after a successful query.
+            await websocket.send_text(json.dumps({
+                "action": "SYNC_COMPLETE",
+                "cam_ids": [c.cam_id for c in edge_cameras],
+            }))
             logger.info(f"Auto-synced {len(edge_cameras)} cameras to Edge Node {req_edge_id}")
     except Exception as e:
         logger.warning(f"Error sending EDGE_CONNECTED_ACK or SYNC_CAMERA: {e}")
@@ -260,7 +269,8 @@ async def edge_websocket_endpoint(
                     elif msg_type in ("EDGE_HEARTBEAT", "EDGE_GATEWAY_ANNOUNCE"):
                         pub_url = payload.get("public_hls_base_url")
                         cams = payload.get("cameras")
-                        ws_manager.register_edge_node(
+                        await asyncio.to_thread(
+                            ws_manager.register_edge_node,
                             edge_id=req_edge_id,
                             public_hls_base_url=pub_url,
                             cameras=cams,

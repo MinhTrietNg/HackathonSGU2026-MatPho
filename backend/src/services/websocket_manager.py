@@ -63,9 +63,14 @@ class WebSocketConnectionManager:
         public_hls_base_url: Optional[str] = None,
         cameras: Optional[List[str]] = None,
     ):
-        """Update active Edge Node metadata from WebSocket handshake or heartbeat, synced to Redis."""
+        """Update active Edge Node metadata from WebSocket handshake or heartbeat, synced to Redis.
+
+        Does blocking network I/O (Upstash Redis, Firestore): async callers must run it
+        through asyncio.to_thread so the event loop keeps serving the app and pongs.
+        """
         now = time.time()
-        record = self.edge_registry.get(edge_id, {})
+        record = dict(self.edge_registry.get(edge_id, {}))
+        previous = (record.get("public_hls_base_url"), tuple(record.get("cameras") or ()))
         if public_hls_base_url:
             record["public_hls_base_url"] = public_hls_base_url.rstrip("/")
         if cameras is not None:
@@ -79,14 +84,24 @@ class WebSocketConnectionManager:
                 r.setex(f"edge:node:{edge_id}", 300, json.dumps(record))
         except Exception:
             pass
-        if public_hls_base_url and not public_hls_base_url.startswith("http://localhost") and not public_hls_base_url.startswith("http://127.0.0.1"):
+        changed = previous != (
+            record.get("public_hls_base_url"), tuple(record.get("cameras") or ())
+        )
+        # Heartbeats arrive every 10 s with the same data; only a change is worth a
+        # Firestore write and an INFO line.
+        if (
+            changed
+            and public_hls_base_url
+            and not public_hls_base_url.startswith("http://localhost")
+            and not public_hls_base_url.startswith("http://127.0.0.1")
+        ):
             try:
                 from firebase_admin import firestore
                 db = firestore.client()
                 db.collection("edge_nodes").document(edge_id).set(record, merge=True)
             except Exception:
                 pass
-        logger.info(
+        (logger.info if changed else logger.debug)(
             f"Edge node registered: {edge_id} (HLS Gateway: {record.get('public_hls_base_url')}, {len(record.get('cameras', []))} cameras)"
         )
 

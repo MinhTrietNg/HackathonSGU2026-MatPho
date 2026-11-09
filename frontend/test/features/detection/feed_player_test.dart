@@ -112,6 +112,55 @@ void main() {
     });
   });
 
+  group('live feed retry', () {
+    testWidgets('an error rebuilds the player once, after the delay', (
+      tester,
+    ) async {
+      final player = _FakePlayer();
+      addTearDown(player.dispose);
+      var retries = 0;
+      retryFeedOnError(player, retry: () => retries++, disposed: () => false);
+
+      player.value = player.value.copyWith(errorDescription: 'no stream');
+      player.value = player.value.copyWith(errorDescription: 'still none');
+      await tester.pump(feedRetryDelay - const Duration(milliseconds: 1));
+      expect(retries, 0);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(retries, 1);
+    });
+
+    testWidgets('a failed initialize schedules the same retry', (tester) async {
+      final player = _FakePlayer();
+      addTearDown(player.dispose);
+      var retries = 0;
+      final schedule = retryFeedOnError(
+        player,
+        retry: () => retries++,
+        disposed: () => false,
+      );
+      schedule();
+      schedule();
+      await tester.pump(feedRetryDelay);
+      expect(retries, 1);
+    });
+
+    testWidgets('no retry once the player is gone', (tester) async {
+      final player = _FakePlayer();
+      addTearDown(player.dispose);
+      var disposed = false;
+      var retries = 0;
+      retryFeedOnError(
+        player,
+        retry: () => retries++,
+        disposed: () => disposed,
+      );
+      player.value = player.value.copyWith(errorDescription: 'no stream');
+      disposed = true;
+      await tester.pump(feedRetryDelay);
+      expect(retries, 0);
+    });
+  });
+
   group('FeedVideo / WatchFeedPicture', () {
     late _FakePlayer player;
 

@@ -146,7 +146,9 @@ services:
     container_name: matpho_edge_gateway
     user: "0:0"
     restart: unless-stopped
-    command: tunnel --no-autoupdate --logfile /app/data/tunnel.log --url http://mediamtx:8888
+    # http2 (TCP) thay QUIC (UDP) mặc định: trên điểm phát 4G / mạng trường UDP hay bị chặn
+    # hoặc rớt, tunnel vẫn "Registered" nhưng phản hồi không về được (lỗi 530 / treo).
+    command: tunnel --no-autoupdate --protocol http2 --logfile /app/data/tunnel.log --url http://mediamtx:8888
     volumes:
       - edge_local_data:/app/data
     depends_on:

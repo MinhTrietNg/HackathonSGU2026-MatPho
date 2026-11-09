@@ -34,10 +34,7 @@ final cameraTrashProvider = FutureProvider.autoDispose<List<TrashedPlace>>((
       if (group.myRole.canManage)
         if (await repository.listTrash(group.id) case final cameras
             when cameras.isNotEmpty)
-          (
-            group: group,
-            cameras: [...cameras]..sort(_purgeFirst),
-          ),
+          (group: group, cameras: [...cameras]..sort(_purgeFirst)),
   ];
 });
 
@@ -53,23 +50,66 @@ class CameraActions {
 
   CameraRepository get _repo => _ref.read(cameraRepositoryProvider);
 
+  CameraListEditsNotifier get _edits =>
+      _ref.read(cameraListEditsProvider.notifier);
+
+  // Deletes still in flight (true once done), so an undo tapped right away
+  // restores only after its delete has landed.
+  final _deleting = <String, Future<bool>>{};
+
+  /// Leaves E1 at once (synchronously, before the request); comes back if
+  /// the server refuses.
   Future<void> delete(Camera camera) async {
-    final deleted = _ref.read(deletedCameraIdsProvider.notifier)
-      ..hide(camera.id);
+    _edits.hide(camera);
+    final done = Completer<bool>();
+    _deleting[camera.id] = done.future;
     try {
       await _repo.deleteCamera(camera.id);
+      done.complete(true);
     } on Object {
-      deleted.show(camera.id);
+      done.complete(false);
+      _edits
+        ..show(camera)
+        ..settle(camera.id);
       rethrow;
+    } finally {
+      if (identical(_deleting[camera.id], done.future)) {
+        _deleting.remove(camera.id);
+      }
     }
     _refresh(camera);
   }
 
-  Future<Camera> restore(String cameraId) async {
-    final camera = await _repo.restoreCamera(cameraId);
-    _ref.read(deletedCameraIdsProvider.notifier).show(cameraId);
-    _refresh(camera);
-    return camera;
+  /// With [camera] (the undo toast), it is back in E1 at once, before the
+  /// restore is sent; it leaves again if the server refuses.
+  Future<Camera> restore(String cameraId, {Camera? camera}) async {
+    if (camera != null) _edits.show(camera);
+    if (await _deleting[cameraId] == false) {
+      // The delete never happened: nothing to restore.
+      return camera ?? await _repo.getCamera(cameraId);
+    }
+    final Camera restored;
+    try {
+      restored = await _repo.restoreCamera(cameraId);
+    } on Object {
+      if (camera != null) _edits.hide(camera);
+      rethrow;
+    }
+    _refresh(restored);
+    if (camera != null) unawaited(_settle(restored));
+    return restored;
+  }
+
+  // The local copy stays until the reloaded list has the camera again, so
+  // it never blinks out in between.
+  Future<void> _settle(Camera camera) async {
+    try {
+      await _ref.read(groupCamerasProvider(camera.groupId).future);
+      await _ref.read(placeCamerasProvider.future);
+    } on Object {
+      return; // Kept: the server's copy wins once a reload has it.
+    }
+    _edits.settle(camera.id);
   }
 
   Future<void> deleteForever(String cameraId) async {
@@ -132,7 +172,10 @@ Future<bool> removeRtspFlow(
   return true;
 }
 
-/// I17 → E1 with an undo toast. Returns true once the camera is gone.
+/// I17 → E1 with an undo toast, at once: the camera leaves the list and E1
+/// opens before the server answers, and "Hoàn tác" brings it back before
+/// the restore is sent. A refused request puts things back, with a toast.
+/// Returns true once the server has deleted the camera.
 Future<bool> deleteCameraFlow(
   BuildContext context,
   WidgetRef ref,
@@ -143,24 +186,33 @@ Future<bool> deleteCameraFlow(
   }
   final router = GoRouter.of(context);
   final actions = ref.read(cameraActionsProvider);
+  // This screen is gone by the time the server answers; the root overlay
+  // (where toasts live) and the colors are not.
+  final overlay = Overlay.of(context, rootOverlay: true);
+  final colors = context.mpColors;
+  void failed() => showMpToastIn(
+    overlay,
+    _actionFailedToast(colors),
+    duration: _failedToastDuration,
+  );
+
+  final deleting = actions.delete(camera);
+  showCameraDeletedToast(
+    context,
+    cameraName: camera.name,
+    onUndo: () => unawaited(
+      actions
+          .restore(camera.id, camera: camera)
+          .then((_) {}, onError: (Object _) => failed()),
+    ),
+  );
+  router.go(AppRoutes.monitor);
   try {
-    await actions.delete(camera);
+    await deleting;
   } on MpException {
-    if (context.mounted) showCameraActionFailedToast(context);
+    failed();
     return false;
   }
-  // The toast lives in the root overlay, so it outlives this screen; shown
-  // from here because the Navigator's own context has no overlay above it.
-  if (context.mounted) {
-    showCameraDeletedToast(
-      context,
-      cameraName: camera.name,
-      onUndo: () => unawaited(
-        actions.restore(camera.id).then((_) {}, onError: (Object _) {}),
-      ),
-    );
-  }
-  router.go(AppRoutes.monitor);
   return true;
 }
 
@@ -205,19 +257,20 @@ void showCameraPlainToast(BuildContext context, String title) {
   );
 }
 
-void showCameraActionFailedToast(BuildContext context) {
-  final c = context.mpColors;
-  showMpToast(
-    context,
-    MpToast(
-      icon: MpDuotoneIcon(
-        MpIcons.alert,
-        outline: c.statusWarn,
-        accent: c.statusWarn,
-        size: 18,
-      ),
-      title: 'Chưa làm được. Kiểm tra kết nối rồi thử lại.',
-    ),
-    duration: const Duration(seconds: 4),
-  );
-}
+void showCameraActionFailedToast(BuildContext context) => showMpToast(
+  context,
+  _actionFailedToast(context.mpColors),
+  duration: _failedToastDuration,
+);
+
+const _failedToastDuration = Duration(seconds: 4);
+
+MpToast _actionFailedToast(MpColors c) => MpToast(
+  icon: MpDuotoneIcon(
+    MpIcons.alert,
+    outline: c.statusWarn,
+    accent: c.statusWarn,
+    size: 18,
+  ),
+  title: 'Chưa làm được. Kiểm tra kết nối rồi thử lại.',
+);

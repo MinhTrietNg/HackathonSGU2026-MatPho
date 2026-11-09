@@ -33,31 +33,74 @@ const noLiveViewNote = 'Vai trò "Chỉ báo cháy" không xem được camera.'
 
 typedef CameraSection = ({Area? area, List<Camera> cameras});
 
-/// Cameras deleted from this phone. The list drops them at once instead of
-/// keeping them until the place reloads (groups, then cameras: ~3s).
-final deletedCameraIdsProvider =
-    NotifierProvider<DeletedCameraIds, Set<String>>(DeletedCameraIds.new);
+/// Deletes and undos made on this phone, shown before the server confirms
+/// them and before the place reloads (groups, then cameras: ~3s).
+typedef CameraListEdits = ({Set<String> hidden, Map<String, Camera> shown});
 
-class DeletedCameraIds extends Notifier<Set<String>> {
+final cameraListEditsProvider =
+    NotifierProvider<CameraListEditsNotifier, CameraListEdits>(
+      CameraListEditsNotifier.new,
+    );
+
+class CameraListEditsNotifier extends Notifier<CameraListEdits> {
   @override
-  Set<String> build() => const {};
+  CameraListEdits build() {
+    ref.watch(sessionUserIdProvider);
+    return (hidden: const {}, shown: const {});
+  }
 
-  void hide(String cameraId) => state = {...state, cameraId};
+  void hide(Camera camera) => state = (
+    hidden: {...state.hidden, camera.id},
+    shown: {...state.shown}..remove(camera.id),
+  );
 
-  void show(String cameraId) => state = {...state}..remove(cameraId);
+  /// Back in the list even while the server still has it in the trash.
+  void show(Camera camera) => state = (
+    hidden: {...state.hidden}..remove(camera.id),
+    shown: {...state.shown, camera.id: camera},
+  );
+
+  /// The server's list has [cameraId] again: its own copy takes over.
+  void settle(String cameraId) {
+    if (!state.shown.containsKey(cameraId)) return;
+    state = (hidden: state.hidden, shown: {...state.shown}..remove(cameraId));
+  }
 }
+
+/// E1's list: the server's sections with this phone's edits on top. Plain
+/// (not async), so a delete or an undo shows on the next frame even while
+/// [placeCamerasProvider] is reloading.
+final shownPlaceCamerasProvider = Provider<List<CameraSection>?>((ref) {
+  final sections = ref.watch(placeCamerasProvider).value;
+  if (sections == null) return null;
+  final edits = ref.watch(cameraListEditsProvider);
+  if (edits.hidden.isEmpty && edits.shown.isEmpty) return sections;
+  final listed = [for (final s in sections) ...s.cameras];
+  final groupId =
+      listed.firstOrNull?.groupId ?? ref.watch(currentPlaceProvider).value?.id;
+  if (groupId == null) return sections;
+  final ids = {for (final c in listed) c.id};
+  final areas =
+      ref.watch(groupAreasProvider(groupId)).value ??
+      [for (final s in sections) ?s.area];
+  return _sectionsOf(areas, [
+    for (final c in listed)
+      if (!edits.hidden.contains(c.id)) c,
+    for (final c in edits.shown.values)
+      if (c.groupId == groupId && !ids.contains(c.id)) c,
+  ]);
+});
 
 final placeCamerasProvider = FutureProvider<List<CameraSection>>((ref) async {
   final group = await ref.watch(currentPlaceProvider.future);
-  final deleted = ref.watch(deletedCameraIdsProvider);
-  final (areas, all) = await (
+  final (areas, cameras) = await (
     ref.watch(groupAreasProvider(group.id).future),
     ref.watch(groupCamerasProvider(group.id).future),
   ).wait;
-  final cameras = [
-    for (final c in all)
-      if (!deleted.contains(c.id)) c,
-  ];
+  return _sectionsOf(areas, cameras);
+});
+
+List<CameraSection> _sectionsOf(List<Area> areas, List<Camera> cameras) {
   final sections = <CameraSection>[
     for (final area in areas)
       (
@@ -78,7 +121,7 @@ final placeCamerasProvider = FutureProvider<List<CameraSection>>((ref) async {
       if (s.cameras.isNotEmpty) s,
     if (loose.isNotEmpty) (area: null, cameras: loose),
   ];
-});
+}
 
 final addCameraPlaceProvider = FutureProvider<Group>((ref) async {
   final groupId = ref.watch(
@@ -152,7 +195,7 @@ final watchCameraProvider = Provider.autoDispose
       final detail = ref.watch(cameraDetailProvider(cameraId));
       if (detail.hasValue || detail.hasError) return detail;
       final place = ref.watch(currentPlaceProvider).value;
-      for (final section in ref.watch(placeCamerasProvider).value ?? const []) {
+      for (final section in ref.watch(shownPlaceCamerasProvider) ?? const []) {
         for (final camera in section.cameras) {
           // Right after a switch the sections can still be the previous
           // place's: never pair a camera with a place it isn't in.

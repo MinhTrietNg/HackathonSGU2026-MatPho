@@ -45,6 +45,7 @@ late GoRouter _router;
 Future<ProviderContainer> _open(
   WidgetTester tester, {
   List<Override> overrides = const [],
+  FakeScenario scenario = const FakeScenario.test(),
 }) async {
   tester.view
     ..physicalSize = const Size(360, 780)
@@ -66,7 +67,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: fakeOverrides([
-        fakeScenarioProvider.overrideWithValue(const FakeScenario.test()),
+        fakeScenarioProvider.overrideWithValue(scenario),
         clockProvider.overrideWithValue(() => FakeData.demoNow),
         ...overrides,
       ]),
@@ -82,7 +83,9 @@ Future<ProviderContainer> _open(
   );
   unawaited(_router.push(AppRoutes.watch(_camera)));
   await _settle(tester);
-  return ProviderScope.containerOf(tester.element(find.byType(Navigator).first));
+  return ProviderScope.containerOf(
+    tester.element(find.byType(Navigator).first),
+  );
 }
 
 // Four fake repository calls (camera, places, areas, members) rebuild I8.
@@ -162,6 +165,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(c.read(fakeWorldProvider).trash, isEmpty);
     expect(_router.state.uri.path, AppRoutes.watch(_camera));
+  });
+
+  testWidgets('I17 "Xoá" opens E1 with "Hoàn tác" at once, before the server '
+      'has deleted the camera', (tester) async {
+    // Real fake latency (400 ms a call), so "before the server" is visible.
+    final c = await _open(
+      tester,
+      scenario: const FakeScenario(freezeClock: true),
+    );
+    final world = c.read(fakeWorldProvider);
+
+    await tester.tap(_trashButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xoá camera'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xoá'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(_router.state.uri.path, AppRoutes.monitor);
+    expect(find.text('Đã xoá camera · $_name'), findsOneWidget);
+    expect(world.trash, isEmpty);
+
+    await _settle(tester);
+    expect(world.trash.single.camera.id, _camera);
+    // Real latency leaves the fake detection script's timers running.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(minutes: 1));
   });
 
   testWidgets('I17 "Xoá" → E1 with "Hoàn tác"; undo restores the camera', (

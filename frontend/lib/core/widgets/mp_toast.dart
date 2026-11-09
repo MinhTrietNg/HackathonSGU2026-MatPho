@@ -166,8 +166,22 @@ void showMpToast(
   MpToast toast, {
   Duration? duration = MpToast.undoDuration,
   double bottom = MpToast.defaultBottom,
+}) => showMpToastIn(
+  Overlay.of(context, rootOverlay: true),
+  toast,
+  duration: duration,
+  bottom: bottom,
+);
+
+/// For a toast after the screen that asked for it is gone: the root
+/// overlay, looked up while that screen was still there, outlives it.
+void showMpToastIn(
+  OverlayState overlay,
+  MpToast toast, {
+  Duration? duration = MpToast.undoDuration,
+  double bottom = MpToast.defaultBottom,
 }) {
-  final overlay = Overlay.of(context, rootOverlay: true);
+  if (!overlay.mounted) return;
   _current?.dismiss();
   final entry = _ToastEntry(toast: toast, bottom: bottom);
   entry.insert(overlay, duration);

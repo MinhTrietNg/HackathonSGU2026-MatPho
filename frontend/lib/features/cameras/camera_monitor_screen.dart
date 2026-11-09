@@ -45,7 +45,7 @@ class CameraMonitorScreen extends ConsumerWidget {
             lastPlace?.id == selectedId
         ? lastPlace
         : null;
-    final lastSections = ref.watch(placeCamerasProvider).value;
+    final lastSections = ref.watch(shownPlaceCamerasProvider);
     final sections =
         place != null &&
             lastSections != null &&

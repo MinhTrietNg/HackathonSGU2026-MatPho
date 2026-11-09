@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../fakes/fake_overrides.dart';
 import '../../fakes/fake_data.dart';
 import '../../fakes/fake_scenario.dart';
+import 'package:mat_pho/data/errors.dart';
 import 'package:mat_pho/data/models/models.dart';
 import 'package:mat_pho/features/cameras/camera_actions.dart';
 import 'package:mat_pho/features/cameras/camera_state.dart';
@@ -184,26 +185,75 @@ void main() {
     expect(listed(), contains(camera.id));
   });
 
-  test('I17 · a deleted camera leaves the E1 list before the server answers; '
-      'undo brings it back', () async {
-    container.listen(placeCamerasProvider, (_, _) {});
-    final camera = [
+  // What E1 shows: the server's list with this phone's edits on top.
+  List<String> shown() => [
+    for (final s in container.read(shownPlaceCamerasProvider) ?? const [])
+      for (final c in s.cameras) c.id,
+  ];
+
+  Future<Camera> loaded([String? id]) async {
+    container.listen(shownPlaceCamerasProvider, (_, _) {});
+    final cameras = [
       for (final s in await container.read(placeCamerasProvider.future))
         ...s.cameras,
-    ].firstWhere((c) => c.id == 'cam-ramp');
+    ];
+    return id == null ? cameras.first : cameras.firstWhere((c) => c.id == id);
+  }
 
+  test('I17 · a deleted camera leaves E1 before the server is asked; undo '
+      'brings it back before the restore is sent', () async {
+    final camera = await loaded('cam-ramp');
+    final world = container.read(fakeWorldProvider);
     final actions = container.read(cameraActionsProvider);
-    final deleting = actions.delete(camera);
-    await container.read(placeCamerasProvider.future);
-    expect(listed(), isNot(contains('cam-ramp')));
 
+    final deleting = actions.delete(camera);
+    expect(shown(), isNot(contains('cam-ramp')));
+    expect(world.trash, isEmpty);
     await deleting;
     await container.read(placeCamerasProvider.future);
-    expect(listed(), isNot(contains('cam-ramp')));
+    expect(shown(), isNot(contains('cam-ramp')));
+    expect(world.trash.single.camera.id, 'cam-ramp');
 
-    await actions.restore('cam-ramp');
-    await container.read(placeCamerasProvider.future);
-    expect(listed(), contains('cam-ramp'));
+    final restoring = actions.restore('cam-ramp', camera: camera);
+    expect(shown(), contains('cam-ramp'));
+    expect(world.trash, hasLength(1));
+    await restoring;
+    await pumpEventQueue();
+    expect(world.trash, isEmpty);
+    expect(shown(), contains('cam-ramp'));
+    expect(container.read(cameraListEditsProvider).shown, isEmpty);
+  });
+
+  test('I17 · undo tapped before the delete lands: restored after it, '
+      'shown the whole time', () async {
+    final camera = await loaded('cam-ramp');
+    final world = container.read(fakeWorldProvider);
+    final actions = container.read(cameraActionsProvider);
+
+    final deleting = actions.delete(camera);
+    final restoring = actions.restore('cam-ramp', camera: camera);
+    expect(shown(), contains('cam-ramp'));
+    await deleting;
+    expect(shown(), contains('cam-ramp'));
+    await restoring;
+    await pumpEventQueue();
+    expect(world.trash, isEmpty);
+    expect(world.cameras.where((c) => c.id == 'cam-ramp'), hasLength(1));
+    expect(shown(), contains('cam-ramp'));
+  });
+
+  test('I17 · a delete the server refuses puts the camera back', () async {
+    container.read(currentGroupIdProvider.notifier).select('g-office');
+    final camera = await loaded();
+    final actions = container.read(cameraActionsProvider);
+
+    final deleting = actions.delete(camera);
+    expect(shown(), isNot(contains(camera.id)));
+    await expectLater(deleting, throwsA(isA<MpException>()));
+    expect(shown(), contains(camera.id));
+    final edits = container.read(cameraListEditsProvider);
+    expect(edits.hidden, isEmpty);
+    expect(edits.shown, isEmpty);
   });
 
   test('a group left (J14) leaves the place picker too', () async {

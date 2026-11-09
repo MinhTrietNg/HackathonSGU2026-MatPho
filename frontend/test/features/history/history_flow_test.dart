@@ -156,16 +156,15 @@ void main() {
     expect(router.state.uri.path, AppRoutes.historyDetail('evt-dismissed'));
     expect(find.byType(HistoryScreen), findsNothing);
     expect(find.text('Chi tiết'), findsOneWidget);
-    expect(find.text('HẦM XE · 23/10/2025 21:40:12'), findsOneWidget);
+    expect(find.text('23/10/2025 21:40:12'), findsOneWidget);
+    expect(find.text('HẦM XE'), findsOneWidget);
     expect(find.text('23/10 · 21:40:12'), findsOneWidget);
     expect(
       find.text('AI kiểm tra lại 2 lần, không thấy khói hay lửa.'),
       findsOneWidget,
     );
-    expect(find.text('Xác nhận không cháy'), findsOneWidget);
-    expect(find.text('+4,6 s'), findsOneWidget);
-    expect(find.text('Không báo'), findsOneWidget);
-    expect(find.text('—'), findsOneWidget);
+    expect(find.text('Xác nhận không cháy'), findsNothing);
+    expect(find.text('Không báo'), findsNothing);
     expect(find.byType(MpButton), findsNothing);
     expect(find.textContaining('Báo sau'), findsNothing);
 
@@ -175,24 +174,23 @@ void main() {
     expect(find.text('Lửa ở xe máy'), findsOneWidget);
   });
 
-  testWidgets('G4 times every step and proves the under-10 s goal', (
+  testWidgets('G4 shows the picture, status and time, no step timeline', (
     tester,
   ) async {
     await _pump(tester, initialLocation: AppRoutes.historyDetail('evt-fire'));
 
-    expect(find.text('HẦM XE · 23/10/2025 21:47:31'), findsOneWidget);
+    expect(find.text('23/10/2025 21:47:31'), findsOneWidget);
+    expect(find.text('HẦM XE'), findsOneWidget);
     expect(find.text('23/10 · 21:47:31'), findsOneWidget);
-    const steps = [
-      ('Máy phát hiện', '0,0 s'),
-      ('Gửi ảnh', '+0,4 s'),
-      ('Xác nhận cháy', '+5,1 s'),
-      ('Báo tới điện thoại', '+6,8 s'),
-    ];
-    for (final (label, value) in steps) {
-      expect(find.text(label), findsOneWidget);
-      expect(find.text(value), findsOneWidget);
+    for (final label in [
+      'Máy phát hiện',
+      'Gửi ảnh',
+      'Xác nhận cháy',
+      'Báo tới điện thoại',
+    ]) {
+      expect(find.text(label), findsNothing);
     }
-    expect(find.text('Báo sau 6,8 giây'), findsOneWidget);
+    expect(find.textContaining('Báo sau'), findsNothing);
     expect(find.text('Bạn bấm gọi 114'), findsNothing);
     expect(find.text('Lửa và khói ở xe máy bên trái'), findsNothing);
   });

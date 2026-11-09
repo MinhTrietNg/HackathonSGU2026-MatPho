@@ -2,6 +2,7 @@
 Health Check and Error Testing Router for Mắt Phố
 """
 
+import asyncio
 import os
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, status, Query
@@ -40,7 +41,15 @@ async def basic_health():
 
 @router.get("/api/v1/health", response_model=HealthResponse, summary="Detailed System Health Check")
 async def detailed_health():
-    """Checks connection to Firebase Firestore, Storage, and Redis."""
+    """Checks connection to Firebase Firestore, Storage, and Redis.
+
+    Firestore và Redis là lời gọi đồng bộ: chạy ở luồng phụ để health check không làm
+    kẹt event loop (kẹt thì WebSocket edge mất ping và rớt kết nối).
+    """
+    return await asyncio.to_thread(_kiem_tra_suc_khoe)
+
+
+def _kiem_tra_suc_khoe() -> Dict[str, Any]:
     service_status = {}
 
     # 1. Firestore check

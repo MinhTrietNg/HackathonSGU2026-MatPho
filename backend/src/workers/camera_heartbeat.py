@@ -24,7 +24,7 @@ async def camera_heartbeat_loop():
             await asyncio.sleep(5)
             tick_counter += 1
             # Find all active online cameras across all groups
-            active_cams = repo.list_all_online_cameras()
+            active_cams = await asyncio.to_thread(repo.list_all_online_cameras)
             for c in active_cams:
                 # Compute real-time AI status:
                 # - SCANNING: actively detecting fire
@@ -52,7 +52,7 @@ async def camera_heartbeat_loop():
             # Every 720 ticks (~1 hour), purge cameras that have exceeded 30 days in trash
             if tick_counter >= 720:
                 tick_counter = 0
-                repo.purge_expired_cameras()
+                await asyncio.to_thread(repo.purge_expired_cameras)
         except asyncio.CancelledError:
             logger.info("Camera heartbeat background worker received cancellation.")
             break

@@ -2,6 +2,7 @@
 Security, Authentication & OTP Management for Mắt Phố Backend
 """
 
+import asyncio
 import os
 import time
 import uuid
@@ -353,7 +354,7 @@ async def get_current_user(
 
     if not user_id:
         try:
-            decoded = fb_auth.verify_id_token(token)
+            decoded = await asyncio.to_thread(fb_auth.verify_id_token, token)
             user_id = decoded.get("uid")
         except Exception as e:
             logger.debug(f"Firebase token verification failed: {e}")
@@ -363,7 +364,7 @@ async def get_current_user(
 
     from ..services.repositories.user_repo import get_user_repo
     repo = get_user_repo()
-    user = repo.get_user_by_id(user_id)
+    user = await asyncio.to_thread(repo.get_user_by_id, user_id)
     if not user:
         raise UnauthorizedException("Tài khoản không tồn tại trong hệ thống.", code="USER_NOT_FOUND")
 

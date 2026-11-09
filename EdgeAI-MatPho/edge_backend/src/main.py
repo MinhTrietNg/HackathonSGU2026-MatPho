@@ -362,16 +362,25 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
             ai_schedules=ai_schedule,
         )
         if is_active:
-            try:
-                await asyncio.to_thread(state.manager.restart, cam_id, safe_source)
-                logger.info("[cam_id=%s] Restarted stream session with source: %s", cam_id, safe_source)
-            except Exception as exc:
-                logger.warning("Could not start stream for %s: %s", cam_id, exc)
+            # Cloud re-sends SYNC_CAMERA for every camera on each reconnect. Restarting a
+            # session whose source did not change would cut the live view for nothing.
+            sess = state.manager.get_session(cam_id)
+            if sess is not None and sess.alive and sess.spec.source_url == safe_source:
+                logger.debug("[cam_id=%s] Source unchanged, session kept", cam_id)
+            else:
+                try:
+                    await asyncio.to_thread(state.manager.restart, cam_id, safe_source)
+                    logger.info(
+                        "[cam_id=%s] Restarted stream session with source: %s",
+                        cam_id, redact_url(safe_source),
+                    )
+                except Exception as exc:
+                    logger.warning("Could not start stream for %s: %s", cam_id, exc)
         else:
             await asyncio.to_thread(state.manager.stop, cam_id)
 
         if state.ws_client:
-            asyncio.create_task(state.ws_client.announce_camera_sync())
+            state.ws_client.schedule_camera_announce()
         urls = build_stream_urls(cam_id)
         return {
             "type": "CAMERA_STATUS",
@@ -422,8 +431,10 @@ async def handle_cloud_command(payload: Dict[str, Any]) -> Dict[str, Any]:
     if action == "REMOVE_CAMERA":
         cam_id = payload.get("cam_id")
         if cam_id:
-            state.manager.stop(cam_id)
+            await asyncio.to_thread(state.manager.stop, cam_id)
             await state.db.remove_camera(cam_id)
+            if state.ws_client:
+                state.ws_client.schedule_camera_announce()
         return {"type": "CAMERA_REMOVED", "cam_id": cam_id}
 
     if action in ("START_LIVE", "WATCH_CAMERA"):
@@ -719,7 +730,7 @@ async def sync_camera_http(
         watch_area=req.watch_area,
         is_active=req.is_active,
     )
-    state.manager.stop(req.cam_id)
+    await asyncio.to_thread(state.manager.stop, req.cam_id)
     if req.is_active:
         try:
             await asyncio.to_thread(state.manager.start, req.cam_id, safe_source)

@@ -30,6 +30,16 @@ final feedPlayerProvider = Provider.autoDispose
         disposed = true;
         controller.dispose();
       });
+      // A live stream is often missing for a moment: the edge is still connecting a
+      // camera that was just added, the tunnel blips, the edge restarts. The player
+      // never retries on its own, so rebuild it instead of showing no picture for good.
+      final retry = source.isNetwork
+          ? retryFeedOnError(
+              controller,
+              retry: ref.invalidateSelf,
+              disposed: () => disposed,
+            )
+          : () {};
       final end = source.end;
       controller
         ..setVolume(0)
@@ -51,9 +61,40 @@ final feedPlayerProvider = Provider.autoDispose
             }
             if (!disposed) await controller.play();
           })
-          .catchError((Object _) {});
+          .catchError((Object _) {
+            retry();
+          });
       return controller;
     });
+
+const feedRetryDelay = Duration(seconds: 3);
+
+/// Calls [retry] once, [delay] after [controller] reports an error.
+///
+/// Returns a function that schedules the same retry, for failures the controller
+/// does not surface in its value (a failed `initialize`). Nothing happens once
+/// [disposed] returns true.
+@visibleForTesting
+void Function() retryFeedOnError(
+  VideoPlayerController controller, {
+  required void Function() retry,
+  required bool Function() disposed,
+  Duration delay = feedRetryDelay,
+}) {
+  var scheduled = false;
+  void schedule() {
+    if (scheduled || disposed()) return;
+    scheduled = true;
+    Timer(delay, () {
+      if (!disposed()) retry();
+    });
+  }
+
+  controller.addListener(() {
+    if (controller.value.hasError) schedule();
+  });
+  return schedule;
+}
 
 @visibleForTesting
 void loopFeedSegment(
